@@ -1,0 +1,16 @@
+services:
+  app:
+    build: .
+    restart: unless-stopped
+    ports:
+      - "4000:4000"
+    env_file:
+      - .env
+    environment:
+      DATA_DIR: /data
+    volumes:
+      # database + generated quote/invoice PDFs — back this up
+      - pdr-data:/data
+
+volumes:
+  pdr-data:

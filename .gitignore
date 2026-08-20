@@ -1,0 +1,27 @@
+# ---- Never commit these ----
+
+# Secrets: live API keys, tokens, JWT secret
+.env
+.env.local
+.env.*.local
+!.env.example
+
+# The database: real customer data, staff logins, quotes, invoices
+data/
+*.db
+*.db-shm
+*.db-wal
+*.sqlite
+*.sqlite3
+
+# ---- Build output & dependencies (regenerated on deploy) ----
+node_modules/
+client/dist/
+
+# ---- Noise ----
+*.log
+npm-debug.log*
+.DS_Store
+.vscode/
+.idea/
+coverage/
