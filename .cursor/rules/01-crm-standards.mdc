@@ -1,0 +1,13 @@
+---
+alwaysApply: true
+---
+---
+description: Global architectural standards, coding practices, and CRM domain rules.
+globs: *
+---
+- **Product Context**: You are building a production-grade CRM for the Roofing Industry (managing leads, roof inspections, insurance claims, estimates, and crew scheduling). Treat all code as enterprise-ready.
+- **Code Standards**: 
+  - Write clean, modular, highly readable code with descriptive variable names.
+  - Add concise JSDoc comments for complex business logic (e.g., tax calculations, pitch multipliers, commission structures).
+  - Never leave placeholder comments like `// TODO: implement later` without an actionable ticket reference.
+- **Error Handling**: Implement robust try/catch blocks on backend endpoints and error boundaries on frontend components with user-friendly toast notifications.

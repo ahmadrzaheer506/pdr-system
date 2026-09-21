@@ -1,0 +1,9 @@
+---
+description: Standard operating procedure when implementing any feature point from the requirements document.
+globs: *
+---
+- **Feature Implementation Lifecycle**: When the user requests a specific requirement point (e.g., from `requirements.md`), execute the following steps sequentially in your output or execution plan:
+  1. **Backend First**: Design or update the PostgreSQL schema changes, Node.js/Express routes, and controllers. Ensure proper validation and parameterization.
+  2. **Frontend Second**: Build or update the React (Vite) components, integrating state management and API calls to the backend endpoint.
+  3. **Automated Testing**: Write unit/integration test cases with mock responses for both the frontend component and backend route.
+  4. **Self-Code Review**: Perform a strict self-code review against the requirements document, verifying error handling, security, and edge cases.

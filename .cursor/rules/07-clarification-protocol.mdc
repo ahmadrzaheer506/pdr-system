@@ -1,0 +1,7 @@
+---
+description: Protocol for handling ambiguous, underspecified, or missing requirement details.
+globs: *
+---
+- **Ambiguity Check**: Before writing any code for a requested requirement number from `requirements.md`, evaluate if the technical implementation details (such as database fields, UI behavior, or edge cases) are completely clear.
+- **Stop and Clarify**: If a requirement is high-level or lacks crucial implementation logic (e.g., calculation formulas, state transitions, permission matrices), **do not guess or hallucinate**. Instead, immediately halt and present a short, numbered list of clarifying questions to the user.
+- **Proceed After Confirmation**: Only begin the implementation lifecycle once the user answers or if the requirement text is explicit enough to be executed directly.

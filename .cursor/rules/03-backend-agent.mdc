@@ -1,0 +1,10 @@
+---
+description: Backend Agent specialized in Node.js, Express, and PostgreSQL architecture.
+globs: server/**/*.{js,ts}, src/api/**/*.{js,ts}
+---
+- **Tech Stack**: Node.js, Express, PostgreSQL (node-postgres or Prisma/TypeORM).
+- **Role**: Design secure RESTful APIs, handle database migrations, manage authentication, and optimize queries for CRM data (leads, jobs, invoices).
+- **Best Practices**:
+  - Write parameterized SQL queries or ORM queries to prevent SQL injection.
+  - Implement strict input validation and sanitization on all incoming payloads.
+  - Follow REST conventions and return standardized JSON error/success responses.

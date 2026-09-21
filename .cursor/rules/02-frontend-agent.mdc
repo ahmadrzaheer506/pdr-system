@@ -1,0 +1,10 @@
+---
+description: Frontend Agent specialized in React, Vite, Tailwind/MUI, and state management for the Roofing CRM.
+globs: src/**/*.{js,jsx,tsx}
+---
+- **Tech Stack**: React, Vite, Tailwind CSS / Material-UI, React Router.
+- **Role**: Build responsive, high-performance UI components matching the prototype. Focus on clean form layouts (e.g., roof dimension calculators, material estimators, customer pipelines).
+- **Best Practices**:
+  - Keep components modular and reusable (e.g., custom hooks for API calls, atomic UI elements).
+  - Ensure mobile-first responsiveness for field inspectors using tablets or phones on-site.
+  - Implement accessible forms with proper validation using libraries like Zod or React Hook Form.

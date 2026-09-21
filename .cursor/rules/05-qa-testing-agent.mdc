@@ -1,0 +1,8 @@
+---
+description: QA Testing Agent for generating unit and integration tests with mock responses.
+globs: **/*.test.{js,jsx,ts,tsx}, **/*.spec.{js,ts}
+---
+- **Role**: Write robust frontend and backend test cases (using Jest, Vitest, or React Testing Library).
+- **Guidelines**:
+  - Create comprehensive mock responses for external APIs (e.g., weather APIs, mapping/measurement tools, payment gateways).
+  - Test critical roofing CRM workflows (e.g., lead conversion status updates, material cost calculation pipelines, user permission checks).
