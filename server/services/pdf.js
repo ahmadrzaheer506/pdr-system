@@ -20,12 +20,14 @@ const fs = require('fs');
 const path = require('path');
 const { DATA_DIR, getSetting, money, pj } = require('../db');
 const ukTax = require('./ukTax');
+const branding = require('../branding');
 
 const NAVY = '#1e293b';
-const ORANGE = '#ea580c';
+const BRAND_RED = '#dc1114';
 const GREY = '#64748b';
 const LIGHT = '#f1f5f9';
 const RULE = '#cbd5e1';
+const LOGO_ASPECT = 300 / 172;
 
 const M = 50;               // page margin
 const CONTENT_W = 495;      // A4 width (595) minus margins
@@ -77,15 +79,13 @@ function bulletList(doc, y, text) {
 
 // ---------- header / party blocks ----------
 
-function docHeader(doc, company, kindLabel, ref) {
-  const nameW = 330;
-  // Shrink the company name until it fits on one line, so a long trading
-  // name can never overlap the address block beneath it.
-  let nameSize = 19;
-  doc.font('Helvetica-Bold');
-  while (nameSize > 12 && doc.fontSize(nameSize).widthOfString(company.name) > nameW) nameSize -= 0.5;
-  const nameH = doc.fontSize(nameSize).heightOfString(company.name, { width: nameW });
+function resolveLogoPath() {
+  return branding.resolveLogoPath();
+}
 
+function docHeader(doc, company, kindLabel, ref) {
+  const logoFile = resolveLogoPath();
+  const nameW = 330;
   const detailLines = [
     `${company.address}${company.city ? `, ${company.city}` : ''}`,
     `${company.phone}  ·  ${company.email}`,
@@ -93,19 +93,37 @@ function docHeader(doc, company, kindLabel, ref) {
      company.company_number ? `Co. No: ${company.company_number}` : null].filter(Boolean).join('   '),
   ].filter(Boolean);
 
-  const top = 26;
-  const bandH = Math.max(112, top + nameH + 6 + detailLines.length * 12 + 14);
-  doc.rect(0, 0, doc.page.width, bandH).fill(NAVY);
+  const top = logoFile ? 16 : 26;
+  const logoH = logoFile ? 76 : 0;
+  let nameSize = 19;
+  let nameH = 0;
+  if (!logoFile) {
+    // Shrink the company name until it fits on one line, so a long trading
+    // name can never overlap the address block beneath it.
+    doc.font('Helvetica-Bold');
+    while (nameSize > 12 && doc.fontSize(nameSize).widthOfString(company.name) > nameW) nameSize -= 0.5;
+    nameH = doc.fontSize(nameSize).heightOfString(company.name, { width: nameW });
+  }
 
-  doc.fill('#ffffff').font('Helvetica-Bold').fontSize(nameSize).text(company.name, M, top, { width: nameW });
-  let dy = top + nameH + 6;
+  const detailsTop = logoFile ? top + logoH + 8 : top + nameH + 6;
+  const bandH = Math.max(112, detailsTop + detailLines.length * 12 + 14);
+  doc.rect(0, 0, doc.page.width, bandH).fill(NAVY);
+  doc.rect(0, bandH - 4, doc.page.width, 4).fill(BRAND_RED);
+
+  if (logoFile) {
+    doc.image(logoFile, M, top, { height: logoH, width: logoH * LOGO_ASPECT });
+  } else {
+    doc.fill('#ffffff').font('Helvetica-Bold').fontSize(nameSize).text(company.name, M, top, { width: nameW });
+  }
+
+  let dy = detailsTop;
   doc.font('Helvetica').fontSize(8.5).fill('#cbd5e1');
   for (const line of detailLines) {
     doc.text(line, M, dy, { width: nameW });
     dy += 12;
   }
 
-  doc.font('Helvetica-Bold').fontSize(23).fill(ORANGE)
+  doc.font('Helvetica-Bold').fontSize(23).fill(BRAND_RED)
     .text(kindLabel.toUpperCase(), 0, top + 6, { align: 'right', width: doc.page.width - M });
   doc.font('Helvetica').fontSize(11).fill('#e2e8f0')
     .text(ref, 0, top + 36, { align: 'right', width: doc.page.width - M });
@@ -140,14 +158,19 @@ function partyBlock(doc, customer, rightRows, startY = 138) {
 
 // ---------- line items ----------
 
-const VAT_TAG = { standard: '20%', reduced: '5%', zero: '0%', exempt: 'Exempt' };
+function formatLineQty(it) {
+  const qty = it.qty == null || it.qty === '' ? '' : String(it.qty);
+  const unit = String(it.unit || '').trim();
+  if (!unit) return qty;
+  return qty ? `${qty} ${unit}` : unit;
+}
 
-function itemsTable(doc, y, lines, { showVatColumn, showKind }) {
+function itemsTable(doc, y, lines, { showVatColumn, showKind, vatRates }) {
   y = ensureSpace(doc, y, 60);
   const colDesc = M + 8;
-  const wDesc = showVatColumn ? 250 : 285;
+  const wDesc = showVatColumn ? 232 : 267;
   const xQty = M + 8 + wDesc + 6;
-  const xUnit = xQty + 42;
+  const xUnit = xQty + 56;
   const xVat = xUnit + 74;
   const xTotal = showVatColumn ? xVat + 44 : xUnit + 74;
 
@@ -177,10 +200,10 @@ function itemsTable(doc, y, lines, { showVatColumn, showKind }) {
         .text(kindLabel, colDesc, y + 5 + descH + 1, { width: wDesc });
     }
     doc.font('Helvetica').fontSize(9).fill('#0f172a')
-      .text(String(it.qty), xQty, y + 5, { width: 36, align: 'right' })
+      .text(formatLineQty(it), xQty, y + 5, { width: 52, align: 'right' })
       .text(Number(it.unit_price).toLocaleString('en-GB', { minimumFractionDigits: 2 }), xUnit, y + 5, { width: 68, align: 'right' });
     if (showVatColumn) {
-      doc.fontSize(8).fill(GREY).text(VAT_TAG[it.vat_code] || '20%', xVat, y + 5.5, { width: 38, align: 'right' });
+      doc.fontSize(8).fill(GREY).text(ukTax.vatShort(it.vat_code, vatRates), xVat, y + 5.5, { width: 38, align: 'right' });
     }
     doc.fontSize(9).fill('#0f172a')
       .text(Number(it.net).toLocaleString('en-GB', { minimumFractionDigits: 2 }), xTotal, y + 5, { width: 63, align: 'right' });
@@ -215,7 +238,10 @@ function totalsBlock(doc, y, calc, opts = {}) {
 
   const boxH = rows.length * 15 + 34 +
     (calc.cis_deduction > 0 ? 15 : 0) + (calc.retention_amount > 0 ? 15 : 0) +
-    ((calc.cis_deduction > 0 || calc.retention_amount > 0) ? 26 : 0);
+    ((calc.cis_deduction > 0 || calc.retention_amount > 0) ? 26 : 0) +
+    (calc.provisional_sums_total > 0 ? 15 : 0) +
+    (calc.provisional_sums_in_total && calc.provisional_sums_total > 0 ? 26 : 0) +
+    (calc.optional_extras_total > 0 ? 15 : 0);
   y = ensureSpace(doc, y, boxH + 10);
 
   const boxX = M + CONTENT_W - 250;
@@ -226,11 +252,32 @@ function totalsBlock(doc, y, calc, opts = {}) {
   }
 
   // Headline total
-  doc.rect(boxX, y + 2, 250, 26).fill(ORANGE);
+  doc.rect(boxX, y + 2, 250, 26).fill(BRAND_RED);
   doc.font('Helvetica-Bold').fontSize(11).fill('#ffffff')
     .text(opts.totalLabel || 'TOTAL', boxX + 10, y + 9.5, { width: 120 })
     .text(gbp(calc.total), boxX + 130, y + 9.5, { width: 110, align: 'right' });
   y += 34;
+
+  if (calc.provisional_sums_total > 0) {
+    doc.font('Helvetica').fontSize(9).fill(GREY)
+      .text(calc.provisional_sums_in_total ? 'Provisional sums' : 'Provisional sums (not included)', boxX, y, { width: 165 })
+      .fill('#0f172a')
+      .text(gbp(calc.provisional_sums_total), boxX + 165, y, { width: 85, align: 'right' });
+    y += 15;
+  }
+  if (calc.provisional_sums_in_total && calc.provisional_sums_total > 0) {
+    doc.font('Helvetica-Bold').fontSize(10.5).fill(NAVY)
+      .text('Grand total', boxX, y + 4, { width: 165 })
+      .text(gbp(calc.grand_total), boxX + 165, y + 4, { width: 85, align: 'right' });
+    y += 26;
+  }
+  if (calc.optional_extras_total > 0) {
+    doc.font('Helvetica').fontSize(9).fill(GREY)
+      .text('Optional extras (not included)', boxX, y, { width: 165 })
+      .fill('#0f172a')
+      .text(gbp(calc.optional_extras_total), boxX + 165, y, { width: 85, align: 'right' });
+    y += 15;
+  }
 
   // Deductions after the headline
   if (calc.cis_deduction > 0) {
@@ -257,27 +304,30 @@ function totalsBlock(doc, y, calc, opts = {}) {
 
 // ---------- rebuild calc from a stored record ----------
 
-function calcFromRecord(record) {
-  const items = pj(record.items, []);
+function calcFromRecord(record, uk = {}) {
+  const items = Array.isArray(record.items) ? record.items : pj(record.items, []);
   return ukTax.calculate(items, {
     vat_treatment: record.vat_treatment || 'standard',
     cis_applies: !!record.cis_applies,
     cis_rate: record.cis_rate ?? 20,
     retention_percent: record.retention_percent || 0,
-    payment_schedule: pj(record.payment_schedule, []),
+    payment_schedule: Array.isArray(record.payment_schedule) ? record.payment_schedule : pj(record.payment_schedule, []),
+    vat_rates: uk.vat_rates,
+    provisional_sums: Array.isArray(record.provisional_sums) ? record.provisional_sums : pj(record.provisional_sums, []),
+    provisional_sums_in_total: !!record.provisional_sums_in_total,
+    optional_extras: Array.isArray(record.optional_extras) ? record.optional_extras : pj(record.optional_extras, []),
   });
 }
 
 // ============================================================
 // QUOTATION
 // ============================================================
-function buildQuote(doc, quote, customer, company) {
-  const calc = calcFromRecord(quote);
-  const uk = getSetting('uk') || {};
+function buildQuote(doc, quote, customer, company, uk = {}) {
+  const calc = calcFromRecord(quote, uk);
 
   const bandH = docHeader(doc, company, 'Quotation', quote.ref);
   let y = partyBlock(doc, customer, [
-    ['DATE', (quote.created_at || '').slice(0, 10)],
+    ['DATE', quote.created_at ? new Date(quote.created_at).toISOString().slice(0, 10) : ''],
     ['VALID UNTIL', quote.valid_until || '—'],
     ['REFERENCE', quote.ref],
   ], bandH + 26);
@@ -290,6 +340,7 @@ function buildQuote(doc, quote, customer, company) {
   y = itemsTable(doc, y, calc.lines, {
     showVatColumn: calc.vat_breakdown.length > 1,
     showKind: calc.cis_applies,
+    vatRates: uk.vat_rates,
   });
   y = totalsBlock(doc, y, calc, { showSplit: calc.cis_applies, totalLabel: 'QUOTED TOTAL' });
 
@@ -332,14 +383,29 @@ function buildQuote(doc, quote, customer, company) {
     y = bulletList(doc, y, quote.exclusions);
   }
 
-  const provisional = pj(quote.provisional_sums, []);
+  const provisional = Array.isArray(quote.provisional_sums) ? quote.provisional_sums : pj(quote.provisional_sums, []);
   if (provisional.length) {
     y = sectionHeading(doc, y, 'Provisional sums');
-    y = paragraph(doc, y, 'These are estimates for work that cannot be fully priced until opened up. They will be confirmed with you in writing before the work proceeds, and only charged if required.', { size: 8, color: GREY });
+    y = paragraph(doc, y, quote.provisional_sums_in_total
+      ? 'These are estimates for work that cannot be fully priced until opened up. They are included in the grand total on this quotation and will be confirmed with you in writing before the work proceeds.'
+      : 'These are estimates for work that cannot be fully priced until opened up. They are not included in the quoted total and will be confirmed with you in writing before the work proceeds, and only charged if required.', { size: 8, color: GREY });
     for (const ps of provisional) {
       y = ensureSpace(doc, y, 14);
       doc.font('Helvetica').fontSize(9).fill('#0f172a').text(`• ${ps.description}`, M + 2, y, { width: 380 });
       doc.text(gbp(ps.amount), M + 380, y, { width: 115, align: 'right' });
+      y += 14;
+    }
+    y += 4;
+  }
+
+  const extras = Array.isArray(quote.optional_extras) ? quote.optional_extras : pj(quote.optional_extras, []);
+  if (extras.length) {
+    y = sectionHeading(doc, y, 'Optional extras');
+    y = paragraph(doc, y, 'These items are not included in the quoted total. They can be added if you want them, and will only be charged if accepted.', { size: 8, color: GREY });
+    for (const extra of extras) {
+      y = ensureSpace(doc, y, 14);
+      doc.font('Helvetica').fontSize(9).fill('#0f172a').text(`• ${extra.description}`, M + 2, y, { width: 380 });
+      doc.text(gbp(extra.amount), M + 380, y, { width: 115, align: 'right' });
       y += 14;
     }
     y += 4;
@@ -446,9 +512,8 @@ function buildQuote(doc, quote, customer, company) {
 // ============================================================
 // INVOICE
 // ============================================================
-function buildInvoice(doc, invoice, customer, company) {
-  const calc = calcFromRecord(invoice);
-  const uk = getSetting('uk') || {};
+function buildInvoice(doc, invoice, customer, company, uk = {}) {
+  const calc = calcFromRecord(invoice, uk);
 
   const bandH = docHeader(doc, company, 'Invoice', invoice.ref);
   let y = partyBlock(doc, customer, [
@@ -460,6 +525,7 @@ function buildInvoice(doc, invoice, customer, company) {
   y = itemsTable(doc, y, calc.lines, {
     showVatColumn: calc.vat_breakdown.length > 1,
     showKind: calc.cis_applies,
+    vatRates: uk.vat_rates,
   });
   y = totalsBlock(doc, y, calc, { showSplit: calc.cis_applies, totalLabel: 'INVOICE TOTAL' });
 
@@ -503,8 +569,9 @@ function buildInvoice(doc, invoice, customer, company) {
 
 // ---------- entry points ----------
 
-function generate(kind, record, customer) {
-  const company = getSetting('company');
+async function generate(kind, record, customer) {
+  const company = (await getSetting('company')) || {};
+  const uk = (await getSetting('uk')) || {};
   const filename = `${kind}-${record.ref}.pdf`;
   const filePath = path.join(DATA_DIR, 'files', filename);
 
@@ -512,8 +579,8 @@ function generate(kind, record, customer) {
   const stream = fs.createWriteStream(filePath);
   doc.pipe(stream);
 
-  if (kind === 'quote') buildQuote(doc, record, customer, company);
-  else buildInvoice(doc, record, customer, company);
+  if (kind === 'quote') buildQuote(doc, record, customer, company, uk);
+  else buildInvoice(doc, record, customer, company, uk);
 
   // Page numbers + footer on every page.
   // The bottom margin must be dropped first: writing below it makes pdfkit
@@ -531,7 +598,11 @@ function generate(kind, record, customer) {
     doc.page.margins.bottom = saved;
   }
 
-  doc.end();
+  await new Promise((resolve, reject) => {
+    stream.on('finish', resolve);
+    stream.on('error', reject);
+    doc.end();
+  });
   return filename;
 }
 

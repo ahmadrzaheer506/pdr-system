@@ -10,7 +10,10 @@ Built to the PRD/FRD (v1.0) by DuoLogiq. **Phases 1–3 are complete and working
 
 ```bash
 npm run install:all     # installs server + client dependencies
-cp .env.example .env    # then edit: set JWT_SECRET at minimum
+cp .env.example .env    # then edit: set JWT_SECRET and DATABASE_URL
+# Create a local Postgres database (development runs outside Docker):
+#   createdb roofing_crm   — or matching user/pass in DATABASE_URL
+npm run migrate         # applies Sequelize migrations (also runs on server boot)
 npm run seed            # loads realistic demo data
 npm run build           # builds the web app
 npm start               # http://localhost:4000
@@ -28,7 +31,7 @@ For development with hot reload: `npm run dev` (client on :5173, server on :4000
 
 Other field staff: `connor@`, `liam@`, `ryan@`, `callum@`, `nathan@` — same password. Sign in as a field staff account to see the phone view the lads get.
 
-`npm run seed:clean` wipes everything and reseeds. To start a real, empty system: wipe the `data/` folder, run the server once, then create the first admin (or run the seed and delete the demo customers).
+`npm run seed:clean` wipes everything and reseeds. To start a real, empty system: point `DATABASE_URL` at an empty Postgres database, run the server once (migrations apply on boot), then create the first admin (or run the seed and delete the demo customers).
 
 ---
 
@@ -73,7 +76,7 @@ Settings → Integrations shows the live/simulated state of every connection, th
 The PRD requires field staff to be *structurally* unable to retrieve financial data, not merely prevented from seeing it in the UI. That's implemented in two layers:
 
 1. Field staff tokens are rejected by every management route (`/api/customers`, `/api/quotes`, `/api/invoices`, `/api/dashboard`, `/api/jobs`, `/api/tasks`, `/api/leads`) with a 403.
-2. They are served only by `/api/staff/*`, where **no SQL query selects a price, value, quote or invoice column**. The data never enters the response, so there is nothing to leak.
+2. They are served only by `/api/staff/*`, where **no query selects a price, value, quote or invoice column**. The data never enters the response, so there is nothing to leak.
 
 `node e2e-test.js` asserts both, including scanning the raw staff response for any currency values.
 
@@ -100,9 +103,11 @@ docker compose up -d --build      # or:
 npm run install:all && npm run build && npm start
 ```
 
-Requirements: a small Linux VPS or PaaS in a **UK/EU region** (the PRD requires UK/EU data residency), HTTPS on a domain, and `APP_URL` in `.env` set to that public URL — webhooks and OAuth callbacks derive from it.
+Requirements: a small Linux VPS or PaaS in a **UK/EU region** (the PRD requires UK/EU data residency), HTTPS on a domain, PostgreSQL, and `APP_URL` in `.env` set to that public URL — webhooks and OAuth callbacks derive from it.
 
-The database is a single SQLite file in `data/`. Back that directory up (it holds the database and generated PDFs); daily snapshots retained 30 days meets the PRD. The schema is written in portable SQL, so moving to Postgres later is a contained change if volume ever demands it.
+`docker compose up` starts Postgres (internal network only — host port 5432 is not published, so a local Postgres used for development is unaffected) and the app. Development runs the Node processes on the host against `DATABASE_URL=postgres://user:pass@localhost:5432/roofing_crm`.
+
+The database is PostgreSQL. `data/` holds generated PDFs, job photos, and clock-out photos; back that directory up together with Postgres. Daily snapshots retained 30 days meet the PRD. Schema changes go through Sequelize migrations in `server/migrations/`.
 
 ### Automation heartbeat
 
@@ -115,7 +120,10 @@ A cron worker runs every 5 minutes and handles: appointments that have passed (s
 ```
 server/
   index.js              Express app, cron scheduler, static hosting
-  db.js                 SQLite schema, settings, migrations
+  db.js                 Settings helpers, DATA_DIR, Umzug runner
+  config/               Sequelize DATABASE_URL connection
+  models/               Sequelize models (BOOLEAN / TIMESTAMPTZ / JSONB)
+  migrations/           PostgreSQL schema migrations
   auth.js               JWT auth, role guards
   seed.js               Demo data
   routes/               API endpoints (auth, leads, customers, quotes,

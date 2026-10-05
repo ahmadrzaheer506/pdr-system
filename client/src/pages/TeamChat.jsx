@@ -10,7 +10,7 @@ export default function TeamChat() {
   const [body, setBody] = useState('');
   const bottomRef = useRef(null);
 
-  const load = () => api.get('/chat').then((d) => setMessages(d.messages));
+  const load = () => api.get('/chat').then((d) => setMessages(d.messages)).catch(() => setMessages((m) => m || []));
   useEffect(() => {
     load();
     const t = setInterval(load, 8000);
@@ -21,9 +21,14 @@ export default function TeamChat() {
   const send = async (e) => {
     e.preventDefault();
     if (!body.trim()) return;
+    const text = body.trim();
     setBody('');
-    await api.post('/chat', { body });
-    load();
+    try {
+      await api.post('/chat', { body: text });
+      load();
+    } catch {
+      setBody(text);
+    }
   };
 
   if (!messages) return <PageLoading />;

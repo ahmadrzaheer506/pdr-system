@@ -8,14 +8,10 @@ const cors = require('cors');
 const cookieParser = require('cookie-parser');
 const path = require('path');
 const crypto = require('crypto');
-const cron = require('node-cron');
 
-const { db, DATA_DIR } = require('./db');
-const { setStage, logActivity } = require('./services/pipeline');
-const { runAllScans } = require('./services/taskEngine');
-const { processDue } = require('./services/followups');
-const gcal = require('./integrations/gcal');
-const quickbooks = require('./integrations/quickbooks');
+const { DATA_DIR, initDb } = require('./db');
+const { asyncHandler, requireAuth, forbidStaffPdfs, enforceCsrf } = require('./auth');
+const { runAutomationCycle, applyIntervalFromSettings } = require('./automation');
 
 const app = express();
 app.use(cors({ origin: true, credentials: true }));
@@ -25,6 +21,7 @@ app.use(cookieParser());
 app.use('/api/webhooks', require('./routes/webhooks'));
 
 app.use(express.json({ limit: '5mb' }));
+app.use('/api', enforceCsrf);
 
 // ---------- signed public file access (WhatsApp/Meta must fetch PDFs without a session) ----------
 function fileToken(filename) {
@@ -33,15 +30,24 @@ function fileToken(filename) {
 app.get('/public-files/:token/:filename', (req, res) => {
   const { token, filename } = req.params;
   if (!/^[\w.\-]+$/.test(filename) || token !== fileToken(filename)) return res.sendStatus(403);
-  res.sendFile(path.join(DATA_DIR, 'files', filename));
+  res.sendFile(path.join(DATA_DIR, 'files', filename), (err) => {
+    if (err && !res.headersSent) res.sendStatus(404);
+  });
 });
 
 // ---------- authenticated file access (PDFs, clock-out photos) ----------
-const { requireAuth } = require('./auth');
-app.get('/api/files/:filename', requireAuth, (req, res) => {
+app.get('/api/files/:filename', asyncHandler(requireAuth), forbidStaffPdfs, (req, res) => {
   const { filename } = req.params;
   if (!/^[\w.\-]+$/.test(filename)) return res.sendStatus(400);
+  if (req.query.download) {
+    res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+  }
   res.sendFile(path.join(DATA_DIR, 'files', filename), (err) => { if (err) res.sendStatus(404); });
+});
+
+/** Public company logo for login and chrome (requirement 17.3). */
+app.get('/api/branding/logo', (req, res) => {
+  require('./branding').sendLogo(res);
 });
 
 // ---------- API routes ----------
@@ -54,10 +60,13 @@ app.use('/api/jobs', require('./routes/jobs'));
 app.use('/api/holidays', require('./routes/holidays'));
 app.use('/api/invoices', require('./routes/invoices'));
 app.use('/api/tasks', require('./routes/tasks'));
+app.use('/api/notifications', require('./routes/notifications'));
 app.use('/api/timesheets', require('./routes/timesheets'));
 app.use('/api/dashboard', require('./routes/dashboard'));
+app.use('/api/reports', require('./routes/reports'));
 app.use('/api/chat', require('./routes/chat'));
 app.use('/api/settings', require('./routes/settings'));
+app.use('/api/catalogue', require('./routes/catalogue'));
 app.use('/api/staff', require('./routes/staff'));
 app.use('/api/integrations', require('./routes/integrations'));
 
@@ -76,36 +85,24 @@ app.use((err, req, res, next) => {
   res.status(500).json({ error: 'Server error', detail: process.env.NODE_ENV === 'production' ? undefined : err.message });
 });
 
-// ============================================================
-// Cron: the automation heartbeat. Every 5 minutes covers all
-// time-sensitive rules (PRD §9.3, §10.2, §10.3, §10.4) without
-// hammering external APIs.
-// ============================================================
-async function runAutomationCycle() {
-  try {
-    runAllScans({ setStage, logActivity });
-  } catch (err) { console.error('[cron] task scans failed', err.message); }
-  try {
-    const sent = await processDue();
-    if (sent) console.log(`[cron] sent ${sent} follow-up(s)`);
-  } catch (err) { console.error('[cron] follow-up processing failed', err.message); }
-  try {
-    await gcal.pollChanges();
-  } catch (err) { console.error('[cron] google calendar poll failed', err.message); }
-  try {
-    await quickbooks.pollPayments();
-  } catch (err) { console.error('[cron] quickbooks payment poll failed', err.message); }
+const PORT = process.env.PORT || 4000;
+
+async function start() {
+  await initDb();
+  await applyIntervalFromSettings();
+  app.listen(PORT, () => {
+    console.log(`\n  Paul Douglas Roofing — Business OS`);
+    console.log(`  Server running on http://localhost:${PORT}`);
+    console.log(`  Data dir: ${DATA_DIR}\n`);
+    setTimeout(runAutomationCycle, 4000);
+  });
 }
 
-cron.schedule('*/5 * * * *', runAutomationCycle);
-
-const PORT = process.env.PORT || 4000;
-app.listen(PORT, () => {
-  console.log(`\n  Paul Douglas Roofing — Business OS`);
-  console.log(`  Server running on http://localhost:${PORT}`);
-  console.log(`  Data dir: ${DATA_DIR}\n`);
-  // run once shortly after boot so demo data shows tasks immediately
-  setTimeout(runAutomationCycle, 4000);
-});
+if (require.main === module) {
+  start().catch((err) => {
+    console.error('[db] failed to start', err);
+    process.exit(1);
+  });
+}
 
 module.exports = app;

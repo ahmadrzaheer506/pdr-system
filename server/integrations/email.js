@@ -1,54 +1,102 @@
 // ============================================================
 // Outbound email adapter (SMTP via nodemailer).
-// Live when SMTP_HOST + SMTP_USER set; simulated otherwise.
+// Live when SMTP_HOST, SMTP_USER, and SMTP_PASS are set; otherwise simulated.
+// Every send wraps inner copy in the shared branded HTML layout.
 // ============================================================
+const path = require('path');
 const nodemailer = require('nodemailer');
-const { db } = require('../db');
+const { logIntegrationEvent } = require('../models');
+const branding = require('../branding');
+const { renderBrandedEmail, LOGO_CID, DEFAULT_COMPANY } = require('../emailLayout');
+
+function smtpUser() {
+  return String(process.env.SMTP_USER || '').trim();
+}
+
+/** Gmail app passwords are often copied with spaces; SMTP auth needs the 16 characters. */
+function smtpPass() {
+  return String(process.env.SMTP_PASS || '').replace(/\s+/g, '');
+}
 
 function isConfigured() {
-  return !!(process.env.SMTP_HOST && process.env.SMTP_USER);
+  return !!(String(process.env.SMTP_HOST || '').trim() && smtpUser() && smtpPass());
 }
 
 let transporter = null;
 function getTransporter() {
   if (!transporter) {
+    const port = Number(process.env.SMTP_PORT || 587);
+    const secure = port === 465;
     transporter = nodemailer.createTransport({
-      host: process.env.SMTP_HOST,
-      port: Number(process.env.SMTP_PORT || 587),
-      secure: Number(process.env.SMTP_PORT) === 465,
-      auth: { user: process.env.SMTP_USER, pass: process.env.SMTP_PASS },
+      host: String(process.env.SMTP_HOST || '').trim(),
+      port,
+      secure,
+      requireTLS: !secure,
+      auth: { user: smtpUser(), pass: smtpPass() },
     });
   }
   return transporter;
 }
 
-function logEvent(direction, event, payload, status = 'ok') {
-  db.prepare('INSERT INTO integration_events (provider, direction, event, payload, status) VALUES (?,?,?,?,?)')
-    .run('email', direction, event, JSON.stringify(payload).slice(0, 4000), status);
+async function logEvent(direction, event, payload, status = 'ok') {
+  await logIntegrationEvent('email', direction, event, payload, status);
+}
+
+async function loadCompany() {
+  try {
+    const { getSetting } = require('../db');
+    const company = await getSetting('company');
+    if (company && typeof company === 'object') return { ...DEFAULT_COMPANY, ...company };
+  } catch (_) { /* tests and boot without settings still get defaults */ }
+  return { ...DEFAULT_COMPANY };
+}
+
+function logoAttachment(logoPath) {
+  if (!logoPath) return null;
+  return {
+    filename: path.basename(logoPath),
+    path: logoPath,
+    cid: LOGO_CID,
+    contentDisposition: 'inline',
+  };
 }
 
 /**
- * Send an email. attachments = [{ filename, path }].
- * Returns { simulated }.
+ * Send an email. Third argument is plaintext or { greeting, body, actionUrl, actionLabel, note }.
+ * attachments = [{ filename, path }]. Returns { simulated }.
  */
-async function send(to, subject, text, attachments = []) {
+async function send(to, subject, payload, attachments = []) {
   if (!to) throw new Error('Customer has no email address on record');
+  const company = await loadCompany();
+  const logoPath = branding.resolveLogoPath();
+  const { html, text } = renderBrandedEmail({
+    subject,
+    payload,
+    company,
+    logoSrc: logoPath ? `cid:${LOGO_CID}` : null,
+  });
+  const mailAttachments = [
+    logoAttachment(logoPath),
+    ...(Array.isArray(attachments) ? attachments : []),
+  ].filter(Boolean);
+
   if (!isConfigured()) {
-    logEvent('out', 'email.simulated', { to, subject }, 'simulated');
+    await logEvent('out', 'email.simulated', { to, subject }, 'simulated');
     return { simulated: true };
   }
   try {
     await getTransporter().sendMail({
-      from: process.env.SMTP_FROM || process.env.SMTP_USER,
+      from: String(process.env.SMTP_FROM || smtpUser()).trim() || smtpUser(),
       to,
       subject,
       text,
-      attachments,
+      html,
+      attachments: mailAttachments,
     });
-    logEvent('out', 'email.sent', { to, subject });
+    await logEvent('out', 'email.sent', { to, subject });
     return { simulated: false };
   } catch (err) {
-    logEvent('out', 'email.error', { to, subject, error: String(err.message) }, 'error');
+    await logEvent('out', 'email.error', { to, subject, error: String(err.message) }, 'error');
     throw err;
   }
 }
@@ -68,4 +116,8 @@ function status() {
   };
 }
 
-module.exports = { isConfigured, send, status };
+function resetTransporter() {
+  transporter = null;
+}
+
+module.exports = { isConfigured, send, status, resetTransporter };

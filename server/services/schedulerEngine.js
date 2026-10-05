@@ -1,66 +1,85 @@
 // ============================================================
-// Scheduling engine (PRD §11.1 support layer):
-//  - buildContext(date): everything the AI (or rule engine) needs
-//  - ruleSchedule(): deterministic fallback that works with NO
-//    AI key — greedy assignment respecting drivers, skills,
-//    holidays, and no double-booking
-//  - validateProposal(): server-side hard-constraint validation
-//    applied to EVERY proposal (LLM or rule-based) before Paul
-//    sees it — the PRD's "no double-booking / no unqualified /
-//    no on-holiday assignment" guarantee.
+// Scheduling engine (PRD §11.1 support layer).
 // ============================================================
-const { db, pj } = require('../db');
+const { Op } = require('sequelize');
+const { User, HolidayRequest, Job, JobDayAssignment, Customer } = require('../models');
+const { plain } = require('../db');
 
-function buildContext(forDate) {
-  const staff = db
-    .prepare("SELECT id, name, skills, is_driver, color FROM users WHERE role = 'STAFF' AND active = 1")
-    .all()
-    .map((s) => ({ ...s, skills: pj(s.skills, []), is_driver: !!s.is_driver }));
+async function buildContext(forDate) {
+  const staffRows = await User.findAll({
+    where: { role: 'STAFF', active: true },
+    attributes: ['id', 'name', 'skills', 'is_driver', 'color'],
+  });
+  const staff = staffRows.map((s) => {
+    const o = plain(s);
+    o.skills = Array.isArray(o.skills) ? o.skills : [];
+    o.is_driver = !!o.is_driver;
+    return o;
+  });
 
-  const holidayRows = db
-    .prepare(
-      `SELECT user_id FROM holiday_requests
-       WHERE status = 'approved' AND date(start_date) <= date(?) AND date(end_date) >= date(?)`
-    )
-    .all(forDate, forDate);
+  const holidayRows = await HolidayRequest.findAll({
+    attributes: ['user_id'],
+    where: {
+      status: 'approved',
+      start_date: { [Op.lte]: forDate },
+      end_date: { [Op.gte]: forDate },
+    },
+  });
   const onHoliday = new Set(holidayRows.map((r) => r.user_id));
 
-  const unscheduledJobs = db
-    .prepare(
-      `SELECT j.id, j.title, j.description, j.address, j.priority, j.required_skills, j.materials,
-              j.start_date, j.end_date, j.start_time, j.end_time, j.status, c.name AS customer_name
-       FROM jobs j JOIN customers c ON c.id = j.customer_id
-       WHERE j.status = 'PENDING'
-       ORDER BY CASE j.priority WHEN 'urgent' THEN 0 WHEN 'high' THEN 1 WHEN 'normal' THEN 2 ELSE 3 END, j.created_at`
-    )
-    .all()
-    .map((jb) => ({ ...jb, required_skills: pj(jb.required_skills, []) }));
+  const unscheduledRows = await Job.findAll({
+    where: { status: 'PENDING' },
+    include: [{ model: Customer, attributes: ['name'] }],
+    order: [
+      [literalPriority(), 'ASC'],
+      ['created_at', 'ASC'],
+    ],
+  });
+  const unscheduledJobs = unscheduledRows.map((jb) => {
+    const o = plain(jb);
+    o.customer_name = o.Customer?.name;
+    o.required_skills = Array.isArray(o.required_skills) ? o.required_skills : [];
+    delete o.Customer;
+    return o;
+  });
 
-  const scheduledThatDay = db
-    .prepare(
-      `SELECT j.id, j.title, j.start_time, j.end_time, j.priority, j.address, c.name AS customer_name
-       FROM jobs j JOIN customers c ON c.id = j.customer_id
-       WHERE j.status IN ('SCHEDULED','IN_PROGRESS')
-         AND date(j.start_date) <= date(?) AND date(COALESCE(j.end_date, j.start_date)) >= date(?)`
-    )
-    .all(forDate, forDate);
+  const scheduledRows = await Job.findAll({
+    where: {
+      status: { [Op.in]: ['SCHEDULED', 'IN_PROGRESS'] },
+      start_date: { [Op.lte]: forDate },
+      [Op.or]: [
+        { end_date: { [Op.gte]: forDate } },
+        { end_date: null, start_date: { [Op.gte]: forDate } },
+      ],
+    },
+    include: [{ model: Customer, attributes: ['name'] }],
+  });
 
-  const assignmentRows = db
-    .prepare(
-      `SELECT ja.job_id, ja.user_id FROM job_assignments ja
-       JOIN jobs j ON j.id = ja.job_id
-       WHERE j.status IN ('SCHEDULED','IN_PROGRESS')
-         AND date(j.start_date) <= date(?) AND date(COALESCE(j.end_date, j.start_date)) >= date(?)`
-    )
-    .all(forDate, forDate);
-  const busy = new Map(); // user_id -> [job_id]
+  const assignmentRows = await JobDayAssignment.findAll({
+    where: { work_date: forDate },
+    include: [{
+      model: Job,
+      attributes: ['id', 'status', 'start_date', 'end_date'],
+      required: true,
+      where: {
+        status: { [Op.in]: ['SCHEDULED', 'IN_PROGRESS'] },
+      },
+    }],
+  });
+
+  const busy = new Map();
   for (const r of assignmentRows) {
     if (!busy.has(r.user_id)) busy.set(r.user_id, []);
     busy.get(r.user_id).push(r.job_id);
   }
-  for (const jb of scheduledThatDay) {
-    jb.assigned = assignmentRows.filter((r) => r.job_id === jb.id).map((r) => r.user_id);
-  }
+
+  const scheduledThatDay = scheduledRows.map((jb) => {
+    const o = plain(jb);
+    o.customer_name = o.Customer?.name;
+    o.assigned = assignmentRows.filter((r) => r.job_id === jb.id).map((r) => r.user_id);
+    delete o.Customer;
+    return o;
+  });
 
   return {
     forDate,
@@ -75,7 +94,11 @@ function buildContext(forDate) {
   };
 }
 
-/** Very light transcript parsing for the no-AI fallback. */
+function literalPriority() {
+  const { literal } = require('sequelize');
+  return literal(`CASE "Job"."priority" WHEN 'urgent' THEN 0 WHEN 'high' THEN 1 WHEN 'normal' THEN 2 ELSE 3 END`);
+}
+
 function parseTranscriptHints(transcript, context) {
   const hints = { unavailable: new Set(), priorityJobIds: new Set() };
   if (!transcript) return hints;
@@ -94,10 +117,6 @@ function parseTranscriptHints(transcript, context) {
   return hints;
 }
 
-/**
- * Deterministic fallback scheduler. Same output shape as the LLM path:
- * { assignments: [{job_id, user_ids, start_time, end_time, note}], unassigned: [{job_id, reason}], summary }
- */
 function ruleSchedule(context, transcript = '') {
   const hints = parseTranscriptHints(transcript, context);
   const pool = context.staff.filter((s) => s.available && !hints.unavailable.has(s.id));
@@ -111,14 +130,11 @@ function ruleSchedule(context, transcript = '') {
   const assignments = [];
   const unassigned = [];
   const free = () => pool.filter((s) => !taken.has(s.id));
-
-  // Aim to spread the workforce across jobs: base team size
   const teamSize = Math.max(1, Math.min(3, Math.floor(pool.length / Math.max(1, jobs.length)) || 1));
 
   for (const jb of jobs) {
     const team = [];
     const notes = [];
-    // 1. cover each required skill
     for (const skill of jb.required_skills) {
       if (team.some((m) => m.skills.includes(skill))) continue;
       const match = free().find((s) => s.skills.includes(skill) && !team.includes(s));
@@ -129,7 +145,6 @@ function ruleSchedule(context, transcript = '') {
         notes.push(`no available staff with skill "${skill}"`);
       }
     }
-    // 2. ensure a driver on the team
     if (!team.some((m) => m.is_driver)) {
       const driver = free().find((s) => s.is_driver);
       if (driver) {
@@ -139,7 +154,6 @@ function ruleSchedule(context, transcript = '') {
         notes.push('no driver available for this team');
       }
     }
-    // 3. top up to target size with anyone left
     while (team.length < teamSize && free().length) {
       const next = free()[0];
       team.push(next);
@@ -167,16 +181,40 @@ function ruleSchedule(context, transcript = '') {
   return { assignments, unassigned, summary };
 }
 
-/**
- * Hard-constraint validation of ANY proposal (PRD §11.1 acceptance criteria).
- * Returns { assignments (cleaned), warnings[], errors[] }.
- */
-function validateProposal(proposal, context) {
+function proposalConflicts(assignments, context) {
+  const staffById = new Map((context.staff || []).map((s) => [s.id, s]));
+  const rows = [];
+  for (const a of assignments || []) {
+    for (const uidRaw of a.user_ids || []) {
+      const s = staffById.get(Number(uidRaw));
+      if (!s) continue;
+      if (s.on_holiday) {
+        rows.push({
+          user_id: s.id,
+          type: 'holiday',
+          name: s.name,
+          message: `${s.name} is on approved holiday on ${context.forDate}`,
+        });
+      }
+      if ((s.busy_on || []).length) {
+        rows.push({
+          user_id: s.id,
+          type: 'double_book',
+          name: s.name,
+          message: `${s.name} is already scheduled on another job that day`,
+        });
+      }
+    }
+  }
+  return rows;
+}
+
+function validateProposal(proposal, context, { allowConflicts = false } = {}) {
   const warnings = [];
   const errors = [];
   const staffById = new Map(context.staff.map((s) => [s.id, s]));
   const jobById = new Map(context.unscheduledJobs.map((jb) => [jb.id, jb]));
-  const seenUser = new Map(); // user -> job they're already proposed on
+  const seenUser = new Map();
 
   const cleaned = [];
   for (const a of proposal.assignments || []) {
@@ -193,15 +231,15 @@ function validateProposal(proposal, context) {
         errors.push(`Unknown staff #${uidRaw} proposed on "${jb.title}" — removed`);
         continue;
       }
-      if (s.on_holiday) {
+      if (!allowConflicts && s.on_holiday) {
         errors.push(`${s.name} is on approved holiday on ${context.forDate} — removed from "${jb.title}"`);
         continue;
       }
-      if (s.busy_on.length) {
+      if (!allowConflicts && s.busy_on.length) {
         errors.push(`${s.name} is already scheduled on another job that day — removed from "${jb.title}"`);
         continue;
       }
-      if (seenUser.has(uid)) {
+      if (!allowConflicts && seenUser.has(uid)) {
         errors.push(`${s.name} was double-booked in the proposal — kept on first job only`);
         continue;
       }
@@ -212,7 +250,6 @@ function validateProposal(proposal, context) {
       warnings.push(`"${jb.title}" ended up with no valid staff after checks`);
       continue;
     }
-    // soft checks → warnings
     const teamSkills = users.flatMap((u) => staffById.get(u).skills);
     for (const skill of jb.required_skills || []) {
       if (!teamSkills.includes(skill)) warnings.push(`"${jb.title}": nobody on the team has required skill "${skill}"`);
@@ -223,4 +260,4 @@ function validateProposal(proposal, context) {
   return { assignments: cleaned, warnings, errors };
 }
 
-module.exports = { buildContext, ruleSchedule, validateProposal };
+module.exports = { buildContext, ruleSchedule, validateProposal, proposalConflicts };

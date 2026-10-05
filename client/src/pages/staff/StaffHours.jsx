@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { Clock, MapPin, AlertTriangle } from 'lucide-react';
 import { api, fmtDate } from '../../lib/api';
+import { formatClockTime } from '../../lib/clockTime';
 import { PageLoading, EmptyState, StatusBadge } from '../../components/ui.jsx';
 import ClockWidget from '../../components/ClockWidget.jsx';
 
@@ -13,7 +14,7 @@ function hrs(mins) {
 
 export default function StaffHours() {
   const [data, setData] = useState(null);
-  const load = () => api.get('/staff/timesheets/mine').then(setData);
+  const load = () => api.get('/staff/timesheets/mine').then(setData).catch(() => setData({ timesheets: [], total_hours: 0 }));
   useEffect(() => { load(); }, []);
 
   if (!data) return <PageLoading />;
@@ -35,10 +36,10 @@ export default function StaffHours() {
         <p className="text-slate-500 text-sm mt-0.5">Last 4 weeks · {data.total_hours}h total</p>
       </div>
 
-      <ClockWidget onChange={load} compact />
+      <ClockWidget onChange={load} />
 
       {data.timesheets.length === 0 ? (
-        <EmptyState icon={Clock} title="No hours logged yet" detail="Clock in from a job to start recording your time." />
+        <EmptyState icon={Clock} title="No hours logged yet" detail="Clock in from a job, or as yard / travel on this page." />
       ) : (
         Object.entries(weeks).sort((a, b) => b[0].localeCompare(a[0])).map(([weekStart, shifts]) => {
           const total = shifts.reduce((s, t) => s + (Number(t.worked_minutes) || 0), 0);
@@ -65,7 +66,7 @@ export default function StaffHours() {
                     </div>
                     <div className="flex items-center gap-2 mt-2 flex-wrap">
                       <span className="text-[11px] text-slate-400">
-                        {String(t.clock_in).slice(11, 16)} – {t.clock_out ? String(t.clock_out).slice(11, 16) : 'running'}
+                        {formatClockTime(t.clock_in)} – {t.clock_out ? formatClockTime(t.clock_out) : 'running'}
                       </span>
                       {Number(t.break_minutes) > 0 && (
                         <span className="text-[11px] text-slate-400">· {Math.round(t.break_minutes)}m break</span>

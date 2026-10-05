@@ -1,23 +1,33 @@
-// Team communication — all-staff channel (PRD §11.3). Per-job chat lives in routes/jobs.js.
 const express = require('express');
-const { db } = require('../db');
-const { requireAuth } = require('../auth');
+const { TeamMessage, User } = require('../models');
+const { requireAuth, asyncHandler } = require('../auth');
+const { plain } = require('../db');
 
 const router = express.Router();
 router.use(requireAuth);
 
-router.get('/', (req, res) => {
-  const rows = db.prepare(
-    'SELECT tm.*, u.name AS user_name, u.color, u.role FROM team_messages tm JOIN users u ON u.id = tm.user_id ORDER BY tm.created_at DESC LIMIT 100'
-  ).all();
-  res.json({ messages: rows.reverse() });
-});
+router.get('/', asyncHandler(async (req, res) => {
+  const rows = await TeamMessage.findAll({
+    include: [{ model: User, attributes: ['name', 'color', 'role'] }],
+    order: [['created_at', 'DESC']],
+    limit: 100,
+  });
+  const messages = rows.reverse().map((tm) => {
+    const o = plain(tm);
+    o.user_name = o.User?.name;
+    o.color = o.User?.color;
+    o.role = o.User?.role;
+    delete o.User;
+    return o;
+  });
+  res.json({ messages });
+}));
 
-router.post('/', (req, res) => {
+router.post('/', asyncHandler(async (req, res) => {
   const { body } = req.body || {};
   if (!body || !body.trim()) return res.status(400).json({ error: 'body required' });
-  const r = db.prepare('INSERT INTO team_messages (user_id, body) VALUES (?,?)').run(req.user.id, body.trim());
-  res.json({ id: r.lastInsertRowid });
-});
+  const created = await TeamMessage.create({ user_id: req.user.id, body: body.trim() });
+  res.json({ id: created.id });
+}));
 
 module.exports = router;

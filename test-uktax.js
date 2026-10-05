@@ -175,5 +175,47 @@ console.log('\n14. Empty quote does not crash or produce NaN');
   is('vat_total is a number', typeof r.vat_total === 'number' && !isNaN(r.vat_total));
 }
 
+console.log('\n15. Commercial defaults — reverse charge + CIS 20%');
+{
+  const d = t.taxDefaultsForCustomer({ customer_type: 'commercial' });
+  is('reverse charge', d.vat_treatment === 'reverse_charge');
+  is('CIS on', d.cis_applies === true);
+  eq('CIS 20%', d.cis_rate, 20);
+  eq('5% retention', d.retention_percent, 5);
+}
+
+console.log('\n16b. Provisional sums — listed after works total, optional in grand total');
+{
+  const items = [{ description: 'Works', qty: 1, unit_price: 1000, vat_code: 'standard', kind: 'labour' }];
+  const ps = [{ description: 'Rafter feet', amount: 400 }];
+  const off = t.calculate(items, { provisional_sums: ps, provisional_sums_in_total: false });
+  eq('works total unchanged', off.total, 1200);
+  eq('P.S. line 400', off.provisional_sums_total, 400);
+  eq('grand total excludes P.S. when off', off.grand_total, 1200);
+  const on = t.calculate(items, { provisional_sums: ps, provisional_sums_in_total: true });
+  eq('works total still unchanged', on.total, 1200);
+  eq('grand total includes P.S. when on', on.grand_total, 1600);
+}
+
+console.log('\n16c. Optional extras — listed after works total, never included');
+{
+  const r = t.calculate(
+    [{ description: 'Works', qty: 1, unit_price: 1000, vat_code: 'standard', kind: 'labour' }],
+    { optional_extras: [{ description: 'Velux', amount: 640 }] }
+  );
+  eq('works total unchanged', r.total, 1200);
+  eq('extras line 640', r.optional_extras_total, 640);
+  eq('grand total excludes extras', r.grand_total, 1200);
+}
+
+console.log('\n16. Custom Settings VAT rate on a line');
+{
+  const r = t.calculate(
+    [{ description: 'Green', qty: 1, unit_price: 200, vat_code: 'green', kind: 'materials' }],
+    { vat_rates: [{ code: 'green', rate: 5, short: '5%', label: 'Green 5%' }] }
+  );
+  eq('VAT at custom 5%', r.vat_total, 10);
+}
+
 console.log(`\n=== RESULT: ${pass} passed, ${fail} failed ===\n`);
 process.exit(fail ? 1 : 0);

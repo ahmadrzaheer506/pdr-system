@@ -2,33 +2,34 @@ import React, { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { MapPin, Clock, Users, ChevronRight, Briefcase } from 'lucide-react';
 import { api, fmtDate } from '../../lib/api';
-import { PageLoading, PriorityBadge, StatusBadge, EmptyState } from '../../components/ui.jsx';
-
-function isoDate(d) { return d.toISOString().slice(0, 10); }
+import { PageLoading, PriorityBadge, EmptyState } from '../../components/ui.jsx';
+import { localIsoDate, addIsoDays, datesInRange, parseIsoDate } from '../../lib/schedule';
 
 export default function StaffJobs() {
   const [jobs, setJobs] = useState(null);
 
   useEffect(() => {
-    const from = isoDate(new Date());
-    const to = isoDate(new Date(Date.now() + 13 * 86400000));
-    api.get(`/staff/jobs?from=${from}&to=${to}`).then((d) => setJobs(d.jobs));
+    const from = localIsoDate();
+    const to = addIsoDays(from, 13);
+    api.get(`/staff/jobs?from=${from}&to=${to}`).then((d) => setJobs(d.jobs)).catch(() => setJobs([]));
   }, []);
 
   if (!jobs) return <PageLoading />;
 
-  const today = isoDate(new Date());
-  const windowEnd = isoDate(new Date(Date.now() + 13 * 86400000));
-  const tomorrow = isoDate(new Date(Date.now() + 86400000));
+  const today = localIsoDate();
+  const tomorrow = addIsoDays(today, 1);
+  const windowEnd = addIsoDays(today, 13);
 
-  // A multi-day job appears on every day it runs (clipped to the visible window),
-  // so a job that started yesterday still shows under "Today".
+  // Show each job on the days this person is actually on the crew.
   const groups = {};
   for (const j of jobs) {
-    const start = j.start_date < today ? today : j.start_date;
-    const end = (j.end_date || j.start_date) > windowEnd ? windowEnd : (j.end_date || j.start_date);
-    for (let d = new Date(start); isoDate(d) <= end; d.setDate(d.getDate() + 1)) {
-      (groups[isoDate(d)] ||= []).push(j);
+    const assignedDays = (j.work_dates || []).map(parseIsoDate).filter(Boolean);
+    const days = (assignedDays.length
+      ? assignedDays
+      : datesInRange(j.start_date, j.end_date || j.start_date)
+    ).filter((date) => date >= today && date <= windowEnd);
+    for (const date of days) {
+      (groups[date] ||= []).push(j);
     }
   }
   const sortedDates = Object.keys(groups).sort();

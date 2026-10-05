@@ -3,7 +3,7 @@
 // (PRD §10.1). Live when FB_PAGE_ACCESS_TOKEN set.
 // ============================================================
 const crypto = require('crypto');
-const { db } = require('../db');
+const { logIntegrationEvent } = require('../models');
 
 const GRAPH = 'https://graph.facebook.com/v21.0';
 
@@ -11,9 +11,8 @@ function isConfigured() {
   return !!process.env.FB_PAGE_ACCESS_TOKEN;
 }
 
-function logEvent(direction, event, payload, status = 'ok') {
-  db.prepare('INSERT INTO integration_events (provider, direction, event, payload, status) VALUES (?,?,?,?,?)')
-    .run('facebook', direction, event, JSON.stringify(payload).slice(0, 4000), status);
+async function logEvent(direction, event, payload, status = 'ok') {
+  await logIntegrationEvent('facebook', direction, event, payload, status);
 }
 
 /** Verify X-Hub-Signature-256 on Meta webhooks (shared with WhatsApp). */
@@ -32,7 +31,7 @@ function verifySignature(rawBody, signatureHeader) {
 /** Reply to a Facebook page message (PSID = page-scoped sender id). */
 async function sendPageMessage(psid, text) {
   if (!isConfigured()) {
-    logEvent('out', 'page_message.simulated', { psid, text }, 'simulated');
+    await logEvent('out', 'page_message.simulated', { psid, text }, 'simulated');
     return { simulated: true };
   }
   const res = await fetch(`${GRAPH}/me/messages?access_token=${process.env.FB_PAGE_ACCESS_TOKEN}`, {
@@ -42,10 +41,10 @@ async function sendPageMessage(psid, text) {
   });
   const data = await res.json().catch(() => ({}));
   if (!res.ok) {
-    logEvent('out', 'page_message.error', { psid, error: data }, 'error');
+    await logEvent('out', 'page_message.error', { psid, error: data }, 'error');
     throw new Error(`FB send failed: ${JSON.stringify(data.error || data)}`);
   }
-  logEvent('out', 'page_message.sent', { psid });
+  await logEvent('out', 'page_message.sent', { psid });
   return { simulated: false };
 }
 
@@ -55,7 +54,7 @@ async function fetchLeadgen(leadgenId) {
   const res = await fetch(`${GRAPH}/${leadgenId}?access_token=${process.env.FB_PAGE_ACCESS_TOKEN}`);
   const data = await res.json().catch(() => ({}));
   if (!res.ok) {
-    logEvent('in', 'leadgen.fetch_error', { leadgenId, error: data }, 'error');
+    await logEvent('in', 'leadgen.fetch_error', { leadgenId, error: data }, 'error');
     return null;
   }
   // field_data: [{name, values:[..]}]

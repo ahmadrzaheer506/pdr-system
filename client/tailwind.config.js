@@ -5,7 +5,7 @@ export default {
     extend: {
       colors: {
         navy: { 900: '#0f172a', 800: '#1e293b', 700: '#334155' },
-        brand: { 500: '#ea580c', 600: '#c2410c', 50: '#fff7ed' },
+        brand: { 500: '#dc1114', 600: '#b50e11', 50: '#fef2f2' },
       },
       fontFamily: {
         sans: ['Inter', 'ui-sans-serif', 'system-ui', 'sans-serif'],

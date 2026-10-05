@@ -8,14 +8,34 @@ function check(label, cond, detail = '') {
   cond ? pass++ : fail++;
 }
 
+function mergeSetCookies(res, who) {
+  const store = { ...(jars[who] || {}) };
+  const list = typeof res.headers.getSetCookie === 'function'
+    ? res.headers.getSetCookie()
+    : [].concat(res.headers.get('set-cookie') || []);
+  for (const line of list) {
+    if (!line) continue;
+    const nv = String(line).split(';')[0];
+    const i = nv.indexOf('=');
+    if (i > 0) store[nv.slice(0, i)] = nv.slice(i + 1);
+  }
+  jars[who] = store;
+}
+
 async function req(method, path, body, who = 'owner') {
+  const headers = { 'Content-Type': 'application/json' };
+  const store = jars[who] || {};
+  const cookie = Object.entries(store).map(([k, v]) => `${k}=${v}`).join('; ');
+  if (cookie) headers.Cookie = cookie;
+  if (method !== 'GET' && method !== 'HEAD' && store.pdr_csrf) {
+    headers['X-CSRF-Token'] = decodeURIComponent(store.pdr_csrf);
+  }
   const res = await fetch(BASE + path, {
     method,
-    headers: { 'Content-Type': 'application/json', ...(jars[who] ? { Cookie: jars[who] } : {}) },
+    headers,
     body: body ? JSON.stringify(body) : undefined,
   });
-  const setCookie = res.headers.get('set-cookie');
-  if (setCookie) jars[who] = setCookie.split(';')[0];
+  mergeSetCookies(res, who);
   let data = null;
   try { data = await res.json(); } catch {}
   return { status: res.status, data };
@@ -96,6 +116,7 @@ async function req(method, path, body, who = 'owner') {
 
   r = await req('GET', '/api/timesheets/live', null, 'owner');
   check('Live board shows who is on the clock', r.status === 200 && Array.isArray(r.data.active));
+  check('Live board lists today\'s crew who have not clocked in', r.status === 200 && Array.isArray(r.data.not_clocked_in));
 
   // ---------------------------------------------------------
   console.log('\n4. Job costing / profitability');
@@ -133,7 +154,7 @@ async function req(method, path, body, who = 'owner') {
   r = await req('GET', `/api/quotes/${quoteId}`, null, 'owner');
   check('Quote stores VAT breakdown', !!r.data.quote.vat_breakdown);
   check('Quote stores labour/materials split', r.data.quote.labour_total === 1000 && r.data.quote.materials_total === 500);
-  check('Domestic customer gets cancellation rights', r.data.quote.cancellation_rights_apply === 1);
+  check('Domestic customer gets cancellation rights', r.data.quote.cancellation_rights_apply === true);
 
   // ---------------------------------------------------------
   console.log('\n6. Reverse charge + CIS quote');

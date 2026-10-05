@@ -1,48 +1,48 @@
 import React from 'react';
-import { NavLink, useNavigate } from 'react-router-dom';
-import { Briefcase, Clock, PlaneTakeoff, MessageSquare, LogOut } from 'lucide-react';
-import { useAuth } from '../lib/auth.jsx';
-import { Avatar } from './ui.jsx';
+import { NavLink } from 'react-router-dom';
+import { Briefcase, Clock, PlaneTakeoff, MessageSquare, CheckSquare, CalendarDays } from 'lucide-react';
+import AppHeader from './AppHeader.jsx';
 
 const NAV = [
   { to: '/staff', label: 'Jobs', icon: Briefcase, end: true },
+  { to: '/staff/visits', label: 'Visits', icon: CalendarDays },
+  { to: '/staff/tasks', label: 'Tasks', icon: CheckSquare },
   { to: '/staff/hours', label: 'Hours', icon: Clock },
   { to: '/staff/holidays', label: 'Holidays', icon: PlaneTakeoff },
   { to: '/staff/chat', label: 'Team Chat', icon: MessageSquare },
 ];
 
 export default function StaffLayout({ children }) {
-  const { user, logout } = useAuth();
-  const navigate = useNavigate();
-  const doLogout = async () => { await logout(); navigate('/login'); };
-
   return (
     <div className="min-h-screen bg-slate-50 flex flex-col">
-      <header className="bg-navy-900 text-white px-4 py-3 flex items-center justify-between sticky top-0 z-30">
-        <div className="flex items-center gap-2.5">
-          <Avatar name={user?.name} color={user?.color} size={8} />
-          <div>
-            <div className="text-sm font-semibold leading-tight">{user?.name}</div>
-            <div className="text-xs text-slate-400">Paul Douglas Roofing</div>
-          </div>
-        </div>
-        <button onClick={doLogout} className="text-slate-300 hover:text-white p-2"><LogOut size={18} /></button>
-      </header>
+      <AppHeader
+        profileHref="/staff/profile"
+        className="border-slate-200"
+        showLogo
+      />
 
       <main className="flex-1 p-4 pb-24 max-w-lg mx-auto w-full">{children}</main>
 
-      <nav className="fixed bottom-0 inset-x-0 bg-white border-t border-slate-200 flex z-30 pb-[env(safe-area-inset-bottom)]">
+      <nav className="fixed bottom-0 inset-x-0 bg-white/95 backdrop-blur-lg border-t border-slate-200/80 flex z-30 pb-[env(safe-area-inset-bottom)] shadow-lg shadow-slate-900/5">
         {NAV.map(({ to, label, icon: Icon, end }) => (
           <NavLink
             key={to}
             to={to}
             end={end}
             className={({ isActive }) =>
-              `flex-1 flex flex-col items-center gap-0.5 py-2.5 text-xs font-medium ${isActive ? 'text-brand-600' : 'text-slate-400'}`
+              `group flex-1 flex flex-col items-center gap-1 py-3 text-[11px] font-semibold transition-all ${
+                isActive ? 'text-brand-600' : 'text-slate-500'
+              }`
             }
           >
-            <Icon size={20} />
-            {label}
+            {({ isActive }) => (
+              <>
+                <div className={`transition-all ${isActive ? 'scale-110' : 'group-active:scale-95'}`}>
+                  <Icon size={21} strokeWidth={isActive ? 2.5 : 2} />
+                </div>
+                {label}
+              </>
+            )}
           </NavLink>
         ))}
       </nav>

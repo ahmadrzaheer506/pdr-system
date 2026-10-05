@@ -1,31 +1,61 @@
 import React, { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { ArrowLeft, MapPin, Phone, Package, MessageSquare, Send } from 'lucide-react';
+import { ArrowLeft, MapPin, Phone, MessageSquare, Send } from 'lucide-react';
 import { api, fmtDate } from '../../lib/api';
-import { PageLoading, PriorityBadge } from '../../components/ui.jsx';
+import { PageLoading, LoadError, PriorityBadge, useToast, Toast } from '../../components/ui.jsx';
 import ClockWidget from '../../components/ClockWidget.jsx';
+import JobKit from '../../components/JobKit.jsx';
+import JobFiles from '../../components/JobFiles.jsx';
 
 export default function StaffJobDetail() {
   const { id } = useParams();
   const navigate = useNavigate();
   const [job, setJob] = useState(null);
+  const [loadError, setLoadError] = useState('');
   const [messages, setMessages] = useState([]);
   const [msg, setMsg] = useState('');
+  const { toast, show } = useToast();
 
-  const load = () => api.get(`/staff/jobs/${id}`).then((d) => { setJob(d.job); setMessages(d.messages); });
-  useEffect(() => { load(); }, [id]);
+  const load = () => api.get(`/staff/jobs/${id}`).then((d) => {
+    setLoadError('');
+    setJob(d.job);
+    setMessages(d.messages);
+  }).catch((err) => {
+    show(err.message, 'error');
+    setLoadError(err.message || 'Could not load this job');
+  });
+  useEffect(() => {
+    let cancelled = false;
+    api.get(`/staff/jobs/${id}`).then((d) => {
+      if (cancelled) return;
+      setLoadError('');
+      setJob(d.job);
+      setMessages(d.messages);
+    }).catch((err) => {
+      if (cancelled) return;
+      show(err.message, 'error');
+      setLoadError(err.message || 'Could not load this job');
+    });
+    return () => { cancelled = true; };
+  }, [id, show]);
 
   const send = async () => {
     if (!msg.trim()) return;
-    await api.post(`/staff/jobs/${id}/messages`, { body: msg });
-    setMsg('');
-    load();
+    try {
+      await api.post(`/staff/jobs/${id}/messages`, { body: msg });
+      setMsg('');
+      load();
+    } catch (err) {
+      show(err.message, 'error');
+    }
   };
 
+  if (loadError && !job) return <LoadError message={loadError} />;
   if (!job) return <PageLoading />;
 
   return (
     <div className="space-y-4">
+      {toast && <Toast {...toast} />}
       <button onClick={() => navigate(-1)} className="flex items-center gap-1.5 text-sm text-slate-500"><ArrowLeft size={15} /> Back</button>
 
       <ClockWidget jobId={job.id} jobTitle={job.title} onChange={load} />
@@ -44,14 +74,33 @@ export default function StaffJobDetail() {
           {fmtDate(job.start_date)}{job.end_date && job.end_date !== job.start_date ? ` – ${fmtDate(job.end_date)}` : ''} · {job.start_time}–{job.end_time}
         </div>
         {job.description && <p className="mt-3 text-sm text-slate-600 border-t border-slate-100 pt-3">{job.description}</p>}
-        {job.materials && (
-          <div className="mt-3 bg-amber-50 text-amber-800 rounded-lg px-3 py-2 text-sm flex gap-2">
-            <Package size={15} className="flex-shrink-0 mt-0.5" /> {job.materials}
-          </div>
-        )}
         {job.crew?.length > 0 && (
           <div className="mt-3 text-sm text-slate-500">With: {job.crew.map((c) => c.name).join(', ')}</div>
         )}
+      </div>
+
+      <div className="card p-4">
+        <JobKit
+          jobId={job.id}
+          apiBase="/staff/jobs"
+          materialLines={job.material_lines || []}
+          checklistItems={job.checklist_items || []}
+          materialsNote={job.materials}
+          allowTemplates={false}
+          onChanged={load}
+          onError={(msg) => show(msg, 'error')}
+        />
+      </div>
+
+      <div className="card p-4">
+        <JobFiles
+          jobId={job.id}
+          apiBase="/staff/jobs"
+          files={job.files || []}
+          notes={job.notes}
+          onChanged={load}
+          onError={(msg) => show(msg, 'error')}
+        />
       </div>
 
       <div className="card p-4">

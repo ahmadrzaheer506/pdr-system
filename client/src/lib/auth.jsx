@@ -1,5 +1,6 @@
 import React, { createContext, useContext, useEffect, useState, useCallback } from 'react';
 import { api } from './api';
+import { ROLES } from './roles';
 
 const AuthCtx = createContext(null);
 
@@ -31,7 +32,7 @@ export function AuthProvider({ children }) {
   };
 
   return (
-    <AuthCtx.Provider value={{ user, loading, login, logout, refresh, isStaff: user?.role === 'STAFF', isOffice: user && user.role !== 'STAFF' }}>
+    <AuthCtx.Provider value={{ user, loading, login, logout, refresh, isStaff: user?.role === ROLES.STAFF, isOffice: user && user.role !== ROLES.STAFF }}>
       {children}
     </AuthCtx.Provider>
   );

@@ -117,6 +117,9 @@ async function yesNo(question, defaultYes = true) {
   env.APP_URL = (await prompt(env, 'APP_URL', 'Public address of the app', {
     hint: 'Use http://localhost:' + env.PORT + ' while testing. Once deployed, put the real https:// address here — webhooks and OAuth callbacks are built from it.',
   })) || `http://localhost:${env.PORT}`;
+  env.DATABASE_URL = (await prompt(env, 'DATABASE_URL', 'PostgreSQL connection URL', {
+    hint: 'Local development uses your machine Postgres, e.g. postgres://pdr:pdr@localhost:5432/roofing_crm. Docker Compose uses postgres://pdr:pdr@postgres:5432/pdr_crm.',
+  })) || env.DATABASE_URL || 'postgres://pdr:pdr@localhost:5432/roofing_crm';
   env.DATA_DIR = env.DATA_DIR || './data';
 
   // ---------- AI ----------

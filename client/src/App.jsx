@@ -1,15 +1,23 @@
 import React from 'react';
 import { Routes, Route, Navigate } from 'react-router-dom';
 import { useAuth } from './lib/auth.jsx';
+import { ROLES } from './lib/roles';
 import { PageLoading } from './components/ui.jsx';
+import ErrorBoundary from './components/ErrorBoundary.jsx';
 import Layout from './components/Layout.jsx';
 import StaffLayout from './components/StaffLayout.jsx';
 
 import Login from './pages/Login.jsx';
+import ForgotPassword from './pages/ForgotPassword.jsx';
+import ResetPassword from './pages/ResetPassword.jsx';
 import Dashboard from './pages/Dashboard.jsx';
+import Reports from './pages/Reports.jsx';
+import ReportDetail from './pages/ReportDetail.jsx';
 import Inbox from './pages/Inbox.jsx';
 import Pipeline from './pages/Pipeline.jsx';
 import CustomerDetail from './pages/CustomerDetail.jsx';
+import CustomerRecord from './pages/CustomerRecord.jsx';
+import Customers from './pages/Customers.jsx';
 import Quotes from './pages/Quotes.jsx';
 import Schedule from './pages/Schedule.jsx';
 import Invoices from './pages/Invoices.jsx';
@@ -18,18 +26,22 @@ import Tasks from './pages/Tasks.jsx';
 import Timesheets from './pages/Timesheets.jsx';
 import TeamChat from './pages/TeamChat.jsx';
 import Settings from './pages/Settings.jsx';
+import Profile from './pages/Profile.jsx';
 
 import StaffJobs from './pages/staff/StaffJobs.jsx';
 import StaffJobDetail from './pages/staff/StaffJobDetail.jsx';
 import StaffHolidays from './pages/staff/StaffHolidays.jsx';
 import StaffHours from './pages/staff/StaffHours.jsx';
 import StaffChat from './pages/staff/StaffChat.jsx';
+import StaffTasks from './pages/staff/StaffTasks.jsx';
+import StaffVisits from './pages/staff/StaffVisits.jsx';
+import StaffVisitDetail from './pages/staff/StaffVisitDetail.jsx';
 
 function OfficeRoute({ children }) {
   const { user, loading } = useAuth();
   if (loading) return <PageLoading />;
   if (!user) return <Navigate to="/login" replace />;
-  if (user.role === 'STAFF') return <Navigate to="/staff" replace />;
+  if (user.role === ROLES.STAFF) return <Navigate to="/staff" replace />;
   return <Layout>{children}</Layout>;
 }
 
@@ -37,7 +49,7 @@ function StaffRoute({ children }) {
   const { user, loading } = useAuth();
   if (loading) return <PageLoading />;
   if (!user) return <Navigate to="/login" replace />;
-  if (user.role !== 'STAFF') return <Navigate to="/" replace />;
+  if (user.role !== ROLES.STAFF) return <Navigate to="/" replace />;
   return <StaffLayout>{children}</StaffLayout>;
 }
 
@@ -46,13 +58,20 @@ export default function App() {
   if (loading) return <PageLoading />;
 
   return (
-    <Routes>
+    <ErrorBoundary>
+      <Routes>
       <Route path="/login" element={<Login />} />
+      <Route path="/forgot-password" element={<ForgotPassword />} />
+      <Route path="/reset-password" element={<ResetPassword />} />
 
       <Route path="/" element={<OfficeRoute><Dashboard /></OfficeRoute>} />
+      <Route path="/reports" element={<OfficeRoute><Reports /></OfficeRoute>} />
+      <Route path="/reports/:type" element={<OfficeRoute><ReportDetail /></OfficeRoute>} />
       <Route path="/inbox" element={<OfficeRoute><Inbox /></OfficeRoute>} />
       <Route path="/pipeline" element={<OfficeRoute><Pipeline /></OfficeRoute>} />
-      <Route path="/customers/:id" element={<OfficeRoute><CustomerDetail /></OfficeRoute>} />
+      <Route path="/customers" element={<OfficeRoute><Customers /></OfficeRoute>} />
+      <Route path="/customers/:id" element={<OfficeRoute><CustomerRecord /></OfficeRoute>} />
+      <Route path="/leads/:id" element={<OfficeRoute><CustomerDetail /></OfficeRoute>} />
       <Route path="/quotes" element={<OfficeRoute><Quotes /></OfficeRoute>} />
       <Route path="/schedule" element={<OfficeRoute><Schedule /></OfficeRoute>} />
       <Route path="/invoices" element={<OfficeRoute><Invoices /></OfficeRoute>} />
@@ -60,15 +79,21 @@ export default function App() {
       <Route path="/tasks" element={<OfficeRoute><Tasks /></OfficeRoute>} />
       <Route path="/timesheets" element={<OfficeRoute><Timesheets /></OfficeRoute>} />
       <Route path="/chat" element={<OfficeRoute><TeamChat /></OfficeRoute>} />
+      <Route path="/profile" element={<OfficeRoute><Profile /></OfficeRoute>} />
       <Route path="/settings" element={<OfficeRoute><Settings /></OfficeRoute>} />
 
       <Route path="/staff" element={<StaffRoute><StaffJobs /></StaffRoute>} />
+      <Route path="/staff/visits" element={<StaffRoute><StaffVisits /></StaffRoute>} />
+      <Route path="/staff/visits/:id" element={<StaffRoute><StaffVisitDetail /></StaffRoute>} />
+      <Route path="/staff/tasks" element={<StaffRoute><StaffTasks /></StaffRoute>} />
       <Route path="/staff/jobs/:id" element={<StaffRoute><StaffJobDetail /></StaffRoute>} />
       <Route path="/staff/hours" element={<StaffRoute><StaffHours /></StaffRoute>} />
       <Route path="/staff/holidays" element={<StaffRoute><StaffHolidays /></StaffRoute>} />
       <Route path="/staff/chat" element={<StaffRoute><StaffChat /></StaffRoute>} />
+      <Route path="/staff/profile" element={<StaffRoute><Profile /></StaffRoute>} />
 
       <Route path="*" element={<Navigate to="/" replace />} />
-    </Routes>
+      </Routes>
+    </ErrorBoundary>
   );
 }

@@ -1,75 +1,102 @@
-// Staff holiday management with enforced notice rule (PRD §11.2)
 const express = require('express');
-const { db, getSetting } = require('../db');
-const { requireAuth, requireOffice } = require('../auth');
+const { Op } = require('sequelize');
+const { HolidayRequest, User } = require('../models');
+const { getSetting, plain } = require('../db');
+const { requireAuth, requireOffice, asyncHandler } = require('../auth');
+const holidayRequests = require('../holidayRequests');
 
 const router = express.Router();
 
-function daysBetween(a, b) {
-  return Math.round((new Date(b) - new Date(a)) / 86400000) + 1;
-}
-function noticeDaysUntil(date) {
-  const today = new Date(new Date().toDateString());
-  return Math.round((new Date(date) - today) / 86400000);
+function sendServiceError(res, err) {
+  const body = { error: err.message };
+  if (err.notice_days != null) body.notice_days = err.notice_days;
+  if (err.remaining != null) body.remaining = err.remaining;
+  if (err.allowance != null) body.allowance = err.allowance;
+  if (err.year != null) body.year = err.year;
+  res.status(err.status || 400).json(body);
 }
 
-router.get('/', requireAuth, requireOffice, (req, res) => {
+router.get('/', requireAuth, requireOffice, asyncHandler(async (req, res) => {
   const { status, user_id } = req.query;
-  let sql = `SELECT h.*, u.name AS user_name, u.color FROM holiday_requests h JOIN users u ON u.id = h.user_id WHERE 1=1`;
-  const params = [];
-  if (status) { sql += ' AND h.status = ?'; params.push(status); }
-  if (user_id) { sql += ' AND h.user_id = ?'; params.push(user_id); }
-  sql += ' ORDER BY h.created_at DESC';
-  res.json({ holidays: db.prepare(sql).all(...params), notice_days: getSetting('holiday_notice_days') });
-});
+  const where = {};
+  if (status) where.status = status;
+  if (user_id) where.user_id = user_id;
+  const rows = await HolidayRequest.findAll({
+    where,
+    include: [{ model: User, attributes: ['name', 'color', 'holiday_allowance', 'avatar_file', 'email', 'phone'] }],
+    order: [['created_at', 'DESC']],
+  });
+  const balances = await holidayRequests.balancesForUsers(rows.map((h) => ({
+    id: h.user_id,
+    holiday_allowance: h.User?.holiday_allowance,
+  })));
+  res.json({
+    holidays: rows.map((h) => {
+      const o = plain(h);
+      o.user_name = o.User?.name;
+      o.color = o.User?.color;
+      o.avatar_file = o.User?.avatar_file || null;
+      o.email = o.User?.email || null;
+      o.phone = o.User?.phone || null;
+      o.kind = holidayRequests.kindFromDates(o.start_date, o.end_date);
+      delete o.User;
+      Object.assign(o, balances[h.user_id] || {});
+      return o;
+    }),
+    notice_days: await getSetting('holiday_notice_days'),
+    year: holidayRequests.currentYear(),
+  });
+}));
 
-/** Everyone's approved holiday in a date range — for the scheduling view overlay (PRD §11.2). */
-router.get('/calendar', requireAuth, (req, res) => {
+router.get('/calendar', requireAuth, requireOffice, asyncHandler(async (req, res) => {
   const { from, to } = req.query;
-  const rows = db.prepare(
-    `SELECT h.id, h.user_id, u.name AS user_name, u.color, h.start_date, h.end_date FROM holiday_requests h
-     JOIN users u ON u.id = h.user_id
-     WHERE h.status = 'approved' AND date(h.start_date) <= date(?) AND date(h.end_date) >= date(?)`
-  ).all(to || '2100-01-01', from || '1900-01-01');
-  res.json({ holidays: rows });
-});
+  const rows = await HolidayRequest.findAll({
+    attributes: ['id', 'user_id', 'start_date', 'end_date'],
+    where: {
+      status: 'approved',
+      start_date: { [Op.lte]: to || '2100-01-01' },
+      end_date: { [Op.gte]: from || '1900-01-01' },
+    },
+    include: [{ model: User, attributes: ['name', 'color', 'avatar_file', 'email', 'phone'] }],
+  });
+  res.json({
+    holidays: rows.map((h) => {
+      const o = plain(h);
+      o.user_name = o.User?.name;
+      o.color = o.User?.color;
+      o.avatar_file = o.User?.avatar_file || null;
+      o.email = o.User?.email || null;
+      o.phone = o.User?.phone || null;
+      o.kind = holidayRequests.kindFromDates(o.start_date, o.end_date);
+      delete o.User;
+      return o;
+    }),
+  });
+}));
 
-router.post('/', requireAuth, (req, res) => {
-  const { start_date, end_date, reason, user_id } = req.body || {};
-  if (!start_date || !end_date) return res.status(400).json({ error: 'start_date and end_date required' });
-  const targetUser = req.user.role === 'STAFF' ? req.user.id : (user_id || req.user.id);
-  const exists = db.prepare('SELECT id FROM users WHERE id = ? AND active = 1').get(targetUser);
-  if (!exists) return res.status(400).json({ error: 'That staff member does not exist or is inactive' });
-  if (new Date(end_date) < new Date(start_date)) return res.status(400).json({ error: 'End date cannot be before the start date' });
-  const noticeDays = getSetting('holiday_notice_days');
-  const notice = noticeDaysUntil(start_date);
-  if (notice < noticeDays) {
-    return res.status(400).json({ error: `Requires ${noticeDays} days' notice — this date is only ${Math.max(notice, 0)} days away`, notice_days: noticeDays });
+router.post('/', requireAuth, asyncHandler(async (req, res) => {
+  try {
+    const created = await holidayRequests.createRequest(req.user, req.body || {});
+    res.json(created);
+  } catch (err) {
+    sendServiceError(res, err);
   }
-  const days = daysBetween(start_date, end_date);
-  const r = db.prepare(
-    'INSERT INTO holiday_requests (user_id, start_date, end_date, days, reason, status) VALUES (?,?,?,?,?,?)'
-  ).run(targetUser, start_date, end_date, days, reason || null, 'pending');
-  res.json({ id: r.lastInsertRowid });
-});
+}));
 
-router.put('/:id/decision', requireAuth, requireOffice, (req, res) => {
-  const h = db.prepare('SELECT * FROM holiday_requests WHERE id = ?').get(req.params.id);
-  if (!h) return res.status(404).json({ error: 'Request not found' });
-  const { decision, decline_reason } = req.body || {}; // approved | declined
-  if (!['approved', 'declined'].includes(decision)) return res.status(400).json({ error: 'decision must be approved or declined' });
-  db.prepare("UPDATE holiday_requests SET status = ?, decided_by = ?, decided_at = datetime('now'), decline_reason = ? WHERE id = ?")
-    .run(decision, req.user.id, decline_reason || null, h.id);
-  res.json({ ok: true });
-});
+router.put('/:id/decision', requireAuth, requireOffice, asyncHandler(async (req, res) => {
+  try {
+    res.json(await holidayRequests.decideRequest(req.user, req.params.id, req.body || {}));
+  } catch (err) {
+    sendServiceError(res, err);
+  }
+}));
 
-router.delete('/:id', requireAuth, (req, res) => {
-  const h = db.prepare('SELECT * FROM holiday_requests WHERE id = ?').get(req.params.id);
-  if (!h) return res.status(404).json({ error: 'Request not found' });
-  if (req.user.role === 'STAFF' && h.user_id !== req.user.id) return res.status(403).json({ error: 'Not permitted' });
-  if (h.status !== 'pending') return res.status(400).json({ error: 'Only pending requests can be withdrawn' });
-  db.prepare('DELETE FROM holiday_requests WHERE id = ?').run(h.id);
-  res.json({ ok: true });
-});
+router.delete('/:id', requireAuth, asyncHandler(async (req, res) => {
+  try {
+    res.json(await holidayRequests.withdrawRequest(req.user, req.params.id));
+  } catch (err) {
+    sendServiceError(res, err);
+  }
+}));
 
 module.exports = router;

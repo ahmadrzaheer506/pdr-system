@@ -60,6 +60,21 @@ async function main() {
   else if (!appUrl.startsWith('https://')) fail('APP_URL', `${appUrl} is not https — Meta and Google will refuse it.`, 'Put the real https:// address in .env');
   else line(OK, 'APP_URL', appUrl);
 
+  if (!process.env.DATABASE_URL) {
+    fail('DATABASE_URL', 'Not set.', 'Add postgres://user:pass@localhost:5432/roofing_crm to .env (npm run setup).');
+  } else {
+    try {
+      const { Client } = require(path.join(__dirname, 'server/node_modules/pg'));
+      const client = new Client({ connectionString: process.env.DATABASE_URL });
+      await client.connect();
+      await client.query('SELECT 1');
+      await client.end();
+      line(OK, 'PostgreSQL', 'DATABASE_URL accepted a connection');
+    } catch (e) {
+      fail('PostgreSQL', scrub(e.message), 'Start local Postgres, create the database, and check DATABASE_URL.');
+    }
+  }
+
   // ---------- AI ----------
   console.log(`\n${C.bold}  AI scheduling assistant${C.reset}`);
   if (process.env.ANTHROPIC_API_KEY) {
@@ -151,7 +166,10 @@ async function main() {
         host: process.env.SMTP_HOST,
         port: Number(process.env.SMTP_PORT || 587),
         secure: Number(process.env.SMTP_PORT) === 465,
-        auth: { user: process.env.SMTP_USER, pass: process.env.SMTP_PASS },
+        auth: {
+          user: String(process.env.SMTP_USER || '').trim(),
+          pass: String(process.env.SMTP_PASS || '').replace(/\s+/g, ''),
+        },
       });
       await t.verify();
       line(OK, 'SMTP', `${process.env.SMTP_HOST} accepted the login`);
@@ -175,9 +193,9 @@ async function main() {
       console.log(`         ${C.dim}Register this redirect URI in Google Cloud Console:${C.reset}\n         ${expected}`);
     }
     try {
-      const { db } = require('./server/db');
-      const tok = db.prepare("SELECT provider FROM oauth_tokens WHERE provider = 'google'").get();
-      if (tok) line(OK, 'Google connection', 'Paul has completed the Connect step');
+      const { OauthToken } = require('./server/models');
+      const tok = await OauthToken.findOne({ where: { provider: 'google' } });
+      if (tok) line(OK, 'Google connection', 'at least one office user has completed Connect');
       else line(`${C.yellow}○ pending${C.reset}`, 'Google connection', 'Keys are set — now open Settings → Integrations in the app and click Connect.');
     } catch { /* db not ready */ }
   } else line(SKIP, 'Google Calendar', 'Site visits are tracked in-app only.');
@@ -193,8 +211,8 @@ async function main() {
       console.log(`         ${C.dim}Register this redirect URI at developer.intuit.com:${C.reset}\n         ${expected}`);
     }
     try {
-      const { db } = require('./server/db');
-      const tok = db.prepare("SELECT provider FROM oauth_tokens WHERE provider = 'quickbooks'").get();
+      const { OauthToken } = require('./server/models');
+      const tok = await OauthToken.findOne({ where: { provider: 'quickbooks', user_id: null } });
       if (tok) line(OK, 'QuickBooks connection', 'Paul has completed the Connect step');
       else line(`${C.yellow}○ pending${C.reset}`, 'QuickBooks connection', 'Keys are set — now open Settings → Integrations in the app and click Connect.');
     } catch { /* db not ready */ }

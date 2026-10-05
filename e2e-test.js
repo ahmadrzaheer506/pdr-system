@@ -7,17 +7,38 @@
 // ============================================================
 const BASE = process.env.BASE || 'http://localhost:4000';
 
-let cookie = '';
+let cookieJar = {};
 let pass = 0, fail = 0;
 
+function mergeSetCookies(res) {
+  const list = typeof res.headers.getSetCookie === 'function'
+    ? res.headers.getSetCookie()
+    : [].concat(res.headers.get('set-cookie') || []);
+  for (const line of list) {
+    if (!line) continue;
+    const nv = String(line).split(';')[0];
+    const i = nv.indexOf('=');
+    if (i > 0) cookieJar[nv.slice(0, i)] = nv.slice(i + 1);
+  }
+}
+
+function cookieHeader() {
+  return Object.entries(cookieJar).map(([k, v]) => `${k}=${v}`).join('; ');
+}
+
 async function req(method, path, body) {
+  const headers = { 'Content-Type': 'application/json' };
+  const cookie = cookieHeader();
+  if (cookie) headers.Cookie = cookie;
+  if (method !== 'GET' && method !== 'HEAD' && cookieJar.pdr_csrf) {
+    headers['X-CSRF-Token'] = decodeURIComponent(cookieJar.pdr_csrf);
+  }
   const res = await fetch(`${BASE}${path}`, {
     method,
-    headers: { 'Content-Type': 'application/json', ...(cookie ? { Cookie: cookie } : {}) },
+    headers,
     body: body ? JSON.stringify(body) : undefined,
   });
-  const setCookie = res.headers.get('set-cookie');
-  if (setCookie) cookie = setCookie.split(';')[0];
+  mergeSetCookies(res);
   let data = null;
   try { data = await res.json(); } catch {}
   return { status: res.status, data };
@@ -34,11 +55,11 @@ function check(name, condition, detail = '') {
   console.log('1. Authentication & roles');
   let r = await req('POST', '/api/auth/login', { email: 'paul@pauldouglasroofing.co.uk', password: 'password123' });
   check('Owner can sign in', r.status === 200 && r.data.user.role === 'ADMIN');
-  const ownerCookie = cookie;
+  const ownerJar = { ...cookieJar };
 
   r = await req('POST', '/api/auth/login', { email: 'paul@pauldouglasroofing.co.uk', password: 'wrongpass' });
   check('Wrong password rejected', r.status === 401);
-  cookie = ownerCookie;
+  cookieJar = ownerJar;
 
   console.log('\n2. Inbound enquiry lands in the CRM (PRD §9.1)');
   r = await req('POST', '/api/integrations/simulate/enquiry', { source: 'whatsapp' });
@@ -53,10 +74,15 @@ function check(name, condition, detail = '') {
   check('Duplicate contact matched to existing customer, not duplicated', before === after, `(${before} -> ${after})`);
 
   console.log('\n3. Site visit booking + calendar (PRD §9.3)');
+  const users = (await req('GET', '/api/settings/users')).data.users || [];
+  const assignee = users.find((u) => u.role === 'STAFF' && u.active !== false) || users.find((u) => u.role === 'OFFICE');
+  check('Found an assignee for the site visit', !!assignee, `(users: ${users.length})`);
   const start = new Date(Date.now() + 2 * 86400000);
   r = await req('POST', '/api/appointments', {
     customer_id: customerId, start: start.toISOString(),
     end: new Date(start.getTime() + 3600000).toISOString(), address: '1 Test Road',
+    visit_type: 'site_visit',
+    assignee_ids: assignee ? [assignee.id] : [],
   });
   check('Site visit booked', r.status === 200 && r.data.id);
   check('Calendar sync attempted (simulated without keys)', ['simulated', 'synced'].includes(r.data.gcal_status));
@@ -117,7 +143,7 @@ function check(name, condition, detail = '') {
   const onHoliday = proposal.context.staff.find((s) => s.on_holiday);
   if (onHoliday) {
     r = await req('POST', '/api/jobs/ai/approve', { date: tomorrow, assignments: [{ job_id: jobId, user_ids: [onHoliday.id] }] });
-    check('Server REJECTS assigning someone on holiday', r.status === 400, `(got ${r.status})`);
+    check('Server asks to confirm assigning someone on holiday', r.status === 409, `(got ${r.status})`);
   } else {
     check('Server rejects holiday assignment (skipped — nobody on holiday tomorrow)', true);
   }
@@ -156,19 +182,84 @@ function check(name, condition, detail = '') {
   r = await req('POST', '/api/holidays', { start_date: farOut, end_date: farOut, user_id: 999999 });
   check('Holiday for a non-existent staff member rejected cleanly (not a 500)', r.status === 400, `(got ${r.status})`);
 
+  console.log('\n9b. Reports date range and CSV (requirement 14.2)');
+  r = await req('GET', '/api/reports/customers');
+  check('Customers report requires from and to', r.status === 400, `(got ${r.status})`);
+  const from = new Date(Date.now() - 30 * 86400000).toISOString().slice(0, 10);
+  const to = new Date().toISOString().slice(0, 10);
+  r = await req('GET', `/api/reports/customers?from=${from}&to=${to}`);
+  check('Customers report generates with from/to', r.status === 200 && Array.isArray(r.data.customers), `(got ${r.status})`);
+  const csvHeaders = {};
+  const csvCookie = cookieHeader();
+  if (csvCookie) csvHeaders.Cookie = csvCookie;
+  const pipeCsv = await fetch(`${BASE}/api/reports/pipeline-value.csv`, { headers: csvHeaders });
+  const pipeText = await pipeCsv.text();
+  check('Pipeline CSV is a live snapshot (no date filter)', pipeCsv.status === 200 && /text\/csv/.test(pipeCsv.headers.get('content-type') || '') && pipeText.includes('stage'), `(got ${pipeCsv.status})`);
+  r = await req('GET', '/api/reports/profitability');
+  check('Profitability report requires from and to', r.status === 400, `(got ${r.status})`);
+  r = await req('GET', `/api/reports/profitability?from=${from}&to=${to}`);
+  check('Director can generate profitability', r.status === 200 && Array.isArray(r.data.jobs) && Array.isArray(r.data.labour), `(got ${r.status})`);
+  r = await req('GET', '/api/settings');
+  check(
+    'Director settings include bank keys',
+    r.status === 200 && Object.prototype.hasOwnProperty.call(r.data.settings?.company || {}, 'bank_account_number'),
+    `(got ${r.status})`,
+  );
+
+  cookieJar = {};
+  r = await req('POST', '/api/auth/login', { email: 'lisa@pauldouglasroofing.co.uk', password: 'password123' });
+  check('Office can sign in', r.status === 200 && r.data.user.role === 'OFFICE');
+  r = await req('GET', `/api/reports/profitability?from=${from}&to=${to}`);
+  check('Office BLOCKED from Director profitability', r.status === 403, `(got ${r.status})`);
+  r = await req('GET', '/api/settings');
+  check(
+    'Office settings omit bank details',
+    r.status === 200
+      && r.data.settings?.company
+      && r.data.settings.company.bank_account_number === undefined
+      && r.data.settings.company.bank_sort_code === undefined
+      && r.data.settings.company.bank_name === undefined
+      && r.data.settings.company.bank_account_name === undefined,
+    `(got ${r.status}; bank_account_number=${r.data.settings?.company?.bank_account_number})`,
+  );
+  r = await req('GET', '/api/catalogue');
+  check('Office can list the service catalogue', r.status === 200 && Array.isArray(r.data.items), `(got ${r.status})`);
+  r = await req('POST', '/api/catalogue', {
+    id: 'office_block', description: 'Nope', unit: 'each', unit_price: 1, vat_code: 'standard', kind: 'labour',
+  });
+  check('Office BLOCKED from creating catalogue items', r.status === 403, `(got ${r.status})`);
+  r = await req('POST', '/api/settings/logo', {});
+  check('Office BLOCKED from uploading a logo', r.status === 403, `(got ${r.status})`);
+  const officeJar = { ...cookieJar };
+  cookieJar = {};
+  r = await req('GET', '/api/branding/logo');
+  check('Public branding logo is available without a session', r.status === 200, `(got ${r.status})`);
+  cookieJar = officeJar;
+
   console.log('\n10. Field staff permissions — the PRD\'s hard security requirement (§9.5/§15.1)');
-  cookie = '';
+  cookieJar = {};
   r = await req('POST', '/api/auth/login', { email: 'jamie@pauldouglasroofing.co.uk', password: 'password123' });
   check('Field staff can sign in', r.status === 200 && r.data.user.role === 'STAFF');
 
-  const blocked = ['/api/customers', '/api/quotes', '/api/invoices', '/api/dashboard', '/api/leads', '/api/tasks', '/api/jobs'];
+  const blocked = [
+    '/api/customers', '/api/quotes', '/api/invoices', '/api/dashboard', '/api/reports/lead-volume',
+    '/api/reports/pipeline-value.csv', '/api/reports/customers.csv', '/api/reports/profitability', '/api/leads',
+    '/api/tasks', '/api/jobs', '/api/appointments', '/api/timesheets', '/api/settings',
+    '/api/catalogue',
+    '/api/integrations/simulate/enquiry',
+  ];
   for (const path of blocked) {
-    const res = await req('GET', path);
+    const res = await req(path.includes('simulate') ? 'POST' : 'GET', path, path.includes('simulate') ? {} : undefined);
     check(`Field staff BLOCKED from ${path}`, res.status === 403, `(got ${res.status})`);
   }
 
+  const pdf = await req('GET', '/api/files/quote-Q-2099-0001.pdf');
+  check('Field staff BLOCKED from quote/invoice PDFs', pdf.status === 403, `(got ${pdf.status})`);
+
   const staffJobs = await req('GET', '/api/staff/jobs');
   check('Field staff CAN see their own jobs', staffJobs.status === 200);
+  const staffTasks = await req('GET', '/api/staff/tasks');
+  check('Field staff CAN see their assigned tasks', staffTasks.status === 200 && Array.isArray(staffTasks.data.tasks));
   const leaked = [];
   for (const j of staffJobs.data.jobs || []) {
     for (const k of Object.keys(j)) if (/value|price|total|cost|quote|invoice/i.test(k)) leaked.push(k);

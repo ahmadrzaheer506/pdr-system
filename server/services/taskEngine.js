@@ -3,79 +3,189 @@
 // System tasks are deduplicated by rule_key — a rule can fire
 // repeatedly without spamming duplicates while one is open.
 // ============================================================
-const { db, todayStr } = require('../db');
+const { Op } = require('sequelize');
+const { Task, Appointment, Customer, Job, Invoice, Quote, User } = require('../models');
+const { todayStr, plain } = require('../db');
+const { resolveLeadForCustomer } = require('./pipeline');
 
-function ensureTask({ ruleKey, title, detail = null, dueDate = null, priority = 'normal', assigneeId = null, entityType = null, entityId = null }) {
+async function ensureTask({ ruleKey, title, detail = null, dueDate = null, priority = 'normal', assigneeId = null, entityType = null, entityId = null }) {
   if (ruleKey) {
-    const existing = db
-      .prepare("SELECT id FROM tasks WHERE rule_key = ? AND status = 'open'")
-      .get(ruleKey);
+    const existing = await Task.findOne({ where: { rule_key: ruleKey, status: 'open' } });
     if (existing) return existing.id;
-    // If the same rule fired before and was completed, don't recreate within the same day
-    const doneToday = db
-      .prepare("SELECT id FROM tasks WHERE rule_key = ? AND status != 'open' AND date(done_at) = date('now')")
-      .get(ruleKey);
+    const start = new Date(`${todayStr()}T00:00:00`);
+    const end = new Date(start.getTime() + 86400000);
+    const doneToday = await Task.findOne({
+      where: {
+        rule_key: ruleKey,
+        status: { [Op.ne]: 'open' },
+        done_at: { [Op.gte]: start, [Op.lt]: end },
+      },
+    });
     if (doneToday) return null;
   }
-  const r = db
-    .prepare(
-      `INSERT INTO tasks (type, rule_key, title, detail, due_date, priority, assignee_id, entity_type, entity_id)
-       VALUES ('system', ?, ?, ?, ?, ?, ?, ?, ?)`
-    )
-    .run(ruleKey, title, detail, dueDate, priority, assigneeId, entityType, entityId);
-  return r.lastInsertRowid;
+  const created = await Task.create({
+    type: 'system',
+    rule_key: ruleKey,
+    title,
+    detail,
+    due_date: dueDate,
+    priority,
+    assignee_id: assigneeId,
+    entity_type: entityType,
+    entity_id: entityId,
+  });
+  return created.id;
 }
 
-/** Close any open system task matching a rule key (e.g. quote produced → clear 'produce quote'). */
-function resolveRule(ruleKey) {
-  db.prepare(
-    "UPDATE tasks SET status = 'done', done_at = datetime('now') WHERE rule_key = ? AND status = 'open'"
-  ).run(ruleKey);
+async function resolveRule(ruleKey) {
+  await Task.update(
+    { status: 'done', done_at: new Date() },
+    { where: { rule_key: ruleKey, status: 'open' } }
+  );
 }
 
-// ---------- scheduled rule scans (called from cron) ----------
+function quoteFollowupRuleKey(quoteId) {
+  return `quote_followup:quote:${quoteId}`;
+}
 
-/** Appointment end-time passed → advance stage + 'produce quote' task (PRD §9.3). */
-function scanAppointments(setStage) {
-  const rows = db
-    .prepare(
-      `SELECT a.*, c.name AS customer_name, c.stage FROM appointments a
-       JOIN customers c ON c.id = a.customer_id
-       WHERE a.status = 'booked' AND a.stage_advanced = 0 AND datetime(a.end) < datetime('now')`
-    )
-    .all();
-  for (const a of rows) {
-    db.prepare("UPDATE appointments SET status = 'done', stage_advanced = 1 WHERE id = ?").run(a.id);
-    if (['ENQUIRY', 'SITE_VISIT_BOOKED'].includes(a.stage)) {
-      setStage(a.customer_id, 'QUOTE_PENDING', null, 'Site visit completed — quote needed');
-    }
-    ensureTask({
-      ruleKey: `produce_quote:customer:${a.customer_id}`,
-      title: `Produce quote for ${a.customer_name}`,
-      detail: `Site visit "${a.title}" completed — quotation needs producing.`,
-      dueDate: todayStr(),
-      priority: 'high',
-      entityType: 'customer',
-      entityId: a.customer_id,
+function dueDateOnly(value) {
+  const d = value instanceof Date ? value : new Date(value);
+  return Number.isNaN(d.getTime()) ? todayStr() : d.toISOString().slice(0, 10);
+}
+
+/**
+ * One unassigned follow-up task per sent quote (requirement 12.2).
+ * Due date is the first sequence step. Resend updates the open row; a later
+ * send after resolve creates a new task even if the old one was done today.
+ */
+async function ensureQuoteFollowupTask(quote, firstStepAt) {
+  const dueDate = dueDateOnly(firstStepAt);
+  const ruleKey = quoteFollowupRuleKey(quote.id);
+  const title = `Follow up quote ${quote.ref}`;
+  const detail = `Automatic follow-up sequence is running. First step due ${dueDate}.`;
+  const existing = await Task.findOne({ where: { rule_key: ruleKey, status: 'open' } });
+  if (existing) {
+    await existing.update({
+      title,
+      detail,
+      due_date: dueDate,
+      entity_type: 'quote',
+      entity_id: quote.id,
     });
+    return existing.id;
   }
-  return rows.length;
+  const created = await Task.create({
+    type: 'system',
+    rule_key: ruleKey,
+    title,
+    detail,
+    due_date: dueDate,
+    priority: 'normal',
+    assignee_id: null,
+    entity_type: 'quote',
+    entity_id: quote.id,
+  });
+  return created.id;
 }
 
-/** Jobs starting tomorrow → confirm materials/team reminder (PRD §10.4). */
-function scanJobsTomorrow() {
-  const rows = db
-    .prepare(
-      `SELECT j.*, c.name AS customer_name FROM jobs j
-       JOIN customers c ON c.id = j.customer_id
-       WHERE j.status = 'SCHEDULED' AND j.start_date = date('now', '+1 day')`
-    )
-    .all();
+async function resolveQuoteFollowupTask(quoteId) {
+  await resolveRule(quoteFollowupRuleKey(quoteId));
+}
+
+async function customerHasQuote(customerId, leadId = null) {
+  if (leadId) {
+    const n = await Quote.count({ where: { lead_id: leadId } });
+    return n > 0;
+  }
+  const n = await Quote.count({ where: { customer_id: customerId } });
+  return n > 0;
+}
+
+/**
+ * Tick a booked visit complete. Time passing must not call this.
+ * No quote on the lead → Quote pending + produce-quote task.
+ * Quote already on the lead → Quoted, no extra task.
+ */
+async function completeVisit(appointment, setStage, actorId = null, completeNote = '') {
+  if (!appointment) {
+    const err = new Error('Appointment not found');
+    err.status = 404;
+    throw err;
+  }
+  if (appointment.status === 'done') return { already: true, hasQuote: null, taskId: null };
+  if (appointment.status !== 'booked') {
+    const err = new Error('Only a booked visit can be completed');
+    err.status = 400;
+    throw err;
+  }
+
+  const note = String(completeNote || '').trim();
+  appointment.status = 'done';
+  appointment.stage_advanced = true;
+  if (note) appointment.complete_note = note;
+  if (typeof appointment.save === 'function') await appointment.save();
+  else {
+    await Appointment.update(
+      { status: 'done', stage_advanced: true, ...(note ? { complete_note: note } : {}) },
+      { where: { id: appointment.id } },
+    );
+  }
+
+  const customer = appointment.Customer
+    || await Customer.findByPk(appointment.customer_id, { attributes: ['id', 'name', 'stage'] });
+  const lead = await resolveLeadForCustomer(appointment.customer_id, appointment.lead_id);
+  const leadKey = lead?.id || appointment.lead_id || null;
+  const stage = lead?.stage || customer?.stage;
+  const name = customer?.name || 'the customer';
+  const hasQuote = await customerHasQuote(appointment.customer_id, leadKey);
+
+  if (hasQuote) {
+    if (['ENQUIRY', 'SITE_VISIT_BOOKED', 'QUOTE_PENDING'].includes(stage)) {
+      await setStage(appointment.customer_id, 'QUOTED', actorId, 'Site visit completed — quote already on the lead', { leadId: leadKey });
+    }
+    return { already: false, hasQuote: true, taskId: null };
+  }
+
+  if (['ENQUIRY', 'SITE_VISIT_BOOKED'].includes(stage)) {
+    await setStage(appointment.customer_id, 'QUOTE_PENDING', actorId, 'Site visit completed — quote needed', { leadId: leadKey });
+  }
+  const taskId = await ensureTask({
+    ruleKey: leadKey ? `produce_quote:lead:${leadKey}` : `produce_quote:customer:${appointment.customer_id}`,
+    title: `Produce quote for ${name}`,
+    detail: `Site visit "${appointment.title}" completed — quotation needs producing.`,
+    dueDate: todayStr(),
+    priority: 'high',
+    entityType: 'customer',
+    entityId: appointment.customer_id,
+  });
+  return { already: false, hasQuote: false, taskId };
+}
+
+/**
+ * Visits stay booked until someone ticks Visit completed.
+ * Time passing must not mark them done or advance the pipeline.
+ */
+async function scanAppointments() {
+  return 0;
+}
+
+async function scanJobsTomorrow() {
+  const tomorrow = new Date();
+  tomorrow.setDate(tomorrow.getDate() + 1);
+  const y = tomorrow.getFullYear();
+  const m = String(tomorrow.getMonth() + 1).padStart(2, '0');
+  const d = String(tomorrow.getDate()).padStart(2, '0');
+  const tomorrowStr = `${y}-${m}-${d}`;
+
+  const rows = await Job.findAll({
+    where: { status: 'SCHEDULED', start_date: tomorrowStr },
+    include: [{ model: Customer, attributes: ['name'] }],
+  });
   for (const jb of rows) {
-    ensureTask({
+    await ensureTask({
       ruleKey: `job_tomorrow:job:${jb.id}`,
       title: `Job starts tomorrow — ${jb.title}`,
-      detail: `${jb.customer_name} · ${jb.address || 'no address'}. Confirm materials and team.${jb.materials ? ` Materials: ${jb.materials}` : ''}`,
+      detail: `${jb.Customer?.name} · ${jb.address || 'no address'}. Confirm materials and team.${jb.materials ? ` Materials: ${jb.materials}` : ''}`,
       dueDate: todayStr(),
       priority: 'high',
       entityType: 'job',
@@ -85,21 +195,21 @@ function scanJobsTomorrow() {
   return rows.length;
 }
 
-/** Completed jobs with no invoice → 'invoice this job'. */
-function scanUninvoicedJobs() {
-  const rows = db
-    .prepare(
-      `SELECT j.*, c.name AS customer_name FROM jobs j
-       JOIN customers c ON c.id = j.customer_id
-       WHERE j.status = 'COMPLETED'
-         AND NOT EXISTS (SELECT 1 FROM invoices i WHERE i.job_id = j.id)`
-    )
-    .all();
+async function scanUninvoicedJobs() {
+  const invoicedJobIds = (await Invoice.findAll({ attributes: ['job_id'], where: { job_id: { [Op.ne]: null } } }))
+    .map((i) => i.job_id);
+  const rows = await Job.findAll({
+    where: {
+      status: 'COMPLETED',
+      id: invoicedJobIds.length ? { [Op.notIn]: invoicedJobIds } : { [Op.ne]: null },
+    },
+    include: [{ model: Customer, attributes: ['name'] }],
+  });
   for (const jb of rows) {
-    ensureTask({
+    await ensureTask({
       ruleKey: `invoice_job:job:${jb.id}`,
       title: `Invoice job — ${jb.title}`,
-      detail: `${jb.customer_name}'s job is completed and has no invoice yet.`,
+      detail: `${jb.Customer?.name}'s job is completed and has no invoice yet.`,
       dueDate: todayStr(),
       priority: 'high',
       entityType: 'job',
@@ -109,46 +219,56 @@ function scanUninvoicedJobs() {
   return rows.length;
 }
 
-/** Invoices past due → mark overdue + 'chase payment' task (PRD §10.3/§10.4). */
-function scanOverdueInvoices(logActivity) {
-  const rows = db
-    .prepare(
-      `SELECT i.*, c.name AS customer_name FROM invoices i
-       JOIN customers c ON c.id = i.customer_id
-       WHERE i.status IN ('sent','part_paid') AND i.due_date IS NOT NULL AND date(i.due_date) < date('now')`
-    )
-    .all();
+async function scanOverdueInvoices(logActivity) {
+  const rows = await Invoice.findAll({
+    where: {
+      status: { [Op.in]: ['sent', 'part_paid'] },
+      due_date: { [Op.ne]: null, [Op.lt]: todayStr() },
+    },
+    include: [{ model: Customer, attributes: ['name'] }],
+  });
   for (const inv of rows) {
-    db.prepare("UPDATE invoices SET status = 'overdue' WHERE id = ?").run(inv.id);
-    logActivity(inv.customer_id, null, 'invoice_overdue', `Invoice ${inv.ref} is overdue`);
-    ensureTask({
+    inv.status = 'overdue';
+    await inv.save();
+    await logActivity(inv.customer_id, null, 'invoice_overdue', `Invoice ${inv.ref} is overdue`);
+    await ensureTask({
       ruleKey: `chase_payment:invoice:${inv.id}`,
-      title: `Payment overdue — ${inv.ref} (${inv.customer_name})`,
+      title: `Payment overdue — ${inv.ref} (${inv.Customer?.name})`,
       detail: `Invoice ${inv.ref} was due ${inv.due_date} and is unpaid. Chase payment.`,
       dueDate: todayStr(),
       priority: 'high',
       entityType: 'invoice',
       entityId: inv.id,
     });
+    const { safeNotify, notifyOffice } = require('../notifications');
+    await safeNotify(() => notifyOffice({
+      kind: 'invoice_overdue',
+      message: `Invoice ${inv.ref} (${inv.Customer?.name}) is overdue`,
+      entity_type: 'invoice',
+      entity_id: inv.id,
+    }, { dedupe: true }));
   }
   return rows.length;
 }
 
-/** Quotes past valid_until still unanswered → expire them. */
-function scanExpiredQuotes(logActivity) {
-  const rows = db
-    .prepare(
-      `SELECT q.*, c.name AS customer_name FROM quotes q
-       JOIN customers c ON c.id = q.customer_id
-       WHERE q.status = 'sent' AND q.valid_until IS NOT NULL AND date(q.valid_until) < date('now')`
-    )
-    .all();
+async function scanExpiredQuotes(logActivity) {
+  const rows = await Quote.findAll({
+    where: {
+      status: 'sent',
+      valid_until: { [Op.ne]: null, [Op.lt]: todayStr() },
+    },
+    include: [{ model: Customer, attributes: ['name'] }],
+  });
   for (const q of rows) {
-    db.prepare("UPDATE quotes SET status = 'expired', updated_at = datetime('now') WHERE id = ?").run(q.id);
-    logActivity(q.customer_id, null, 'quote_expired', `Quote ${q.ref} passed its valid-until date`);
-    ensureTask({
+    q.status = 'expired';
+    await q.save();
+    await logActivity(q.customer_id, null, 'quote_expired', `Quote ${q.ref} passed its valid-until date`);
+    const { cancelPendingForQuote } = require('./followups');
+    await cancelPendingForQuote(q.id, 'quote expired');
+    await resolveQuoteFollowupTask(q.id);
+    await ensureTask({
       ruleKey: `quote_expired:quote:${q.id}`,
-      title: `Quote expired — ${q.ref} (${q.customer_name})`,
+      title: `Quote expired — ${q.ref} (${q.Customer?.name})`,
       detail: 'Quote passed its validity date with no decision. Re-issue or mark lost.',
       dueDate: todayStr(),
       priority: 'normal',
@@ -159,31 +279,63 @@ function scanExpiredQuotes(logActivity) {
   return rows.length;
 }
 
-/** Jobs whose start date has arrived → IN_PROGRESS (and customer stage). */
-function scanJobStarts(setStage) {
-  const rows = db
-    .prepare(
-      `SELECT j.* FROM jobs j WHERE j.status = 'SCHEDULED' AND date(j.start_date) <= date('now')`
-    )
-    .all();
+async function scanJobStarts(setStage) {
+  const rows = await Job.findAll({
+    where: {
+      status: 'SCHEDULED',
+      start_date: { [Op.lte]: todayStr() },
+    },
+  });
   for (const jb of rows) {
-    db.prepare("UPDATE jobs SET status = 'IN_PROGRESS', updated_at = datetime('now') WHERE id = ?").run(jb.id);
-    const cust = db.prepare('SELECT stage FROM customers WHERE id = ?').get(jb.customer_id);
-    if (cust && cust.stage === 'SCHEDULED') setStage(jb.customer_id, 'IN_PROGRESS', null, 'Job start date reached');
+    jb.status = 'IN_PROGRESS';
+    await jb.save();
+    const cust = await Customer.findByPk(jb.customer_id, { attributes: ['stage'] });
+    const lead = await resolveLeadForCustomer(jb.customer_id, jb.lead_id);
+    if ((lead?.stage || cust?.stage) === 'SCHEDULED') {
+      await setStage(jb.customer_id, 'IN_PROGRESS', null, 'Job start date reached', { leadId: lead?.id || jb.lead_id });
+    }
   }
   return rows.length;
 }
 
-function runAllScans({ setStage, logActivity }) {
-  const results = {
-    appointments: scanAppointments(setStage),
-    jobsTomorrow: scanJobsTomorrow(),
-    uninvoiced: scanUninvoicedJobs(),
-    overdueInvoices: scanOverdueInvoices(logActivity),
-    expiredQuotes: scanExpiredQuotes(logActivity),
-    jobStarts: scanJobStarts(setStage),
-  };
-  return results;
+async function scanTaskReminders() {
+  const { safeNotify, notifyOffice, notifyUsers } = require('../notifications');
+  const rows = await Task.findAll({
+    where: { status: 'open', due_date: todayStr() },
+    include: [{ model: User, as: 'assignees', attributes: ['id'], through: { attributes: [] }, required: false }],
+  });
+  for (const t of rows) {
+    const fields = {
+      kind: 'task_reminder',
+      message: t.title,
+      entity_type: 'task',
+      entity_id: t.id,
+      work_date: t.due_date,
+    };
+    await safeNotify(async () => {
+      const extra = (t.assignees || []).map((u) => u.id);
+      const ids = [...new Set([...extra, t.assignee_id].filter(Boolean))];
+      if (ids.length) return notifyUsers(ids, fields, { dedupe: true });
+      return notifyOffice(fields, { dedupe: true });
+    });
+  }
+  return rows.length;
 }
 
-module.exports = { ensureTask, resolveRule, runAllScans, scanAppointments, scanJobsTomorrow, scanUninvoicedJobs, scanOverdueInvoices, scanExpiredQuotes, scanJobStarts };
+async function runAllScans({ setStage, logActivity }) {
+  return {
+    appointments: await scanAppointments(setStage),
+    jobsTomorrow: await scanJobsTomorrow(),
+    uninvoiced: await scanUninvoicedJobs(),
+    overdueInvoices: await scanOverdueInvoices(logActivity),
+    expiredQuotes: await scanExpiredQuotes(logActivity),
+    jobStarts: await scanJobStarts(setStage),
+    taskReminders: await scanTaskReminders(),
+  };
+}
+
+module.exports = {
+  ensureTask, resolveRule, runAllScans, scanAppointments, completeVisit, scanJobsTomorrow, scanUninvoicedJobs,
+  scanOverdueInvoices, scanExpiredQuotes, scanJobStarts, scanTaskReminders,
+  quoteFollowupRuleKey, ensureQuoteFollowupTask, resolveQuoteFollowupTask,
+};

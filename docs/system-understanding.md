@@ -12,7 +12,7 @@ This document captures the current state of the **pdr-system** repository: what 
 
 | Layer | Status | Description |
 |-------|--------|-------------|
-| **Backend API** | **Built** | Express 4, SQLite (`better-sqlite3`), JWT auth, cron automation |
+| **Backend API** | **Built** | Express 4, PostgreSQL + Sequelize, JWT auth, cron automation |
 | **Admin web app** | **Built** | React 18 + Vite — dashboard, inbox, pipeline, quotes, schedule, invoices, etc. |
 | **Field staff PWA** | **Built** | Mobile-first `/staff/*` routes; structurally excludes financial data |
 | **Integrations** | **Architecturally complete** | WhatsApp, Meta, email, Google Calendar, QuickBooks, AI — all have simulated fallback |
@@ -32,7 +32,7 @@ Built to the PRD/FRD (v1.0) by DuoLogiq. The README is the authoritative runbook
 - **Domain:** UK roofing and building — enquiries, site visits, quotes, jobs, crew scheduling, invoicing
 - **Users:** Director (owner), office staff, field operatives
 - **Compliance focus:** UK VAT, CIS, reverse charge, retention, Consumer Contracts Regulations wording on domestic quotes
-- **Data residency:** Designed for UK/EU hosting (SQLite file + generated PDFs in `data/`)
+- **Data residency:** Designed for UK/EU hosting (PostgreSQL + generated PDFs in `data/`)
 
 ---
 
@@ -42,8 +42,8 @@ Built to the PRD/FRD (v1.0) by DuoLogiq. The README is the authoritative runbook
 |-------|------------|-------|
 | **Monorepo layout** | Root `package.json` orchestrating `server/` + `client/` | Not an Nx workspace |
 | **Backend** | Node.js, Express 4 | Single process serves API + built SPA |
-| **Database** | SQLite (`better-sqlite3`, WAL mode) | File at `data/pdr.db`; portable SQL with boot-time `ALTER TABLE` migrations |
-| **ORM** | Raw SQL | Requirements specify PostgreSQL + Sequelize — **not yet migrated** |
+| **Database** | PostgreSQL via Sequelize | `DATABASE_URL`; migrations in `server/migrations/`; BOOLEAN / TIMESTAMPTZ / JSONB |
+| **ORM** | Sequelize 6 | Model APIs in routes/services; Umzug on boot |
 | **Auth** | JWT in httpOnly cookies (+ Bearer header) | Roles: `ADMIN`, `OFFICE`, `STAFF` |
 | **Frontend** | React 18, Vite 6, React Router 7 | Tailwind CSS 3, Recharts, Lucide icons |
 | **PDF** | PDFKit | Branded quote and invoice PDFs |
@@ -115,7 +115,7 @@ Status key: **Done** = core requirement met · **Partial** = working but incompl
 
 | Req | Status | Implementation |
 |-----|--------|----------------|
-| 1.1 PostgreSQL + Sequelize | **Missing** | SQLite + raw SQL; boot-time migrations in `server/db.js` |
+| 1.1 PostgreSQL + Sequelize | **Done** | `DATABASE_URL`, Sequelize models, Umzug migrations, Compose Postgres service |
 | 1.2 Email/password auth | **Done** | `server/routes/auth.js`, `server/auth.js` |
 | 1.3 httpOnly session cookies | **Done** | JWT in cookie + Bearer support |
 | 1.4 Three-role model | **Done** | `ADMIN` / `OFFICE` / `STAFF` |
@@ -123,18 +123,18 @@ Status key: **Done** = core requirement met · **Partial** = working but incompl
 | 1.6 Per-user financial restrictions (Office) | **Missing** | All `OFFICE` users see costing data |
 | 1.7 User lifecycle | **Partial** | Create + deactivate in Settings; no password reset, no edit-existing-user modal |
 | 1.8 Skills, driver flag, pay rates | **Partial** | DB columns exist (`skills`, `is_driver`, `hourly_cost`, `cis_status`); no Settings UI for pay/CIS |
-| 1.9 Audit logging, forced logout on role change | **Missing** | Activity log exists for customers, not security audit |
+| 1.9 Audit logging, forced logout on role change | **Done** | `users.token_version` invalidates JWTs; `security_events` + ADMIN Settings tab |
 
 ### 5.2 Customers (CRM)
 
 | Req | Status | Implementation |
 |-----|--------|----------------|
-| 2.1 Domestic/commercial records | **Partial** | `customer_type`, `company_name`, `vat_number` in DB + PDFs; no customer-form UI |
-| 2.2 Multiple site addresses | **Missing** | Single `address` + `postcode` per customer |
-| 2.3 Unified activity timeline | **Done** | Messages, activity, quotes, jobs, invoices, appointments, leads, follow-ups, stage history |
-| 2.4 Attachments | **Missing** | No photo/document upload on customer records |
-| 2.5 Duplicate detection + search | **Partial** | Phone/email normalisation + dedupe on ingest; basic text search only |
-| 2.6 Source, lost reason, CSV import | **Partial** | Source + lost reason done; CSV import missing |
+| 2.1 Domestic/commercial records | **Done** | `domestic`/`commercial`; company name required when commercial; Pipeline create + customer-detail edit |
+| 2.2 Multiple site addresses | **Done** | `customer_sites` / `customer_phones` / `customer_emails`; customer-detail card |
+| 2.3 Unified activity timeline | **Done** | Messages, calls, quotes, jobs, invoices (notes live on Internal notes) |
+| 2.4 Attachments | **Done** | Internal notes list + `customer_files` on the customer only (`data/files/`) |
+| 2.5 Duplicate detection + search | **Done** | 409 on duplicate phone/email create/add; `customer_phones.normalised`; Customers filters |
+| 2.6 Source, lost reason, CSV import | **Partial** | Source unchanged; required lost-reason pick-list on customer-detail + pipeline (PUT `/stage`); CSV import deferred |
 
 **Key paths:** `server/routes/customers.js`, `client/src/pages/CustomerDetail.jsx`
 
@@ -142,10 +142,10 @@ Status key: **Done** = core requirement met · **Partial** = working but incompl
 
 | Req | Status | Implementation |
 |-----|--------|----------------|
-| 3.1 Unified inbox | **Done** | `client/src/pages/Inbox.jsx` |
-| 3.2 Multi-channel inbound | **Done** | WhatsApp, Facebook, Lead Ads, email, Twilio SMS/voice via `server/routes/webhooks.js` |
-| 3.3 Manual quick-add | **Done** | Log enquiry form + demo simulator |
-| 3.4 Customer matching + dedupe | **Done** | `server/services/messenger.js` → `matchCustomer()` |
+| 3.1 Unified inbox | **Done** | All-channel lead list (incl. phone/SMS/manual); CLOSED tab; ADMIN/OFFICE only |
+| 3.2 Multi-channel inbound | **Done** | WA/FB/Lead Ad/email webhooks; Meta signature when `META_APP_SECRET` set; Lead Ad ingest without Graph; no website form |
+| 3.3 Manual quick-add | **Done** | Inbox Log enquiry — Came in via dropdown; name required, phone optional; matching is 3.4 |
+| 3.4 Customer matching + dedupe | **Done** | Phone then email; Log enquiry 409 + notice; webhooks still attach; next_action defaults to Review & respond |
 | 3.5 Status, replies, tagging, ageing | **Partial** | NEW/ACTIONED/CONVERTED/CLOSED + channel replies; no tags or ageing indicators |
 
 **Key paths:** `server/routes/leads.js`, `server/services/messenger.js`
@@ -154,55 +154,57 @@ Status key: **Done** = core requirement met · **Partial** = working but incompl
 
 | Req | Status | Implementation |
 |-----|--------|----------------|
-| 4.1 Kanban board | **Done** | 12 stages (spec says 11; implementation adds `PAID`) |
-| 4.2 Drag-and-drop + audit | **Done** | `stage_history` + `activity` via `server/services/pipeline.js` |
+| 4.1 Kanban board | **Done** | All 12 current columns including Paid; card layout polish (name, address, source, quote, updated, tasks) |
+| 4.2 Drag-and-drop + audit | **Done** | Any-column + within-column order (`board_order`); drop highlight + toasts; history on customer record |
 | 4.3 Auto-progression | **Done** | Appointments, quotes, jobs, invoices, follow-ups trigger stage changes |
-| 4.4 Filters (source, owner, date, value) | **Missing** | Board loads all customers; `owner_id` column never populated |
-| 4.5 Pipeline value + stalled deals | **Partial** | Pipeline value on dashboard; no stalled-deal indicators |
+| 4.4 Filters (source, owner, date, value) | **Done** | Multi-select source + owner + created_at + latest-quote value; URL-persisted; owner auto-set on create and editable |
+| 4.5 Pipeline value + stalled deals | **Done** | Board + column totals (sent+draft, Enquiry→Follow-up, respects 4.4 filters); stall amber 7d / red 14d from updated_at except Lost and Paid |
 
 **Stages:** `ENQUIRY` → `SITE_VISIT_BOOKED` → `QUOTE_PENDING` → `QUOTED` → `FOLLOW_UP` → `WON` / `LOST` → `SCHEDULED` → `IN_PROGRESS` → `COMPLETED` → `INVOICED` → `PAID`
 
-**Key paths:** `server/services/pipeline.js`, `client/src/pages/Pipeline.jsx`
+**Key paths:** `server/services/pipeline.js`, `server/pipelineFilters.js`, `server/customerOwner.js`, `client/src/lib/pipelineBoard.js`, `client/src/pages/Pipeline.jsx`
 
 ### 5.5 Appointments (APT)
 
 | Req | Status | Implementation |
 |-----|--------|----------------|
-| 5.1 Site visit booking | **Done** | `client/src/components/BookVisit.jsx` |
-| 5.2 Google Calendar sync + auto-progression | **Done** | `server/integrations/gcal.js`; cron advances stage after visit |
-| 5.3 Reschedule, cancel, type categorisation | **Partial** | Reschedule/cancel done; no appointment types |
+| 5.1 Site visit booking | **Done** | Linked `customer_id` + site/phone/email; book from customer, pipeline, and inbox; Enquiry → Site visit booked only |
+| 5.2 Google Calendar sync + auto-progression | **Done** | Per office-user OAuth (book still works unconnected); poll linked events for time/cancel; visit end → Quote pending + produce-quote task |
+| 5.3 Reschedule, cancel, type categorisation | **Done** | Customer record only; booked + not-ended; cancel leaves stage; types Site visit / Follow-up / Measure / Other |
+
+**Key paths:** `server/routes/appointments.js`, `server/visitTypes.js`, `server/integrations/gcal.js`, `client/src/components/BookVisit.jsx`, `client/src/lib/visitTypes.js`
 
 ### 5.6 Quoting (QUO)
 
 | Req | Status | Implementation |
 |-----|--------|----------------|
-| 6.1 Catalogue-driven line items | **Missing** | Manual line-item builder only |
+| 6.1 Catalogue-driven line items | **Done** | Live `catalogue_items` list in quote builder; qty × unit price; free-text lines and price override; Settings CRUD (17.2) |
 | 6.2 Roof area + pitch calculations | **Missing** | — |
-| 6.3 UK VAT, CIS, reverse charge | **Done** | `server/services/ukTax.js` — per-line VAT, labour/materials split |
-| 6.4 Retention, staged payments, provisional sums | **Done** | Quote schema + PDF |
-| 6.5 Multi-option quotes, optional extras | **Missing** | Single quote per build |
-| 6.6 Branded PDF + cancellation notices | **Done** | `server/services/pdf.js` |
-| 6.7 WhatsApp/email distribution + acceptance | **Done** | Send, accept/decline → auto job creation |
+| 6.3 UK VAT, CIS, reverse charge | **Done** | Per-line VAT (Settings add/update rates); commercial defaults reverse charge + CIS 20%; domestic standard VAT, no CIS; office can override; same engine on quotes and invoices |
+| 6.4 Retention, staged payments, provisional sums | **Done** | Commercial 5% retention of net (ex VAT), domestic 0%; office can override; company payment stages from quote defaults; P.S. listed after works total with include-in-grand-total toggle |
+| 6.5 Multi-option quotes, optional extras | **Done** | Duplicate as a new-ref revision; extras listed after works total (never included) and ticked onto the job at acceptance; guarantee years + wording in their own quote-builder section |
+| 6.6 Branded PDF + cancellation notices | **Done** | Existing branded PDF (navy/red header, company/VAT/bank from Settings). ADMIN uploads PNG/JPEG logo on disk (17.3); PDFs, login, and chrome use it with the seed file as fallback. Domestic quotes keep CCR 2013 notice + model form. Office can generate/regenerate and Download PDF from the customer quote card and quote builder without sending. |
+| 6.7 WhatsApp/email distribution + acceptance | **Done** | Office sends PDF via WhatsApp or email from the quote card and quote builder; resend allowed while draft/sent. Customer replies in the thread; office marks Accepted/Declined on the card. Card shows last send channel and time. |
 
-**Key paths:** `server/routes/quotes.js`, `client/src/components/QuoteBuilder.jsx`, `client/src/pages/Quotes.jsx`
+**Key paths:** `server/routes/quotes.js`, `server/catalogue.js`, `client/src/components/QuoteBuilder.jsx`, `client/src/pages/Quotes.jsx`
 
 ### 5.7 Jobs (JOB)
 
 | Req | Status | Implementation |
 |-----|--------|----------------|
-| 7.1 Auto-create from accepted quote | **Done** | Inherits scope, value, address |
-| 7.2 Status lifecycle, crew assignment, skills | **Done** | `server/routes/jobs.js`, `JobModal.jsx` |
-| 7.3 Materials + checklists | **Partial** | Materials text field only; no templated checklists |
-| 7.4 Photos, attachments, progress notes | **Missing** | Notes field only |
-| 7.5 Per-job chat, variations | **Partial** | Job chat done; no formal variation management |
+| 7.1 Auto-create from accepted quote | **Done** | Job gets title, quote notes, site address, contacts, value = works + ticked extras. Line items stay on the quote. A second accept returns the existing job. Customer Jobs card shows quote ref and value and opens the job modal. |
+| 7.2 Status lifecycle, crew assignment, skills | **Done** | Forward-only status (skip ahead, no back). Required skills picker on the job modal (same list as Settings); matching crew chips highlighted; office can still assign anyone. Crew is per work date (8.1). |
+| 7.3 Materials + checklists | **Done** | Structured materials lines (description, qty, unit) with needed/packed/used ticks. Checklists from Settings templates (four seeds plus admin-added lists) applied by office; office and staff add/remove/tick. Settings → Templates add/edit/delete (17.2). Not stock control. |
+| 7.4 Photos, attachments, progress notes | **Done** | Job photos tagged before/during/after; PDFs as documents (JPEG/PNG/WebP/PDF ≤10MB). Completing a job does not require photos. Progress notes use `jobs.notes`. Office job modal and assigned staff add/delete. Not customer files; never emailed/WhatsApped. |
+| 7.5 Per-job chat, variations | **Done** | Job chat kept as-is. No new site-access field (progress notes / description / checklist). Office-only variation lines (description + amount), hidden from staff, do not change `job.value`. Invoice-from-job appends each variation after quote lines (11.1). |
 
 ### 5.8 Scheduling (SCH)
 
 | Req | Status | Implementation |
 |-----|--------|----------------|
-| 8.1 Week view + unscheduled queue | **Done** | `client/src/pages/Schedule.jsx`, `WeekView.jsx` |
-| 8.2 Crew assignment, holiday overlay, double-booking prevention | **Done** | Manual assign + AI validator blocks conflicts |
-| 8.3 Skill warnings, driver allocation, change notifications | **Partial** | AI validator checks skills/drivers; no manual UI warnings or change notifications |
+| 8.1 Week + day view + unscheduled queue | **Done** | Week grid; click a weekday for a single-day board (same cards, not hourly). Unscheduled sidebar (`PENDING`) with start date, optional end, Place (`PUT` dates → `SCHEDULED`). Crew is per-day only (`job_day_assignments`); job-wide `job_assignments` no longer used. |
+| 8.2 Crew assignment, holiday overlay, double-booking prevention | **Done** | Per-day crew on the job modal and the open day board. Approved-holiday and already-booked overlays on week/day cards and crew chips. Manual save **warns** for double-book (toast / banner) but is not blocked. **Approved holiday hard-blocks crew save (400)** — requirement 10.3. Pending holidays ignored. AI approve still strips conflicts. |
+| 8.3 Skill warnings, driver allocation, change notifications | **Done** | Manual save warns (does not block) if that day's crew misses `required_skills` or if `needs_driver` is on and nobody assigned is a driver. Toggle is on the job modal. Assigned staff get `notifications` rows when they are added or removed from a day **if they opted in**. Field staff also get an email on those crew changes when the crew email switch is on (13.2). |
 
 **AI scheduling:** Voice or text input → LLM or rule-based proposal → server-side constraint validation → human approval. Proposals logged in `ai_proposals` table.
 
@@ -212,10 +214,10 @@ Status key: **Done** = core requirement met · **Partial** = working but incompl
 
 | Req | Status | Implementation |
 |-----|--------|----------------|
-| 9.1 Clock in/out, single active shift | **Done** | `server/services/timesheets.js`, `ClockWidget.jsx` |
-| 9.2 GPS + distance-from-site flags | **Partial** | Logic exists; `jobs.lat/lng` must be set manually (no geocoding) |
-| 9.3 Live "on the clock" board | **Done** | Office timesheets view |
-| 9.4 Review, approval, corrections, payroll CSV | **Done** | Batch approval, edit with reason, `/api/timesheets/export.csv` |
+| 9.1 Clock in/out, single active shift | **Done** | Job optional (yard / travel). A picked job must have the user on that day's crew. One open shift per person — second clock-in is 400 until they clock out (no switch-job). GPS, breaks, photos, live board, and payroll CSV left as-is for 9.2–9.4. |
+| 9.2 GPS, distance-from-site flags, break tracking | **Done** | Clock-in and clock-out capture GPS when the browser allows it. Missing GPS flags `no_location` and still saves. Job addresses are geocoded (Photon, Nominatim fallback) onto `jobs.lat`/`lng`; distance outside `site_radius_m` (default 300m) flags `far_from_site` warn-only. Yard / travel is not distance-checked. Breaks are a paid log — they do not reduce worked minutes. |
+| 9.3 Live "on the clock" board | **Done** | Office/Admin Timesheets tab **On the clock** (full page, not a strip). Polls every 10s; each card has a live elapsed timer plus on-break / `far_from_site` / `no_location`. Office can force clock-out. Empty board still shows. **Not clocked in** lists unique people on today's `job_day_assignments` with no open shift. Approve / edit-with-reason / CSV stay on 9.4. |
+| 9.4 Review, approval, corrections, payroll CSV | **Done** | Review lists the date range. Approve (single/batch) and Reject-with-reason apply only to `completed`. Edit-with-reason on `completed` or `approved`; running shifts are read-only. Breaks stay a paid log on office edit (hours = clock-in → clock-out). CSV is the same date-range export; Review’s **Approved only** filter also applies to the CSV (`?status=approved`). Restricted office still omit rate/cost. |
 
 **Job costing:** Quoted value vs labour cost in Timesheets → Costing tab (visible to all `OFFICE` users, not Director-only).
 
@@ -223,41 +225,41 @@ Status key: **Done** = core requirement met · **Partial** = working but incompl
 
 | Req | Status | Implementation |
 |-----|--------|----------------|
-| 10.1 Requests with minimum notice | **Done** | Default 28 days; enforced client + server |
-| 10.2 Approval/decline with reason | **Done** | Office + staff views |
-| 10.3 Allowance + calendar integration | **Done** | `holiday_allowance` per user; blocks AI scheduler |
+| 10.1 Requests with minimum notice | **Done** | Staff request for themselves; `holiday_notice_days` (default 28) calendar days from local today to `start_date`, client `min` + server 400. Office/Admin can book for a staff member and **bypass** notice (emergency / compassionate). Overlapping pending or approved ranges for the same person are blocked. Inclusive whole days; optional reason. Approve/decline is 10.2; allowance/calendar 10.3. |
+| 10.2 Approval/decline with reason | **Done** | Office/Admin `PUT /holidays/:id/decision`. Decline **requires** a non-empty reason (modal + server 400); approve needs none and clears any prior `decline_reason`. Reverse allowed: pending → approved/declined; approved → declined; declined → approved. Same-status re-decide is 400. Approving still blocks 10.1 overlap. Staff withdraw own pending via existing `DELETE` on My Holidays. Operative still sees decline reason. Allowance/calendar stay 10.3. |
+| 10.3 Allowance + calendar integration | **Done** | Calendar year; used = inclusive days of **pending + approved** that fall in the year (clip across 1 Jan). Remaining = `holiday_allowance` − used. Staff submit and office book/approve are **400** if over; decline, reverse-to-declined, and withdraw free the days. Staff My Holidays and office list show used/remaining. Office Holidays has a month grid of **approved** off (`GET /holidays/calendar`). Schedule overlays stay; assigning someone with approved holiday that day is **400**. Double-book / skill / driver stay warn-only. |
 
 ### 5.11 Invoicing (INV)
 
 | Req | Status | Implementation |
 |-----|--------|----------------|
-| 11.1 Generate from completed jobs | **Done** | Pre-fills from quote lines |
-| 11.2 UK VAT and CIS on invoices | **Partial** | Simple `computeTotals()` — does not reuse full `ukTax.js` engine |
-| 11.3 Branded PDF + email | **Done** | `server/services/pdf.js`, email send |
-| 11.4 Payment tracking, overdue detection | **Done** | Manual payments, QuickBooks sync, stage → `PAID` |
+| 11.1 Generate from completed jobs | **Done** | No job-status gate on `POST /invoices { job_id }`. One invoice per job (400 if that job already has one; unique `job_id`). Lines = quote items (or job title + value) then each variation as qty 1, `unit_price` = amount, `vat_code` standard, `kind` labour. Job modal Create when eligible; Invoices page lists COMPLETED jobs with no invoice yet and Create on each row. Tax inherit stays 11.2. |
+| 11.2 UK VAT and CIS on invoices | **Done** | Same `ukTax.documentTotals` as quotes (inherit at create). Draft `PUT /invoices/:id/tax` can change `vat_treatment` / CIS; sent/paid frozen (400). Invoices drawer + customer Invoices card show treatment, VAT amount, CIS rate/deduction, due now, and reverse-charge notice. List has a due-now column. Retention stays 6.4; PDF/email stay 11.3. |
+| 11.3 Branded PDF + email | **Done** | Same as quotes: `POST /invoices/:id/pdf` generates/regenerates without sending; Download PDF on the Invoices list, invoice drawer, and customer Invoices card. Send emails the branded PDF (logo, Settings company/VAT/bank — no logo upload). Email only; resend while draft or sent; 400 and do not mark sent if the customer has no email. QuickBooks push on send stays as today. |
+| 11.4 Payment tracking, overdue detection | **Done** | Payment ledger (`invoice_payments`: date, amount, optional note). `amount_paid` is the ledger sum capped at `due_now`. Record payment on the Invoices list, invoice drawer, and customer Invoices card (sent / part-paid / overdue; no reverse). Overdue scan still flips `sent`/`part_paid` past `due_date` and opens the chase-payment task (task list is 12.2). Dashboard outstanding/overdue and the Invoices totals strip use `due_now − amount_paid`; customer card shows paid / outstanding. |
 
 ### 5.12 Automation (AUT)
 
 | Req | Status | Implementation |
 |-----|--------|----------------|
-| 12.1 Quote follow-up sequences | **Done** | Configurable steps; halts on customer reply |
-| 12.2 System task generation | **Done** | `server/services/taskEngine.js` — deduplicated by `rule_key` |
-| 12.3 Task list views | **Done** | Open/done/dismissed in `client/src/pages/Tasks.jsx` |
+| 12.1 Quote follow-up sequences | **Done** | Settings Company tab: on/off, add/remove steps (delay in days from quote send, WhatsApp or email, body template per step). Auto-schedule on send; resend cancels pending then reschedules. Inbound reply stops remaining pending steps for quotes already sent (other quotes keep theirs). Accept / decline / expire / office **Cancel remaining** on the customer follow-ups card cancel that quote’s pending steps. |
+| 12.2 System task generation | **Done** | One unassigned `quote_followup:quote:{id}` task when a quote is sent (due on first step date; resend updates due date). Auto-resolves on customer reply, accept/decline/expire, or Cancel remaining. Produce-quote / expired-quote / chase-payment unchanged. Customer follow-ups card links with `when` + `task` (12.3). |
+| 12.3 Task list views | **Done** | Tasks page: All open, Overdue, Today, Due (upcoming), Done (completed + dismissed). Filters live in the URL (`/tasks?when=today&task=24`); the customer follow-up chip opens the matching bucket. Cron interval is Settings → Company (1–60 minutes, default 5); scans + `processDue` still run on that schedule. |
 
 ### 5.13 Notifications (NOT)
 
 | Req | Status | Implementation |
 |-----|--------|----------------|
-| 13.1 In-app notification centre + email alerts | **Missing** | Tasks partially substitute; no notification module |
-| 13.2 Per-user preferences + unread badges | **Missing** | — |
+| 13.1 In-app notification centre + email alerts | **Done** | Bell drawer lists the signed-in user's rows (mark one / mark all as read; click opens the linked record). Events: crew add/remove, new enquiry, quote accepted, site visit booked, invoice overdue, task due today, holiday submitted / approved / declined. In-app for everyone involved **who opted in**. Email only to **STAFF** on crew add/remove **when that email switch is on** (SMTP simulated when unset). Unread count on the bell (13.1 poll; muted kinds are never written). |
+| 13.2 Per-user preferences + unread badges | **Done** | Settings → Notifications (office); staff Account modal (Change password). In-app on/off per kind the user can receive; email on/off only for crew add/remove on field staff. Default **off** until opt-in. Badge stays the 13.1 unread count + 60s poll. |
 
 ### 5.14 Reporting (REP)
 
 | Req | Status | Implementation |
 |-----|--------|----------------|
-| 14.1 Management dashboard | **Done** | KPIs, charts, date range filter (`client/src/pages/Dashboard.jsx`) |
-| 14.2 CSV exports for all reports | **Partial** | Timesheet CSV only |
-| 14.3 Director-only profitability | **Partial** | Costing exists in Timesheets; not restricted to `ADMIN` |
+| 14.1 Management dashboard | **Done** | Home (`/`) is a short summary: new leads, customer win/loss (current WON/LOST + `updated_at` in 7/30/90), live 4.5 pipeline value. **Reports** hub (`/reports`) has six cards for office; **ADMIN** also sees Job profitability (14.3). |
+| 14.2 Date range filtering + CSV exports for all reports | **Done** | 7/30/90 plus From/To (from/to overrides pills). Pipeline value stays live (no dates); its CSV is the live snapshot. Customers / Jobs / Invoices require from/to then **Generate** (`created_at` in range). Invoice total / amount due hidden when `financials_restricted` (1.6). Home dashboard unchanged (no from/to, no CSV). |
+| 14.3 Director-only profitability | **Done** | Reports card **Job profitability** (`ADMIN` only; OFFICE 403). From/to required + Generate; jobs by `created_at`. Same quoted-ex-VAT vs labour columns as Timesheets Costing, plus hours/cost by operative. Jobs CSV and labour CSV. Timesheets Costing tab stays on 1.6 (unrestricted OFFICE). |
 
 ### 5.15 Assistants (AI)
 
@@ -285,9 +287,9 @@ All integrations flip from simulated to live when credentials are added — no c
 
 | Req | Status | Implementation |
 |-----|--------|----------------|
-| 17.1 Company profile, tax, bank details | **Done** | `server/routes/settings.js` |
-| 17.2 Service catalogue, message/checklist templates | **Partial** | Templates in DB defaults; no catalogue UI or template editor |
-| 17.3 Timesheet rules, branding, permissions | **Partial** | Some rules in settings JSON; no UI editors for timesheet rules or branding |
+| 17.1 Company profile, tax, bank details | **Done** | Settings → Company: name, address, **city**, phone, email, VAT number, company number; VAT rates (6.3); `vat_registered` / `cis_registered` / `cis_utr` / `default_cis_rate` (0/20/30). Bank (`bank_name`, `bank_account_name`, `bank_sort_code`, `bank_account_number`) ADMIN-only — stripped from OFFICE `GET /api/settings`. Staff CIS remains 1.8. |
+| 17.2 Service catalogue, message/checklist templates | **Done** | `catalogue_items` table + `/api/catalogue` CRUD with `q`/`kind` search (ADMIN mutate, OFFICE list). Settings → Templates: core quote/invoice message bodies, extra named `{key,body}` pairs (picker on customer composer), checklist templates add/edit/delete (seeds plus new lists). Quote `meta/options` reads live catalogue. Follow-ups only on Company (12.1); retired `quote_followup_*` template keys are stripped and never used to send. `quote_defaults` unchanged. |
+| 17.3 Timesheet rules, branding, permissions | **Done** | Settings → Company: eight timesheet keys (ADMIN save, OFFICE view). Clock-in still enforces `enabled`, `site_radius_m`, `round_to_minutes`, `max_shift_hours` only. Company default `holiday_allowance_days` inherited when new staff allowance is blank; changing the default does not rewrite users. Notice days stay 10.1. Permissions unchanged beyond Staff & Users (role, Office costing flag, holiday allowance). ADMIN PNG/JPEG logo upload (2MB) on disk; OFFICE view-only; PDFs/login/chrome use it. |
 
 ### 5.18 Field Staff PWA
 
@@ -312,62 +314,55 @@ Grouped by priority and mapped to `docs/requirements.md` requirement numbers.
 
 | Item | Req | Notes |
 |------|-----|-------|
-| PostgreSQL + Sequelize migrations | 1.1 | Current SQLite is portable but not the target stack per spec and Cursor rules |
 | Per-user financial restrictions for Office | 1.6 | Gate costing, pay rates, profitability by user flag |
 | Password reset + edit existing users | 1.7 | Create/deactivate only today |
-| Security audit log + forced logout on role change | 1.9 | — |
-| Director-only profitability on dashboard | 14.3 | Move costing KPIs behind `ADMIN` guard |
+| Security audit log + forced logout on role change | 1.9 | **Done** — token_version + `security_events` |
+| Director-only profitability on dashboard | 14.3 | **Done** — Reports hub card (not Home). Timesheets Costing remains 1.6. |
 
 ### 6.2 CRM depth (medium)
 
 | Item | Req | Notes |
 |------|-----|-------|
 | Multiple site addresses per customer | 2.2 | New table or JSON structure |
-| Customer photo/document attachments | 2.4 | File storage in `data/files/` pattern exists for PDFs |
-| Advanced search/filtering | 2.5 | Extend beyond text search |
-| CSV customer import | 2.6 | — |
-| Commercial customer fields in UI | 2.1 | `customer_type`, `company_name`, `vat_number` |
+| Customer photo/document attachments | 2.4 | **Done** — `customer_files` on the customer; JPEG/PNG/WebP/PDF ≤10MB in `data/files/` |
+| Advanced search/filtering | 2.5 | **Done** — postcode, source, company name, created-date range; phone search via `normalised` |
+| CSV customer import | 2.6 | Deferred — not in this pass |
+| Commercial customer fields in UI | 2.1 | **Done** — type + company/VAT on create and customer-detail edit |
 | Lead tagging + ageing indicators | 3.5 | — |
-| Pipeline filters + owner assignment | 4.4 | Populate `owner_id`, add filter UI |
-| Stalled-deal indicators | 4.5 | — |
+| Pipeline filters + owner assignment | 4.4 | **Done** — auto-set on create, editable on the customer; board query filters |
+| Stalled-deal indicators | 4.5 | **Done** — amber 7d / red 14d on Updated line + badge; Lost and Paid excluded |
 
 ### 6.3 Quoting & jobs (medium)
 
 | Item | Req | Notes |
 |------|-----|-------|
-| Service catalogue + measured quantities | 6.1 | Settings data model partially ready |
 | Roof area + pitch calculator | 6.2 | Roofing-specific differentiator |
-| Multi-option quotes | 6.5 | — |
+| Multi-option quotes | 6.5 | **Done** — duplicate quote as a new ref; extras listed not in total; guarantee section |
 | AI-assisted quote wording | 15.2 | Scheduling AI pattern can be reused |
-| Job checklists, photos, variations | 7.3–7.5 | Staff clock-out photo pattern exists |
-| Job address geocoding | — | Enable distance-from-site flags |
-| Invoice UK tax parity | 11.2 | Reuse `ukTax.js` on invoice path |
+| Job checklists, photos, variations | 7.3–7.5 | **Done** — 7.3 materials/checklists, 7.4 photos/notes, 7.5 office-only variations (appended on invoice-from-job in 11.1) |
+| Job address geocoding | 9.2 | **Done** — Photon then Nominatim on job create/update and lazy on clock-in |
+| Invoice UK tax parity | 11.2 | **Done** — invoices use `ukTax.documentTotals`; drafts can edit VAT/CIS; sent/paid frozen |
 
 ### 6.4 Notifications module (medium)
 
 | Item | Req | Notes |
 |------|-----|-------|
-| In-app notification centre | 13.1 | New table + bell icon + unread count |
-| Email alerts for critical events | 13.1 | SMTP integration exists |
-| Per-user notification preferences | 13.2 | — |
+| In-app notification centre | 13.1 | **Done** — `GET /api/notifications`, bell drawer, mark read, unread count |
+| Email alerts for critical events | 13.1 | **Done** — STAFF only, crew add/remove, when email pref is on |
+| Per-user notification preferences | 13.2 | **Done** — `GET/PUT /api/notifications/preferences`; default off |
 
 ### 6.5 Settings & admin UI (lower)
 
 | Item | Req | Notes |
 |------|-----|-------|
-| Service catalogue management UI | 17.2 | — |
-| Message/checklist template editor | 17.2 | Templates exist as JSON in settings |
-| Timesheet rules editor | 17.3 | Rules in `DEFAULT_SETTINGS.timesheets` |
 | Staff pay rate + CIS status UI | 1.8 | DB columns exist |
-| Branding options beyond company name | 17.3 | — |
-| Appointment type categorisation | 5.3 | — |
-| Scheduling change notifications | 8.3 | — |
+| Scheduling change notifications | 8.3 | Rows written on crew add/remove when in-app is on; staff email when that switch is on (13.2) |
 
 ### 6.6 Reporting & exports (lower)
 
 | Item | Req | Notes |
 |------|-----|-------|
-| Dashboard/report CSV exports | 14.2 | Only timesheet CSV today |
+| Dashboard/report CSV exports | 14.2 | **Done** — CSV on all six Reports hub types. Home `/` stays 7/30/90 summary only. Timesheet payroll CSV remains 9.4. |
 | Phase 4 predictive forecasting | — | `ai_proposals` history ready for tuning |
 
 ### 6.7 External integrations (lower)
@@ -430,7 +425,10 @@ pdr-system/
 ├── package.json                # Root scripts: dev, build, seed, test
 ├── server/
 │   ├── index.js                # Express app, cron, static hosting
-│   ├── db.js                   # SQLite schema, settings, migrations
+│   ├── db.js                   # Settings, DATA_DIR, Umzug
+│   ├── config/                 # DATABASE_URL Sequelize connection
+│   ├── models/                 # Sequelize models
+│   ├── migrations/             # PostgreSQL schema
 │   ├── auth.js                 # JWT, role guards
 │   ├── seed.js                 # Demo data
 │   ├── routes/                 # 15 API route modules
@@ -443,7 +441,7 @@ pdr-system/
 │   │   ├── components/         # Layout, QuoteBuilder, WeekView, JobModal, ClockWidget, ui
 │   │   └── lib/                # api.js, auth.jsx
 │   └── public/                 # PWA manifest, service worker
-├── data/                       # SQLite DB + generated PDFs (created at runtime)
+├── data/                       # Generated PDFs + photos (created at runtime)
 ├── docs/
 │   ├── requirements.md         # CRM functional requirements (17 modules)
 │   ├── example-prompt.md       # Per-requirement implementation template
@@ -512,29 +510,27 @@ See `.env.example` for the full list. Minimum to run: `JWT_SECRET`. All integrat
 | `test-uktax.js` | Unit | VAT, CIS, retention, payment schedules (~10 scenarios) |
 | `e2e-test.js` | E2E | Enquiry → paid journey + staff financial leak checks (~44 assertions) |
 | `test-features.js` | Integration | Timesheets lifecycle, staff isolation, UK quoting, job costing |
+| `server/__tests__/*.test.js` | Unit | Sequelize helpers, migration types, auth, quote BOOLEAN/JSONB, site-visit booking |
+| `client/src/components/QuoteBuilder.test.jsx` | RTL | Quote builder consumes native booleans and JSON objects |
 | `check.js` | Diagnostic | Integration credential validation (manual, not CI) |
 
-**Gaps:** No route unit tests, no React component tests, no CI pipeline in repo.
+**Gaps:** No CI pipeline in repo.
 
 ---
 
 ## 11. Key Gaps & Open Questions
 
-1. **Stack divergence** — Requirements and Cursor rules specify PostgreSQL + Sequelize; implementation uses SQLite + raw SQL. Migration is requirement 1.1 and the largest infrastructure item remaining.
+1. **Director-only financials** — 14.3 job profitability report is `ADMIN` only. Timesheets Costing and labour-cost columns stay on 1.6 (unrestricted OFFICE). Pay rates remain 1.8.
 
-2. **Invoice tax parity** — Quotes use the full UK tax engine; invoices use simplified totals. CIS/reverse charge/retention should flow through to invoices.
+2. **Notifications module** — Entire module (13.x) unbuilt; tasks are a partial substitute.
 
-3. **Director-only financials** — `hourly_cost` and job costing are visible to any `OFFICE` user; requirement 14.3 expects Director-only access.
+3. **Roof pitch/area quoting** — Catalogue picker and qty × unit price are in; roof pitch/area math (6.2) is still missing.
 
-4. **Notifications module** — Entire module (13.x) unbuilt; tasks are a partial substitute.
+4. **Website webhook** — Marketing site integration endpoint not implemented in this CRM.
 
-5. **Catalogue quoting** — Manual line items only; roof pitch/area math and catalogue picker are core roofing differentiators still missing.
+5. **Documentation** — `docs/requirements-indexed.md` referenced by implementation prompts but not created.
 
-6. **Website webhook** — Marketing site integration endpoint not implemented in this CRM.
-
-7. **Documentation** — `docs/requirements-indexed.md` referenced by implementation prompts but not created.
-
-8. **Planned vs actual stage count** — Requirements say 11-stage pipeline; implementation has 12 (includes explicit `PAID` stage).
+6. **Planned vs actual stage count** — Requirements say 11-stage pipeline; 4.1 keeps all 12 current columns including `PAID`.
 
 ---
 

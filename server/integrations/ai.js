@@ -6,7 +6,7 @@
 // Every proposal, whatever the provider, goes through
 // schedulerEngine.validateProposal before Paul sees it.
 // ============================================================
-const { db } = require('../db');
+const { logIntegrationEvent } = require('../models');
 const { ruleSchedule } = require('../services/schedulerEngine');
 
 function provider() {
@@ -20,9 +20,8 @@ function provider() {
   return 'builtin';
 }
 
-function logEvent(event, payload, status = 'ok') {
-  db.prepare('INSERT INTO integration_events (provider, direction, event, payload, status) VALUES (?,?,?,?,?)')
-    .run('ai', 'out', event, JSON.stringify(payload).slice(0, 4000), status);
+async function logEvent(event, payload, status = 'ok') {
+  await logIntegrationEvent('ai', 'out', event, payload, status);
 }
 
 const SYSTEM_PROMPT = `You are the scheduling assistant for Paul Douglas Roofing and Building Ltd, a UK roofing firm.
@@ -113,17 +112,17 @@ async function proposeSchedule(context, transcript) {
   if (p === 'anthropic' || p === 'openai') {
     try {
       const proposal = p === 'anthropic' ? await askAnthropic(context, transcript) : await askOpenAI(context, transcript);
-      logEvent('schedule.proposed', { provider: p, jobs: (proposal.assignments || []).length });
+      await logEvent('schedule.proposed', { provider: p, jobs: (proposal.assignments || []).length });
       return { provider: p, proposal };
     } catch (err) {
-      logEvent('schedule.llm_error', { provider: p, error: String(err.message) }, 'error');
+      await logEvent('schedule.llm_error', { provider: p, error: String(err.message) }, 'error');
       const proposal = ruleSchedule(context, transcript);
       proposal.summary = `(AI call failed — built-in scheduler used instead. ${proposal.summary})`;
       return { provider: 'builtin-fallback', proposal };
     }
   }
   const proposal = ruleSchedule(context, transcript);
-  logEvent('schedule.proposed', { provider: 'builtin', jobs: proposal.assignments.length });
+  await logEvent('schedule.proposed', { provider: 'builtin', jobs: proposal.assignments.length });
   return { provider: 'builtin', proposal };
 }
 

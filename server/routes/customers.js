@@ -1,96 +1,478 @@
-// CRM pipeline + customer records with full timeline (PRD §9.2)
 const express = require('express');
-const { db, pj } = require('../db');
-const { requireAuth, requireOffice } = require('../auth');
-const { STAGES, STAGE_LABELS, setStage, logActivity } = require('../services/pipeline');
+const { Op, literal } = require('sequelize');
+const { Customer, Quote, Task, Message, Activity, Job, User, Invoice, InvoicePayment, Appointment, Lead, Followup, StageHistory } = require('../models');
+const { requireAuth, requireOffice, asyncHandler } = require('../auth');
+const { STAGES, STAGE_LABELS, setStage, logActivity, sumPipelineBoardTotals, resolveLeadForCustomer } = require('../services/pipeline');
 const { sendToCustomer } = require('../services/messenger');
+const { plain } = require('../db');
+const { resolveCustomerType, typeFields } = require('../customerType');
+const contacts = require('../customerContacts');
+const { buildCustomerTimeline, conversationMessages } = require('../customerTimeline');
+const notes = require('../customerNotes');
+const files = require('../customerFiles');
+const { findContactConflicts } = require('../customerDuplicates');
+const { buildCustomerListWhere } = require('../customerSearch');
+const { parseLostReason } = require('../lostReason');
+const { buildPipelineBoardWhere, LEAD_LATEST_QUOTE_SQL, LEAD_PIPELINE_VALUE_SQL, OPEN_TASKS_SQL } = require('../pipelineFilters');
+const { parseOwnerAssignment, assertAssignableOwner, listOfficeOwners } = require('../customerOwner');
+const jobDays = require('../jobDays');
+const invoiceTax = require('../invoiceTax');
+const invoicePayments = require('../invoicePayments');
+const visitAssignees = require('../appointmentAssignees');
 
 const router = express.Router();
 router.use(requireAuth, requireOffice);
 
-router.get('/', (req, res) => {
-  const { q, stage } = req.query;
-  let sql = `SELECT c.*, (SELECT COALESCE(SUM(q.total),0) FROM quotes q WHERE q.customer_id = c.id AND q.status IN ('sent','accepted')) AS quoted_value
-             FROM customers c WHERE 1=1`;
-  const params = [];
-  if (q) { sql += ' AND (c.name LIKE ? OR c.phone LIKE ? OR c.email LIKE ? OR c.address LIKE ?)'; params.push(...Array(4).fill(`%${q}%`)); }
-  if (stage) { sql += ' AND c.stage = ?'; params.push(stage); }
-  sql += ' ORDER BY c.updated_at DESC LIMIT 300';
-  res.json({ customers: db.prepare(sql).all(...params) });
-});
+const PRIMARY_SCALARS = [
+  [literal(`(SELECT s.address FROM customer_sites s WHERE s.customer_id = "Customer".id AND s.is_primary LIMIT 1)`), 'address'],
+  [literal(`(SELECT s.postcode FROM customer_sites s WHERE s.customer_id = "Customer".id AND s.is_primary LIMIT 1)`), 'postcode'],
+  [literal(`(SELECT p.value FROM customer_phones p WHERE p.customer_id = "Customer".id AND p.is_primary LIMIT 1)`), 'phone'],
+  [literal(`(SELECT e.value FROM customer_emails e WHERE e.customer_id = "Customer".id AND e.is_primary LIMIT 1)`), 'email'],
+];
 
-/** Kanban board — customers grouped by stage with headline value. */
-router.get('/pipeline/board', (req, res) => {
-  const rows = db.prepare(`
-    SELECT c.id, c.name, c.phone, c.stage, c.source, c.address, c.updated_at,
-      (SELECT q.total FROM quotes q WHERE q.customer_id = c.id ORDER BY q.id DESC LIMIT 1) AS latest_quote_total,
-      (SELECT COUNT(*) FROM tasks t WHERE t.entity_type='customer' AND t.entity_id=c.id AND t.status='open') AS open_tasks
-    FROM customers c ORDER BY c.updated_at DESC`).all();
+router.get('/', asyncHandler(async (req, res) => {
+  const built = buildCustomerListWhere(req.query, Customer.sequelize);
+  if (built.error) return res.status(400).json({ error: built.error });
+  const rows = await Customer.findAll({
+    where: built.where,
+    attributes: {
+      include: [
+        ...PRIMARY_SCALARS,
+        [literal(`(SELECT COALESCE(SUM(q.total),0) FROM quotes q WHERE q.customer_id = "Customer".id AND q.status IN ('sent','accepted'))`), 'quoted_value'],
+      ],
+    },
+    order: [['updated_at', 'DESC']],
+    limit: 300,
+  });
+  res.json({ customers: plain(rows) });
+}));
+
+/** Visual Kanban payload — one card per enquiry (requirement 4.1). Filters: 4.4. Totals: 4.5. */
+router.get('/pipeline/board', asyncHandler(async (req, res) => {
+  const built = buildPipelineBoardWhere(req.query, Customer.sequelize);
+  if (built.error) return res.status(400).json({ error: built.error });
+  const includeCustomer = {
+    model: Customer,
+    required: true,
+    attributes: { include: PRIMARY_SCALARS },
+  };
+  if (built.customerWhere?.[Op.and] || Object.keys(built.customerWhere || {}).length) {
+    includeCustomer.where = built.customerWhere;
+  }
+  const rows = await Lead.findAll({
+    where: built.where,
+    include: [includeCustomer],
+    attributes: {
+      include: [
+        [literal(LEAD_LATEST_QUOTE_SQL), 'latest_quote_total'],
+        [literal(LEAD_PIPELINE_VALUE_SQL), 'pipeline_value'],
+        [literal(OPEN_TASKS_SQL), 'open_tasks'],
+      ],
+    },
+    order: [['board_order', 'ASC'], ['id', 'ASC']],
+  });
   const board = {};
   for (const s of STAGES) board[s] = [];
-  for (const r of rows) (board[r.stage] || (board[r.stage] = [])).push(r);
-  res.json({ board, stages: STAGES, labels: STAGE_LABELS });
-});
+  for (const row of rows) {
+    const o = plain(row);
+    const customer = o.Customer || {};
+    delete o.Customer;
+    const card = {
+      ...o,
+      id: o.id,
+      lead_id: o.id,
+      customer_id: o.customer_id,
+      name: customer.name,
+      company_name: customer.company_name || null,
+      customer_type: customer.customer_type || null,
+      owner_id: customer.owner_id ?? null,
+      address: customer.address || null,
+      postcode: customer.postcode || null,
+      phone: customer.phone || null,
+      email: customer.email || null,
+      lost_reason: o.lost_reason || customer.lost_reason || null,
+    };
+    (board[card.stage] || (board[card.stage] = [])).push(card);
+  }
+  const owners = await listOfficeOwners();
+  const customerRows = await Customer.findAll({
+    attributes: ['id', 'name', 'company_name'],
+    order: [['name', 'ASC']],
+    limit: 500,
+  });
+  const customers = plain(customerRows).map((c) => ({
+    id: c.id,
+    name: c.name,
+    company_name: c.company_name || null,
+  }));
+  const totals = sumPipelineBoardTotals(board);
+  res.json({ board, stages: STAGES, labels: STAGE_LABELS, owners, customers, totals });
+}));
 
-router.post('/', (req, res) => {
-  const { name, phone, email, address, postcode, notes, source = 'manual' } = req.body || {};
-  if (!name) return res.status(400).json({ error: 'Name required' });
-  const r = db.prepare('INSERT INTO customers (name, phone, email, address, postcode, notes, source) VALUES (?,?,?,?,?,?,?)')
-    .run(name, phone || null, email || null, address || null, postcode || null, notes || null, source);
-  logActivity(r.lastInsertRowid, req.user.id, 'customer_created', 'Customer created');
-  res.json({ id: r.lastInsertRowid });
-});
+router.post('/', asyncHandler(async (req, res) => {
+  const { name, notes, source = 'manual', customer_type, company_name, vat_number } = req.body || {};
+  if (!name || !String(name).trim()) return res.status(400).json({ error: 'Name required' });
+  const type = resolveCustomerType(customer_type, 'domestic');
+  if (type.error) return res.status(400).json({ error: type.error });
+  const typed = typeFields(type.value, { company_name, vat_number });
+  if (typed.error) return res.status(400).json({ error: typed.error });
+  const lists = contacts.parseContactInput(req.body || {});
+  if (lists.error) return res.status(400).json({ error: lists.error });
+  const clash = await findContactConflicts(lists);
+  if (clash) return sendContactResult(res, clash);
+  let ownerId = req.user.id;
+  if (req.body?.owner_id !== undefined) {
+    const parsed = parseOwnerAssignment(req.body.owner_id);
+    if (parsed.error) return res.status(400).json({ error: parsed.error });
+    if (!parsed.skip) {
+      const ok = await assertAssignableOwner(parsed.value);
+      if (ok.error) return res.status(400).json({ error: ok.error });
+      ownerId = ok.value;
+    }
+  }
+  const created = await Customer.create({
+    name: String(name).trim(),
+    notes: notes || null,
+    source,
+    owner_id: ownerId,
+    customer_type: typed.customer_type,
+    company_name: typed.company_name,
+    vat_number: typed.vat_number,
+  });
+  await contacts.saveContactLists(created.id, lists);
+  await Lead.create({
+    customer_id: created.id,
+    source,
+    message: notes ? String(notes).slice(0, 2000) : null,
+    status: 'NEW',
+    next_action: 'Review & respond',
+    stage: 'ENQUIRY',
+  });
+  await logActivity(created.id, req.user.id, 'customer_created', 'Customer created');
+  res.json({ id: created.id });
+}));
 
-router.get('/:id', (req, res) => {
-  const c = db.prepare('SELECT * FROM customers WHERE id = ?').get(req.params.id);
+router.get('/:id', asyncHandler(async (req, res) => {
+  const c = await Customer.findByPk(req.params.id, {
+    include: [{ model: User, as: 'owner', attributes: ['id', 'name'] }],
+  });
   if (!c) return res.status(404).json({ error: 'Customer not found' });
   const id = c.id;
-  const messages = db.prepare('SELECT m.*, u.name AS user_name FROM messages m LEFT JOIN users u ON u.id = m.user_id WHERE m.customer_id = ? ORDER BY m.created_at, m.id').all(id)
-    .map((m) => ({ ...m, meta: pj(m.meta, {}) }));
-  const activity = db.prepare('SELECT a.*, u.name AS user_name FROM activity a LEFT JOIN users u ON u.id = a.user_id WHERE a.customer_id = ? ORDER BY a.created_at DESC, a.id DESC LIMIT 100').all(id);
-  const quotes = db.prepare('SELECT * FROM quotes WHERE customer_id = ? ORDER BY id DESC').all(id).map((q) => ({ ...q, items: pj(q.items, []) }));
-  const jobs = db.prepare(`SELECT j.*, (SELECT GROUP_CONCAT(u.name, ', ') FROM job_assignments ja JOIN users u ON u.id = ja.user_id WHERE ja.job_id = j.id) AS crew FROM jobs j WHERE j.customer_id = ? ORDER BY j.id DESC`).all(id);
-  const invoices = db.prepare('SELECT * FROM invoices WHERE customer_id = ? ORDER BY id DESC').all(id).map((i) => ({ ...i, items: pj(i.items, []) }));
-  const appointments = db.prepare('SELECT * FROM appointments WHERE customer_id = ? ORDER BY start DESC').all(id);
-  const leads = db.prepare('SELECT * FROM leads WHERE customer_id = ? ORDER BY id DESC').all(id);
-  const followups = db.prepare('SELECT f.*, q.ref AS quote_ref FROM followups f JOIN quotes q ON q.id = f.quote_id WHERE f.customer_id = ? ORDER BY f.scheduled_at').all(id);
-  const stageHistory = db.prepare('SELECT sh.*, u.name AS user_name FROM stage_history sh LEFT JOIN users u ON u.id = sh.user_id WHERE sh.customer_id = ? ORDER BY sh.created_at DESC').all(id);
-  res.json({ customer: c, messages, activity, quotes, jobs, invoices, appointments, leads, followups, stageHistory, stages: STAGES, labels: STAGE_LABELS });
-});
 
-router.put('/:id', (req, res) => {
-  const c = db.prepare('SELECT * FROM customers WHERE id = ?').get(req.params.id);
-  if (!c) return res.status(404).json({ error: 'Customer not found' });
-  const fields = ['name', 'phone', 'email', 'address', 'postcode', 'notes', 'lost_reason'];
-  for (const f of fields) {
-    if (req.body[f] !== undefined) db.prepare(`UPDATE customers SET ${f} = ?, updated_at = datetime('now') WHERE id = ?`).run(req.body[f], c.id);
+  const messageRows = await Message.findAll({
+    where: { customer_id: id },
+    include: [{ model: User, attributes: ['name'] }],
+    order: [['created_at', 'ASC'], ['id', 'ASC']],
+  });
+  const messages = messageRows.map((m) => {
+    const o = plain(m);
+    o.user_name = o.User?.name || null;
+    o.meta = o.meta || {};
+    delete o.User;
+    return o;
+  });
+
+  const activityWhere = {
+    customer_id: id,
+    [Op.or]: [
+      { entity_type: { [Op.in]: ['quote', 'job', 'invoice'] } },
+      { kind: { [Op.like]: 'quote_%' } },
+      { kind: { [Op.like]: 'job_%' } },
+      { kind: { [Op.like]: 'invoice_%' } },
+    ],
+  };
+  const activityRows = await Activity.findAll({
+    where: activityWhere,
+    include: [{ model: User, attributes: ['name'] }],
+    order: [['created_at', 'ASC'], ['id', 'ASC']],
+  });
+  const activity = activityRows.map((a) => {
+    const o = plain(a);
+    o.user_name = o.User?.name || null;
+    delete o.User;
+    return o;
+  });
+  const timeline = buildCustomerTimeline(conversationMessages(messages), activity);
+  const internal_notes = await notes.listNotes(id);
+  const customer_files = await files.listFiles(id);
+
+  const quotes = plain(await Quote.findAll({ where: { customer_id: id }, order: [['id', 'DESC']] }));
+
+  const jobRows = await Job.findAll({
+    where: { customer_id: id },
+    include: [{ model: Quote, attributes: ['id', 'ref'] }],
+    order: [['id', 'DESC']],
+  });
+  const withCrew = await jobDays.attachDayAssignmentsMany(jobRows.map((j) => {
+    const o = plain(j);
+    o.quote_ref = o.Quote?.ref || null;
+    delete o.Quote;
+    return o;
+  }));
+  const jobs = withCrew.map((o) => {
+    const crew = jobDays.uniqueCrewNames(o.day_assignments).join(', ');
+    const row = { ...o, crew };
+    delete row.day_assignments;
+    return row;
+  });
+
+  const invoices = plain(await Invoice.findAll({
+    where: { customer_id: id },
+    include: [
+      { model: InvoicePayment, as: 'payments', separate: true, order: [['paid_at', 'DESC'], ['id', 'DESC']] },
+      { model: Job, attributes: ['id', 'lead_id'], required: false },
+    ],
+    order: [['id', 'DESC']],
+  })).map((inv) => {
+    const leadId = inv.Job?.lead_id || null;
+    delete inv.Job;
+    return invoicePayments.decorateBalance(invoiceTax.decorateTaxView({ ...inv, lead_id: leadId }));
+  });
+  const appointments = plain(await Appointment.findAll({
+    where: { customer_id: id },
+    include: [{
+      association: 'assignees',
+      attributes: ['id', 'name', 'role'],
+      through: { attributes: [] },
+    }],
+    order: [['start', 'DESC']],
+  })).map((a) => ({ ...a, ...visitAssignees.decorateAssignees(a) }));
+  const leads = plain(await Lead.findAll({ where: { customer_id: id }, order: [['id', 'DESC']] }));
+
+  const followupRows = await Followup.findAll({
+    where: { customer_id: id },
+    include: [{ model: Quote, attributes: ['ref'] }],
+    order: [['scheduled_at', 'ASC']],
+  });
+  const followups = followupRows.map((f) => {
+    const o = plain(f);
+    o.quote_ref = o.Quote?.ref;
+    delete o.Quote;
+    return o;
+  });
+  const quoteIds = [...new Set(followups.map((f) => f.quote_id).filter(Boolean))];
+  const followupTaskRows = quoteIds.length
+    ? await Task.findAll({
+      where: {
+        status: 'open',
+        entity_type: 'quote',
+        entity_id: { [Op.in]: quoteIds },
+        rule_key: { [Op.like]: 'quote_followup:quote:%' },
+      },
+      attributes: ['id', 'title', 'due_date', 'status', 'entity_id'],
+    })
+    : [];
+  const taskByQuote = new Map(plain(followupTaskRows).map((t) => [t.entity_id, {
+    id: t.id, title: t.title, due_date: t.due_date, status: t.status,
+  }]));
+  for (const f of followups) {
+    f.followup_task = taskByQuote.get(f.quote_id) || null;
   }
-  res.json({ ok: true });
-});
 
-router.put('/:id/stage', (req, res) => {
-  const { stage, note } = req.body || {};
+  const histRows = await StageHistory.findAll({
+    where: { customer_id: id },
+    include: [{ model: User, attributes: ['name'] }],
+    order: [['created_at', 'DESC']],
+  });
+  const stageHistory = histRows.map((sh) => {
+    const o = plain(sh);
+    o.user_name = o.User?.name || null;
+    delete o.User;
+    return o;
+  });
+
+  const raw = plain(c);
+  const ownerName = raw.owner?.name || null;
+  delete raw.owner;
+  const customer = contacts.applyPrimaryContacts({
+    ...raw,
+    ...(await contacts.listContacts(c.id)),
+    owner_name: ownerName,
+  });
+  res.json({
+    customer, messages, activity, timeline, internal_notes, files: customer_files,
+    quotes, jobs, invoices, appointments, leads, followups, stageHistory,
+    stages: STAGES, labels: STAGE_LABELS,
+  });
+}));
+
+router.put('/:id', asyncHandler(async (req, res) => {
+  const c = await Customer.findByPk(req.params.id);
+  if (!c) return res.status(404).json({ error: 'Customer not found' });
+  const body = req.body || {};
+  const fields = ['name', 'notes', 'lost_reason'];
+  const patch = {};
+  for (const f of fields) if (body[f] !== undefined) patch[f] = body[f];
+
+  if (body.owner_id !== undefined) {
+    const parsed = parseOwnerAssignment(body.owner_id);
+    if (parsed.error) return res.status(400).json({ error: parsed.error });
+    if (!parsed.skip) {
+      const ok = await assertAssignableOwner(parsed.value);
+      if (ok.error) return res.status(400).json({ error: ok.error });
+      patch.owner_id = ok.value;
+    }
+  }
+
+  if (body.customer_type !== undefined || body.company_name !== undefined || body.vat_number !== undefined) {
+    const type = resolveCustomerType(body.customer_type, c.customer_type || 'domestic');
+    if (type.error) return res.status(400).json({ error: type.error });
+    const typed = typeFields(type.value, body, c);
+    if (typed.error) return res.status(400).json({ error: typed.error });
+    patch.customer_type = typed.customer_type;
+    patch.company_name = typed.company_name;
+    patch.vat_number = typed.vat_number;
+  }
+
+  if (Object.keys(patch).length) await c.update(patch);
+  res.json({ ok: true });
+}));
+
+router.put('/:id/stage', asyncHandler(async (req, res) => {
+  const { stage, note, before_id, lead_id } = req.body || {};
+  const c = await Customer.findByPk(req.params.id);
+  if (!c) return res.status(404).json({ error: 'Customer not found' });
+
+  let fromStage = c.stage;
+  if (lead_id != null && lead_id !== '') {
+    try {
+      const lead = await resolveLeadForCustomer(Number(req.params.id), lead_id);
+      fromStage = lead.stage;
+    } catch (err) {
+      return res.status(err.status || 400).json({ error: err.message });
+    }
+  }
+
+  let lost_reason;
+  if (stage === 'LOST' && fromStage !== 'LOST') {
+    const parsed = parseLostReason(req.body || {});
+    if (parsed.error) return res.status(400).json({ error: parsed.error });
+    lost_reason = parsed.lost_reason;
+  } else if (stage !== 'LOST' && fromStage === 'LOST') {
+    lost_reason = null;
+  }
+
   try {
-    setStage(Number(req.params.id), stage, req.user.id, note);
-    if (stage === 'LOST' && req.body.lost_reason) {
-      db.prepare('UPDATE customers SET lost_reason = ? WHERE id = ?').run(req.body.lost_reason, req.params.id);
+    await setStage(Number(req.params.id), stage, req.user.id, note, {
+      beforeId: before_id == null ? null : Number(before_id),
+      ...(lead_id != null && lead_id !== '' ? { leadId: Number(lead_id) } : {}),
+    });
+    if (lost_reason !== undefined) {
+      await Customer.update({ lost_reason }, { where: { id: req.params.id } });
+      if (lead_id != null && lead_id !== '') {
+        await Lead.update({ lost_reason }, { where: { id: Number(lead_id), customer_id: req.params.id } });
+      }
     }
     res.json({ ok: true });
   } catch (err) {
     res.status(400).json({ error: err.message });
   }
-});
+}));
 
-/** Send a message to the customer on any channel (WhatsApp/email/FB) or log a note/call. */
-router.post('/:id/messages', async (req, res) => {
+router.post('/:id/messages', asyncHandler(async (req, res) => {
   const { channel, body, subject } = req.body || {};
   if (!channel || !body) return res.status(400).json({ error: 'channel and body required' });
+  if (channel === 'note') {
+    return res.status(400).json({ error: 'Use internal notes — notes are not sent as messages' });
+  }
   try {
     const result = await sendToCustomer(Number(req.params.id), channel, body, { userId: req.user.id, subject });
     res.json(result);
   } catch (err) {
     res.status(400).json({ error: err.message });
   }
-});
+}));
+
+router.post('/:id/notes', asyncHandler(async (req, res) => {
+  if (!(await requireCustomer(req, res))) return;
+  sendContactResult(res, await notes.addNote(Number(req.params.id), req.user.id, req.body?.body));
+}));
+router.delete('/:id/notes/:noteId', asyncHandler(async (req, res) => {
+  if (!(await requireCustomer(req, res))) return;
+  sendContactResult(res, await notes.removeNote(Number(req.params.id), Number(req.params.noteId)));
+}));
+
+router.post('/:id/files', files.handleUpload, asyncHandler(async (req, res) => {
+  if (!(await requireCustomer(req, res))) return;
+  sendContactResult(res, await files.addFile(Number(req.params.id), req.user.id, req.file));
+}));
+router.get('/:id/files/:fileId', asyncHandler(async (req, res) => {
+  if (!(await requireCustomer(req, res))) return;
+  const row = await files.getFileRow(Number(req.params.id), Number(req.params.fileId));
+  if (!row) return res.status(404).json({ error: 'File not found' });
+  const disk = files.diskPath(row.stored_name);
+  if (!disk) return res.status(400).json({ error: 'Invalid file' });
+  const download = req.query.download === '1';
+  res.setHeader('Content-Type', row.mime);
+  res.setHeader(
+    'Content-Disposition',
+    `${download ? 'attachment' : 'inline'}; filename="${String(row.original_name).replace(/"/g, '')}"`,
+  );
+  res.sendFile(disk, (err) => { if (err && !res.headersSent) res.sendStatus(404); });
+}));
+router.delete('/:id/files/:fileId', asyncHandler(async (req, res) => {
+  if (!(await requireCustomer(req, res))) return;
+  sendContactResult(res, await files.removeFile(Number(req.params.id), Number(req.params.fileId)));
+}));
+
+function sendContactResult(res, result) {
+  if (result.error) {
+    const body = { error: result.error };
+    if (result.customer_id != null) {
+      body.customer_id = result.customer_id;
+      body.name = result.name || null;
+    }
+    return res.status(result.status || 400).json(body);
+  }
+  return res.json(result);
+}
+
+async function requireCustomer(req, res) {
+  const c = await Customer.findByPk(req.params.id);
+  if (!c) {
+    res.status(404).json({ error: 'Customer not found' });
+    return null;
+  }
+  return c;
+}
+
+router.post('/:id/sites', asyncHandler(async (req, res) => {
+  if (!(await requireCustomer(req, res))) return;
+  sendContactResult(res, await contacts.addSite(Number(req.params.id), req.body || {}));
+}));
+router.put('/:id/sites/:siteId', asyncHandler(async (req, res) => {
+  if (!(await requireCustomer(req, res))) return;
+  sendContactResult(res, await contacts.updateSite(Number(req.params.id), Number(req.params.siteId), req.body || {}));
+}));
+router.delete('/:id/sites/:siteId', asyncHandler(async (req, res) => {
+  if (!(await requireCustomer(req, res))) return;
+  sendContactResult(res, await contacts.removeSite(Number(req.params.id), Number(req.params.siteId)));
+}));
+
+router.post('/:id/phones', asyncHandler(async (req, res) => {
+  if (!(await requireCustomer(req, res))) return;
+  sendContactResult(res, await contacts.addPhone(Number(req.params.id), req.body || {}));
+}));
+router.put('/:id/phones/:phoneId', asyncHandler(async (req, res) => {
+  if (!(await requireCustomer(req, res))) return;
+  sendContactResult(res, await contacts.updatePhone(Number(req.params.id), Number(req.params.phoneId), req.body || {}));
+}));
+router.delete('/:id/phones/:phoneId', asyncHandler(async (req, res) => {
+  if (!(await requireCustomer(req, res))) return;
+  sendContactResult(res, await contacts.removePhone(Number(req.params.id), Number(req.params.phoneId)));
+}));
+
+router.post('/:id/emails', asyncHandler(async (req, res) => {
+  if (!(await requireCustomer(req, res))) return;
+  sendContactResult(res, await contacts.addEmail(Number(req.params.id), req.body || {}));
+}));
+router.put('/:id/emails/:emailId', asyncHandler(async (req, res) => {
+  if (!(await requireCustomer(req, res))) return;
+  sendContactResult(res, await contacts.updateEmail(Number(req.params.id), Number(req.params.emailId), req.body || {}));
+}));
+router.delete('/:id/emails/:emailId', asyncHandler(async (req, res) => {
+  if (!(await requireCustomer(req, res))) return;
+  sendContactResult(res, await contacts.removeEmail(Number(req.params.id), Number(req.params.emailId)));
+}));
 
 module.exports = router;

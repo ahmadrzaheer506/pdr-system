@@ -4,6 +4,7 @@ import { Search } from 'lucide-react';
 import { api, money, fmtDate } from '../lib/api';
 import { PageLoading, StatusBadge, EmptyState } from '../components/ui.jsx';
 import { FileText } from 'lucide-react';
+import { leadPath } from '../lib/customerRoutes.js';
 
 const FILTERS = ['ALL', 'draft', 'sent', 'accepted', 'declined', 'expired'];
 
@@ -14,7 +15,7 @@ export default function Quotes() {
 
   useEffect(() => {
     const t = setTimeout(() => {
-      api.get(`/quotes?status=${status}${q ? `&q=${encodeURIComponent(q)}` : ''}`).then((d) => setData(d.quotes));
+      api.get(`/quotes?status=${status}${q ? `&q=${encodeURIComponent(q)}` : ''}`).then((d) => setData(d.quotes)).catch(() => setData([]));
     }, 200);
     return () => clearTimeout(t);
   }, [status, q]);
@@ -57,9 +58,9 @@ export default function Quotes() {
               {data.map((qt) => (
                 <tr key={qt.id} className="border-t border-slate-100 hover:bg-slate-50">
                   <td className="px-4 py-3 font-medium text-slate-800">
-                    <Link to={`/customers/${qt.customer_id}`} className="hover:text-brand-600">{qt.ref}</Link>
+                    <Link to={leadPath(qt.customer_id, 'quotes', qt.lead_id)} className="hover:text-brand-600">{qt.ref}</Link>
                   </td>
-                  <td className="px-4 py-3"><Link to={`/customers/${qt.customer_id}`} className="hover:text-brand-600">{qt.customer_name}</Link></td>
+                  <td className="px-4 py-3"><Link to={leadPath(qt.customer_id, 'quotes', qt.lead_id)} className="hover:text-brand-600">{qt.customer_name}</Link></td>
                   <td className="px-4 py-3 text-slate-500">{qt.title}</td>
                   <td className="px-4 py-3 text-right font-medium">{money(qt.total)}</td>
                   <td className="px-4 py-3"><StatusBadge status={qt.status} /></td>

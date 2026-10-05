@@ -5,7 +5,8 @@
 // workflow still functions for demo/testing.
 // PRD §9.1 (inbound), §9.4 (quotes), §10.2 (follow-ups).
 // ============================================================
-const { db } = require('../db');
+const { Op } = require('sequelize');
+const { logIntegrationEvent, Message } = require('../models');
 
 const GRAPH = 'https://graph.facebook.com/v21.0';
 
@@ -13,9 +14,8 @@ function isConfigured() {
   return !!(process.env.WHATSAPP_ACCESS_TOKEN && process.env.WHATSAPP_PHONE_NUMBER_ID);
 }
 
-function logEvent(direction, event, payload, status = 'ok') {
-  db.prepare('INSERT INTO integration_events (provider, direction, event, payload, status) VALUES (?,?,?,?,?)')
-    .run('whatsapp', direction, event, JSON.stringify(payload).slice(0, 4000), status);
+async function logEvent(direction, event, payload, status = 'ok') {
+  await logIntegrationEvent('whatsapp', direction, event, payload, status);
 }
 
 /** Normalise a UK phone number to wa format (447... no plus). Best effort. */
@@ -49,15 +49,15 @@ async function graphPost(body) {
 async function sendText(toPhone, body) {
   const to = waNumber(toPhone);
   if (!isConfigured()) {
-    logEvent('out', 'text.simulated', { to, body }, 'simulated');
+    await logEvent('out', 'text.simulated', { to, body }, 'simulated');
     return { simulated: true };
   }
   try {
     const data = await graphPost({ messaging_product: 'whatsapp', to, type: 'text', text: { body } });
-    logEvent('out', 'text.sent', { to, id: data.messages?.[0]?.id });
+    await logEvent('out', 'text.sent', { to, id: data.messages?.[0]?.id });
     return { simulated: false, wa_id: data.messages?.[0]?.id };
   } catch (err) {
-    logEvent('out', 'text.error', { to, error: String(err.message) }, 'error');
+    await logEvent('out', 'text.error', { to, error: String(err.message) }, 'error');
     throw err;
   }
 }
@@ -66,7 +66,7 @@ async function sendText(toPhone, body) {
 async function sendDocument(toPhone, docUrl, filename, caption = '') {
   const to = waNumber(toPhone);
   if (!isConfigured()) {
-    logEvent('out', 'document.simulated', { to, docUrl, filename }, 'simulated');
+    await logEvent('out', 'document.simulated', { to, docUrl, filename }, 'simulated');
     return { simulated: true };
   }
   try {
@@ -76,10 +76,10 @@ async function sendDocument(toPhone, docUrl, filename, caption = '') {
       type: 'document',
       document: { link: docUrl, filename, caption },
     });
-    logEvent('out', 'document.sent', { to, id: data.messages?.[0]?.id });
+    await logEvent('out', 'document.sent', { to, id: data.messages?.[0]?.id });
     return { simulated: false, wa_id: data.messages?.[0]?.id };
   } catch (err) {
-    logEvent('out', 'document.error', { to, error: String(err.message) }, 'error');
+    await logEvent('out', 'document.error', { to, error: String(err.message) }, 'error');
     throw err;
   }
 }
@@ -92,7 +92,7 @@ async function sendDocument(toPhone, docUrl, filename, caption = '') {
 async function sendTemplate(toPhone, templateName, params = [], renderedFallbackText = '') {
   const to = waNumber(toPhone);
   if (!isConfigured()) {
-    logEvent('out', 'template.simulated', { to, templateName, params }, 'simulated');
+    await logEvent('out', 'template.simulated', { to, templateName, params }, 'simulated');
     return { simulated: true };
   }
   try {
@@ -108,10 +108,10 @@ async function sendTemplate(toPhone, templateName, params = [], renderedFallback
           : [],
       },
     });
-    logEvent('out', 'template.sent', { to, templateName, id: data.messages?.[0]?.id });
+    await logEvent('out', 'template.sent', { to, templateName, id: data.messages?.[0]?.id });
     return { simulated: false, wa_id: data.messages?.[0]?.id };
   } catch (err) {
-    logEvent('out', 'template.error', { to, templateName, error: String(err.message) }, 'error');
+    await logEvent('out', 'template.error', { to, templateName, error: String(err.message) }, 'error');
     // Fallback: try free-form text (works if inside 24h window)
     if (renderedFallbackText) return sendText(toPhone, renderedFallbackText);
     throw err;
@@ -122,13 +122,16 @@ async function sendTemplate(toPhone, templateName, params = [], renderedFallback
  * True if the customer messaged us on WhatsApp within the last 24h —
  * inside Meta's customer-service window, so free-form text is allowed.
  */
-function insideServiceWindow(customerId) {
-  const row = db
-    .prepare(
-      `SELECT 1 FROM messages WHERE customer_id = ? AND channel = 'whatsapp' AND direction = 'in'
-       AND datetime(created_at) > datetime('now', '-24 hours') LIMIT 1`
-    )
-    .get(customerId);
+async function insideServiceWindow(customerId) {
+  const since = new Date(Date.now() - 24 * 3600 * 1000);
+  const row = await Message.findOne({
+    where: {
+      customer_id: customerId,
+      channel: 'whatsapp',
+      direction: 'in',
+      created_at: { [Op.gt]: since },
+    },
+  });
   return !!row;
 }
 

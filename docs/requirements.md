@@ -62,7 +62,7 @@
 ### 6. Quoting (QUO)
 6.1 Quotation builder utilizing catalogue-driven line items and measured quantities.
 
-6.2 Roof area calculation with pitch factors.
+<!-- 6.2 Roof area calculation with pitch factors. -->
 
 6.3 UK tax compliance including per-line VAT, CIS deductions, and reverse charge treatments.
 

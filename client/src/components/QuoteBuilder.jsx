@@ -1,46 +1,58 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { Trash2, Plus, Info, ChevronDown, ChevronRight } from 'lucide-react';
+import { Trash2, Plus, Info, ChevronDown, ChevronRight, Download, ListOrdered, Loader2 } from 'lucide-react';
 import { api, money } from '../lib/api';
 import { Modal } from './ui.jsx';
+import ContactPickers from './ContactPickers.jsx';
+import { primaryOf } from '../lib/contacts';
+import { quoteTaxDefaults, vatSelectOptions } from '../lib/taxDefaults';
+import SelectMenu from './SelectMenu.jsx';
+import DatePicker from './DatePicker.jsx';
+import CatalogueItemInput from './CatalogueItemInput.jsx';
 
-const blankItem = () => ({ description: '', qty: 1, unit_price: 0, vat_code: 'standard', kind: 'both' });
-
-const VAT_OPTIONS = [
-  { code: 'standard', short: '20%', label: 'Standard 20%', help: 'Most repair, maintenance and improvement work.' },
-  { code: 'reduced', short: '5%', label: 'Reduced 5%', help: 'Energy-saving materials, residential conversions, homes empty 2+ years.' },
-  { code: 'zero', short: '0%', label: 'Zero rated', help: 'Qualifying new-build residential and certain charity buildings.' },
-  { code: 'exempt', short: 'Ex', label: 'Exempt', help: 'Outside the scope of VAT. Rare in construction.' },
-];
+const blankItem = () => ({
+  description: '',
+  qty: 1,
+  unit: '',
+  unit_price: 0,
+  vat_code: 'standard',
+  kind: 'both',
+  catalogue_id: null,
+});
 
 const KIND_OPTIONS = [
-  { kind: 'both', short: 'Mixed' },
-  { kind: 'labour', short: 'Labour' },
-  { kind: 'materials', short: 'Mats' },
+  { kind: 'both', label: 'Mixed' },
+  { kind: 'labour', label: 'Labour' },
+  { kind: 'materials', label: 'Materials' },
 ];
 
-export default function QuoteBuilder({ open, onClose, customerId, customer, existingQuote, onSaved }) {
+export default function QuoteBuilder({ open, onClose, customerId, customer, leadId, existingQuote, onSaved }) {
   const [form, setForm] = useState(null);
   const [calc, setCalc] = useState(null);
   const [saving, setSaving] = useState(false);
+  const [downloading, setDownloading] = useState(false);
+  const [sending, setSending] = useState(null);
   const [error, setError] = useState('');
+  const [notice, setNotice] = useState('');
   const [showTerms, setShowTerms] = useState(false);
   const [showTax, setShowTax] = useState(false);
+  const [showGuarantee, setShowGuarantee] = useState(false);
   const [options, setOptions] = useState(null);
 
-  useEffect(() => { if (open && !options) api.get('/quotes/meta/options').then(setOptions); }, [open]);
+  useEffect(() => { if (open && !options) api.get('/quotes/meta/options').then(setOptions).catch(() => setOptions({})); }, [open]);
 
   useEffect(() => {
     if (!open) return;
     const d = options?.defaults || {};
+    const tax = quoteTaxDefaults(customer, options?.uk || {});
     setForm({
       title: existingQuote?.title || '',
       items: existingQuote?.items?.length ? existingQuote.items.map((i) => ({ ...blankItem(), ...i })) : [blankItem()],
       notes: existingQuote?.notes || '',
       valid_until: existingQuote?.valid_until || '',
-      vat_treatment: existingQuote?.vat_treatment || 'standard',
-      cis_applies: !!existingQuote?.cis_applies,
-      cis_rate: existingQuote?.cis_rate ?? 20,
-      retention_percent: existingQuote?.retention_percent || 0,
+      vat_treatment: existingQuote?.vat_treatment || tax.vat_treatment,
+      cis_applies: existingQuote ? !!existingQuote.cis_applies : tax.cis_applies,
+      cis_rate: existingQuote?.cis_rate ?? tax.cis_rate,
+      retention_percent: existingQuote?.retention_percent ?? tax.retention_percent,
       payment_schedule: existingQuote?.payment_schedule
         ? (typeof existingQuote.payment_schedule === 'string' ? JSON.parse(existingQuote.payment_schedule) : existingQuote.payment_schedule)
         : (d.payment_schedule || []),
@@ -54,16 +66,24 @@ export default function QuoteBuilder({ open, onClose, customerId, customer, exis
       provisional_sums: existingQuote?.provisional_sums
         ? (typeof existingQuote.provisional_sums === 'string' ? JSON.parse(existingQuote.provisional_sums) : existingQuote.provisional_sums)
         : [],
+      provisional_sums_in_total: existingQuote ? !!existingQuote.provisional_sums_in_total : false,
+      optional_extras: existingQuote?.optional_extras
+        ? (typeof existingQuote.optional_extras === 'string' ? JSON.parse(existingQuote.optional_extras) : existingQuote.optional_extras)
+        : [],
+      site_id: existingQuote?.site_id || primaryOf(customer?.sites)?.id || '',
+      phone_id: existingQuote?.phone_id || primaryOf(customer?.phones)?.id || '',
+      email_id: existingQuote?.email_id || primaryOf(customer?.emails)?.id || '',
     });
     setError('');
-  }, [open, existingQuote, options]);
+    setNotice('');
+  }, [open, existingQuote, options, customer]);
 
   // Live totals from the server so the preview uses the exact same engine
   // that will produce the PDF — no second implementation to drift.
   const refreshTotals = useCallback(async (f) => {
     if (!f) return;
-    try { setCalc(await api.post('/quotes/preview', f)); } catch { /* ignore */ }
-  }, []);
+    try { setCalc(await api.post('/quotes/preview', { ...f, customer_id: customerId })); } catch { /* ignore */ }
+  }, [customerId]);
 
   useEffect(() => {
     if (!form) return;
@@ -80,6 +100,28 @@ export default function QuoteBuilder({ open, onClose, customerId, customer, exis
     set('items', next);
   };
 
+  const setLineDescription = (i, description) => {
+    const next = [...form.items];
+    next[i] = { ...next[i], description, catalogue_id: null };
+    set('items', next);
+  };
+
+  const applyCatalogueLine = (i, cat) => {
+    if (!cat) return;
+    const next = [...form.items];
+    next[i] = {
+      ...blankItem(),
+      ...next[i],
+      catalogue_id: cat.id,
+      description: cat.description,
+      unit: cat.unit,
+      unit_price: cat.unit_price,
+      vat_code: cat.vat_code || next[i].vat_code,
+      kind: cat.kind || next[i].kind,
+    };
+    set('items', next);
+  };
+
   const isDomestic = (customer?.customer_type || 'domestic') === 'domestic';
 
   const submit = async (e) => {
@@ -87,49 +129,210 @@ export default function QuoteBuilder({ open, onClose, customerId, customer, exis
     setSaving(true);
     setError('');
     try {
+      if (existingQuote && ['accepted', 'declined'].includes(existingQuote.status)) {
+        setError('Quote already decided — clone it with a new title instead');
+        return;
+      }
       if (existingQuote) await api.put(`/quotes/${existingQuote.id}`, form);
-      else await api.post('/quotes', { customer_id: customerId, ...form });
+      else await api.post('/quotes', { customer_id: customerId, lead_id: leadId || null, ...form });
       onSaved();
     } catch (err) { setError(err.message); }
     finally { setSaving(false); }
   };
 
+  const cloneQuote = async () => {
+    if (!existingQuote) return;
+    const title = String(form.title || '').trim();
+    if (!title) {
+      setError('Quote title is required');
+      return;
+    }
+    setSaving(true);
+    setError('');
+    try {
+      await api.post(`/quotes/${existingQuote.id}/clone`, { title });
+      onSaved();
+    } catch (err) { setError(err.message); }
+    finally { setSaving(false); }
+  };
+
+  const downloadPdf = async () => {
+    if (!existingQuote?.id) {
+      setError('Save the quote first, then you can download the PDF.');
+      return;
+    }
+    setDownloading(true);
+    setError('');
+    setNotice('');
+    try {
+      const { pdf } = await api.post(`/quotes/${existingQuote.id}/pdf`);
+      await api.download(`/files/${encodeURIComponent(pdf)}?download=1`, `${existingQuote.ref}.pdf`);
+    } catch (err) { setError(err.message); }
+    finally { setDownloading(false); }
+  };
+
+  const sendQuote = async (channels) => {
+    if (!existingQuote?.id) {
+      setError('Save the quote first, then you can send it.');
+      return;
+    }
+    setSending(channels[0] === 'whatsapp' ? 'whatsapp' : 'email');
+    setError('');
+    setNotice('');
+    try {
+      await api.post(`/quotes/${existingQuote.id}/send`, { channels });
+      const via = channels[0] === 'whatsapp' ? 'WhatsApp' : 'Email';
+      setNotice(`Quote sent via ${via}.`);
+    } catch (err) { setError(err.message); }
+    finally { setSending(null); }
+  };
+
   return (
-    <Modal open={open} onClose={onClose} title={existingQuote ? `Edit quote ${existingQuote.ref}` : 'New quotation'} wide>
+    <Modal open={open} onClose={onClose} title={existingQuote ? `Edit quote ${existingQuote.ref}` : 'New quotation'} size="4xl">
       <form onSubmit={submit} className="space-y-4">
         {error && <div className="bg-red-50 text-red-700 text-sm rounded-lg px-3 py-2">{error}</div>}
+        {notice && <div className="bg-emerald-50 text-emerald-800 text-sm rounded-lg px-3 py-2">{notice}</div>}
 
         <div>
           <label className="label">Quote title</label>
           <input className="input" value={form.title} onChange={(e) => set('title', e.target.value)} placeholder="e.g. Full re-roof — 1930s semi-detached" required />
         </div>
 
+        <ContactPickers
+          customer={customer}
+          customerId={customerId}
+          idPrefix="quote-contact"
+          value={{ site_id: form.site_id, phone_id: form.phone_id, email_id: form.email_id }}
+          onChange={(next) => setForm((f) => ({ ...f, ...next }))}
+          onError={setError}
+        />
+
         {/* ---------- line items ---------- */}
-        <div>
-          <label className="label">Scope of works</label>
-          <div className="border border-slate-200 rounded-lg overflow-hidden">
-            <div className="grid grid-cols-[1fr_54px_84px_74px_74px_84px_28px] gap-1.5 bg-slate-50 px-2.5 py-2 text-[11px] font-medium text-slate-500">
-              <div>Description</div><div>Qty</div><div>Unit £</div><div>VAT</div><div>Type</div><div className="text-right">Total £</div><div></div>
+        <div className="min-w-0 rounded-[1.25rem] bg-slate-50/80 p-4 ring-1 ring-slate-200/80">
+          <div className="mb-3 flex items-start gap-3">
+            <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-white text-slate-600 ring-1 ring-slate-200/80">
+              <ListOrdered size={15} />
             </div>
-            {form.items.map((it, i) => (
-              <div key={i} className="grid grid-cols-[1fr_54px_84px_74px_74px_84px_28px] gap-1.5 px-2.5 py-2 border-t border-slate-100 items-center">
-                <input className="input !py-1.5 !text-sm" value={it.description} onChange={(e) => updateItem(i, 'description', e.target.value)} placeholder="Description" required />
-                <input className="input !py-1.5 !text-sm !px-2" type="number" min="0" step="any" value={it.qty} onChange={(e) => updateItem(i, 'qty', e.target.value)} />
-                <input className="input !py-1.5 !text-sm !px-2" type="number" min="0" step="0.01" value={it.unit_price} onChange={(e) => updateItem(i, 'unit_price', e.target.value)} />
-                <select className="input !py-1.5 !text-xs !px-1.5" value={it.vat_code} onChange={(e) => updateItem(i, 'vat_code', e.target.value)}>
-                  {VAT_OPTIONS.map((v) => <option key={v.code} value={v.code} title={v.help}>{v.short}</option>)}
-                </select>
-                <select className="input !py-1.5 !text-xs !px-1.5" value={it.kind} onChange={(e) => updateItem(i, 'kind', e.target.value)}>
-                  {KIND_OPTIONS.map((k) => <option key={k.kind} value={k.kind}>{k.short}</option>)}
-                </select>
-                <div className="text-sm text-slate-600 text-right pr-1">{(it.qty * it.unit_price).toFixed(2)}</div>
-                <button type="button" onClick={() => set('items', form.items.filter((_, x) => x !== i))} className="text-slate-300 hover:text-red-500"><Trash2 size={14} /></button>
+            <div className="min-w-0 flex-1">
+              <div className="flex flex-wrap items-center gap-2">
+                <label className="label !mb-0 !text-[13px] !font-semibold !text-slate-900">Scope of works</label>
+                <span className="rounded-full bg-white px-2 py-0.5 text-[11px] font-medium tabular-nums text-slate-500 ring-1 ring-slate-200/80">
+                  {form.items.length} line{form.items.length === 1 ? '' : 's'}
+                </span>
               </div>
-            ))}
+              <p className="mt-0.5 text-xs leading-relaxed text-slate-500">
+                Type to search the catalogue, or keep a custom name. Quantity and unit price can still be changed. Type matters for CIS — labour is deductible, materials are not.
+              </p>
+            </div>
           </div>
-          <div className="flex items-center justify-between mt-2">
-            <button type="button" onClick={() => set('items', [...form.items, blankItem()])} className="btn-ghost !py-1 !px-2 text-xs"><Plus size={14} /> Add line</button>
-            <span className="text-[11px] text-slate-400">Type matters for CIS — labour is deductible, materials are not.</span>
+
+          <div className="space-y-2.5">
+            {form.items.map((it, i) => {
+              const lineNet = (Number(it.qty || 0) * Number(it.unit_price || 0)).toFixed(2);
+              return (
+                <div
+                  key={i}
+                  className="rounded-2xl bg-white p-3.5 shadow-[0_1px_2px_rgba(15,23,42,0.04)] ring-1 ring-slate-200/90"
+                >
+                  <div className="flex min-w-0 flex-col gap-3 sm:flex-row sm:items-start">
+                    <div className="flex min-w-0 flex-1 items-start gap-3">
+                      <div className="mt-1.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-slate-100 text-[11px] font-semibold tabular-nums text-slate-500">
+                        {i + 1}
+                      </div>
+                      <div className="min-w-0 flex-1">
+                      <CatalogueItemInput
+                        label={`Item ${i + 1}`}
+                        value={it.description || ''}
+                        onChange={(description) => setLineDescription(i, description)}
+                        onPick={(cat) => applyCatalogueLine(i, cat)}
+                        catalogue={options?.catalogue || []}
+                        placeholder="Search or type an item"
+                        required
+                      />
+                      <div className="mt-2.5 grid grid-cols-2 gap-2 sm:grid-cols-5">
+                        <label className="block min-w-0">
+                          <span className="label">Qty</span>
+                          <input
+                            className="input !px-2.5"
+                            type="number"
+                            min="0"
+                            step="any"
+                            value={it.qty}
+                            onChange={(e) => updateItem(i, 'qty', e.target.value)}
+                            aria-label={`Quantity ${i + 1}`}
+                          />
+                        </label>
+                        <label className="block min-w-0">
+                          <span className="label">Unit</span>
+                          <input
+                            className="input !px-2.5"
+                            value={it.unit || ''}
+                            onChange={(e) => updateItem(i, 'unit', e.target.value)}
+                            placeholder="m²"
+                            aria-label={`Unit ${i + 1}`}
+                          />
+                        </label>
+                        <label className="block min-w-0">
+                          <span className="label">Unit £</span>
+                          <input
+                            className="input !px-2.5"
+                            type="number"
+                            min="0"
+                            step="0.01"
+                            value={it.unit_price}
+                            onChange={(e) => updateItem(i, 'unit_price', e.target.value)}
+                            aria-label={`Unit price ${i + 1}`}
+                          />
+                        </label>
+                        <div className="min-w-0">
+                          <span className="label">VAT</span>
+                          <SelectMenu
+                            label={`VAT ${i + 1}`}
+                            value={it.vat_code}
+                            onChange={(vat_code) => updateItem(i, 'vat_code', vat_code)}
+                            options={vatSelectOptions(options?.vat_rates, it.vat_code)}
+                          />
+                        </div>
+                        <div className="min-w-0">
+                          <span className="label">Type</span>
+                          <SelectMenu
+                            label={`Type ${i + 1}`}
+                            value={it.kind}
+                            onChange={(kind) => updateItem(i, 'kind', kind)}
+                            options={KIND_OPTIONS.map((k) => ({ value: k.kind, label: k.label }))}
+                          />
+                        </div>
+                      </div>
+                      </div>
+                    </div>
+                    <div className="flex items-center justify-between gap-3 pl-10 sm:flex-col sm:items-end sm:justify-start sm:gap-2 sm:pl-0 sm:pt-1">
+                      <div className="text-right">
+                        <div className="text-[10px] font-medium uppercase tracking-wide text-slate-400">Total £</div>
+                        <div className="text-sm font-semibold tabular-nums text-slate-900">{lineNet}</div>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => set('items', form.items.filter((_, x) => x !== i))}
+                        className="rounded-lg p-1.5 text-red-500 transition-colors hover:bg-red-50 hover:text-red-600"
+                        aria-label={`Remove line ${i + 1}`}
+                      >
+                        <Trash2 size={14} />
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+
+          <div className="mt-3 flex justify-end">
+            <button
+              type="button"
+              onClick={() => set('items', [...form.items, blankItem()])}
+              className="btn-secondary !h-10 shrink-0"
+            >
+              <Plus size={14} /> Add line
+            </button>
           </div>
         </div>
 
@@ -153,6 +356,21 @@ export default function QuoteBuilder({ open, onClose, customerId, customer, exis
                 <div className="flex justify-between font-bold text-slate-900 pt-1.5 border-t border-slate-300 text-base">
                   <span>Total</span><span>{money(calc.total)}</span>
                 </div>
+                {calc.provisional_sums_total > 0 && (
+                  <Row
+                    label={calc.provisional_sums_in_total ? 'Provisional sums' : 'Provisional sums (not included)'}
+                    value={money(calc.provisional_sums_total)}
+                    muted={!calc.provisional_sums_in_total}
+                  />
+                )}
+                {calc.provisional_sums_in_total && calc.provisional_sums_total > 0 && (
+                  <div className="flex justify-between font-bold text-slate-900 pt-1.5 border-t border-slate-200">
+                    <span>Grand total</span><span>{money(calc.grand_total)}</span>
+                  </div>
+                )}
+                {calc.optional_extras_total > 0 && (
+                  <Row label="Optional extras (not included)" value={money(calc.optional_extras_total)} muted />
+                )}
                 {calc.vat_treatment === 'reverse_charge' && (
                   <div className="text-[11px] text-amber-700 bg-amber-50 rounded px-2 py-1">
                     Customer accounts for {money(calc.reverse_charge_vat)} VAT to HMRC
@@ -175,17 +393,26 @@ export default function QuoteBuilder({ open, onClose, customerId, customer, exis
           summary={`${form.vat_treatment === 'reverse_charge' ? 'Reverse charge' : form.vat_treatment === 'not_registered' ? 'No VAT' : 'Standard VAT'}${form.cis_applies ? ` · CIS ${form.cis_rate}%` : ''}${form.retention_percent ? ` · ${form.retention_percent}% retention` : ''}`}>
           <div className="space-y-3">
             <div>
-              <label className="label">VAT treatment</label>
-              <select className="input" value={form.vat_treatment} onChange={(e) => set('vat_treatment', e.target.value)}>
-                <option value="standard">Standard — charge VAT at the rates set per line</option>
-                <option value="reverse_charge">Domestic Reverse Charge — customer accounts for the VAT</option>
-                <option value="not_registered">Not VAT registered — no VAT charged</option>
-              </select>
+              <label className="label" htmlFor="quote-vat-treatment">VAT treatment</label>
+              <SelectMenu
+                id="quote-vat-treatment"
+                label="VAT treatment"
+                value={form.vat_treatment}
+                onChange={(vat_treatment) => set('vat_treatment', vat_treatment)}
+                options={[
+                  { value: 'standard', label: 'Standard — charge VAT at the rates set per line' },
+                  { value: 'reverse_charge', label: 'Domestic Reverse Charge — customer accounts for the VAT' },
+                  { value: 'not_registered', label: 'Not VAT registered — no VAT charged' },
+                ]}
+              />
               {form.vat_treatment === 'reverse_charge' && (
                 <p className="text-xs text-amber-700 bg-amber-50 rounded px-2.5 py-2 mt-1.5 flex gap-1.5">
                   <Info size={13} className="flex-shrink-0 mt-0.5" />
                   Only for CIS-registered business customers who are not the end user. The quote will carry the VAT Act 1994 s.55A wording automatically.
                 </p>
+              )}
+              {!existingQuote && (customer?.customer_type || 'domestic') === 'commercial' && (
+                <p className="text-xs text-slate-500 mt-1.5">Commercial quotes start on reverse charge and CIS 20%. You can still change this.</p>
               )}
             </div>
 
@@ -196,26 +423,46 @@ export default function QuoteBuilder({ open, onClose, customerId, customer, exis
             {form.cis_applies && (
               <div>
                 <label className="label">CIS rate</label>
-                <select className="input" value={form.cis_rate} onChange={(e) => set('cis_rate', Number(e.target.value))}>
-                  <option value={20}>20% — registered subcontractor</option>
-                  <option value={30}>30% — unverified</option>
-                  <option value={0}>0% — gross payment status</option>
-                </select>
+                <SelectMenu
+                  label="CIS rate"
+                  value={form.cis_rate}
+                  onChange={(cis_rate) => set('cis_rate', Number(cis_rate))}
+                  options={[
+                    { value: 20, label: '20% — registered subcontractor' },
+                    { value: 30, label: '30% — unverified' },
+                    { value: 0, label: '0% — gross payment status' },
+                  ]}
+                />
                 <p className="text-xs text-slate-400 mt-1">Deducted from the labour element only. Materials are never subject to CIS.</p>
               </div>
             )}
 
             <div>
-              <label className="label">Retention held back (%)</label>
-              <input className="input" type="number" min="0" max="20" step="0.5" value={form.retention_percent} onChange={(e) => set('retention_percent', Number(e.target.value))} />
-              <p className="text-xs text-slate-400 mt-1">Common on commercial contracts. Leave at 0 for domestic work.</p>
+              <label className="label" htmlFor="quote-retention">Retention held back (%)</label>
+              <input id="quote-retention" className="input" type="number" min="0" max="20" step="0.5" value={form.retention_percent} onChange={(e) => set('retention_percent', Number(e.target.value))} />
+              <p className="text-xs text-slate-400 mt-1">Percentage of the net works total. Commercial quotes start at 5%; domestic at 0%. You can still change this.</p>
+            </div>
+          </div>
+        </Section>
+
+        <Section open={showGuarantee} onToggle={() => setShowGuarantee(!showGuarantee)} title="Guarantee terms"
+          summary={`${form.warranty_years || 0} year guarantee`}>
+          <div className="space-y-3">
+            <div>
+              <label className="label" htmlFor="quote-warranty-years">Guarantee (years)</label>
+              <input id="quote-warranty-years" className="input" type="number" min="0" value={form.warranty_years} onChange={(e) => set('warranty_years', Number(e.target.value))} />
+            </div>
+            <div>
+              <label className="label" htmlFor="quote-warranty-text">Guarantee wording</label>
+              <textarea id="quote-warranty-text" className="input" rows={3} value={form.warranty_text} onChange={(e) => set('warranty_text', e.target.value)} />
+              <p className="text-xs text-slate-400 mt-1">Use {'{years}'} where the number of years should appear on the PDF.</p>
             </div>
           </div>
         </Section>
 
         {/* ---------- payment schedule ---------- */}
         <Section open={showTerms} onToggle={() => setShowTerms(!showTerms)} title="Payment schedule & terms"
-          summary={`${form.payment_schedule.length} payment stage${form.payment_schedule.length === 1 ? '' : 's'} · ${form.warranty_years}yr guarantee`}>
+          summary={`${form.payment_schedule.length} payment stage${form.payment_schedule.length === 1 ? '' : 's'}`}>
           <div className="space-y-4">
             <div>
               <label className="label">Payment stages</label>
@@ -242,8 +489,14 @@ export default function QuoteBuilder({ open, onClose, customerId, customer, exis
             </div>
 
             <div className="grid sm:grid-cols-2 gap-3">
-              <div><label className="label">Guarantee (years)</label><input className="input" type="number" value={form.warranty_years} onChange={(e) => set('warranty_years', Number(e.target.value))} /></div>
-              <div><label className="label">Valid until</label><input className="input" type="date" value={form.valid_until ? form.valid_until.slice(0, 10) : ''} onChange={(e) => set('valid_until', e.target.value)} /></div>
+              <div>
+                <label className="label">Valid until</label>
+                <DatePicker
+                  label="Valid until"
+                  value={form.valid_until ? form.valid_until.slice(0, 10) : ''}
+                  onChange={(valid_until) => set('valid_until', valid_until)}
+                />
+              </div>
               <div><label className="label">Lead time</label><input className="input" value={form.lead_time} onChange={(e) => set('lead_time', e.target.value)} /></div>
               <div><label className="label">Time on site</label><input className="input" value={form.duration_estimate} onChange={(e) => set('duration_estimate', e.target.value)} placeholder="e.g. 5–7 working days" /></div>
             </div>
@@ -259,11 +512,37 @@ export default function QuoteBuilder({ open, onClose, customerId, customer, exis
                   <input className="input !py-1.5 !text-sm" value={ps.description} placeholder="e.g. Rotten rafter feet, if found"
                     onChange={(e) => { const n = [...form.provisional_sums]; n[i] = { ...n[i], description: e.target.value }; set('provisional_sums', n); }} />
                   <input className="input !py-1.5 !text-sm" type="number" value={ps.amount} placeholder="£"
+                    aria-label={`Provisional sum amount ${i + 1}`}
                     onChange={(e) => { const n = [...form.provisional_sums]; n[i] = { ...n[i], amount: Number(e.target.value) }; set('provisional_sums', n); }} />
                   <button type="button" onClick={() => set('provisional_sums', form.provisional_sums.filter((_, x) => x !== i))} className="text-slate-300 hover:text-red-500"><Trash2 size={14} /></button>
                 </div>
               ))}
               <button type="button" onClick={() => set('provisional_sums', [...form.provisional_sums, { description: '', amount: 0 }])} className="btn-ghost !py-1 !px-2 text-xs"><Plus size={14} /> Add provisional sum</button>
+              <label className="flex items-center gap-2 text-sm text-slate-700 mt-2">
+                <input
+                  type="checkbox"
+                  checked={!!form.provisional_sums_in_total}
+                  onChange={(e) => set('provisional_sums_in_total', e.target.checked)}
+                />
+                Include provisional sums in the grand total
+              </label>
+              <p className="text-xs text-slate-400 mt-1">Off: listed as estimates only. On: added after the works total.</p>
+            </div>
+
+            <div>
+              <label className="label">Optional extras</label>
+              {form.optional_extras.map((ex, i) => (
+                <div key={i} className="grid grid-cols-[1fr_90px_28px] gap-2 mb-1.5">
+                  <input className="input !py-1.5 !text-sm" value={ex.description} placeholder="e.g. Supply & fit Velux window"
+                    onChange={(e) => { const n = [...form.optional_extras]; n[i] = { ...n[i], description: e.target.value }; set('optional_extras', n); }} />
+                  <input className="input !py-1.5 !text-sm" type="number" value={ex.amount} placeholder="£"
+                    aria-label={`Optional extra amount ${i + 1}`}
+                    onChange={(e) => { const n = [...form.optional_extras]; n[i] = { ...n[i], amount: Number(e.target.value) }; set('optional_extras', n); }} />
+                  <button type="button" onClick={() => set('optional_extras', form.optional_extras.filter((_, x) => x !== i))} className="text-slate-300 hover:text-red-500"><Trash2 size={14} /></button>
+                </div>
+              ))}
+              <button type="button" onClick={() => set('optional_extras', [...form.optional_extras, { description: '', amount: 0 }])} className="btn-ghost !py-1 !px-2 text-xs"><Plus size={14} /> Add optional extra</button>
+              <p className="text-xs text-slate-400 mt-1">Listed after the works total and not included. Tick which ones were taken when the quote is accepted.</p>
             </div>
 
             <div><label className="label">Notes shown on the quote</label><textarea className="input" rows={2} value={form.notes} onChange={(e) => set('notes', e.target.value)} /></div>
@@ -280,8 +559,55 @@ export default function QuoteBuilder({ open, onClose, customerId, customer, exis
           </p>
         )}
 
-        <button className="btn-primary w-full" disabled={saving}>
-          {saving ? 'Saving…' : existingQuote ? 'Save changes' : 'Create quote'}
+        {existingQuote && ['accepted', 'declined'].includes(existingQuote.status) && (
+          <p className="text-xs text-amber-800 bg-amber-50 border border-amber-100 rounded-lg px-3 py-2">
+            This quote is {existingQuote.status}. Clone it with a new title to issue another quote with a new reference.
+          </p>
+        )}
+
+        {existingQuote && ['accepted', 'declined'].includes(existingQuote.status) ? (
+          <button type="button" className="btn-primary w-full" disabled={saving} onClick={cloneQuote}>
+            {saving ? 'Cloning…' : 'Clone quote'}
+          </button>
+        ) : (
+          <button className="btn-primary w-full" disabled={saving}>
+            {saving ? 'Saving…' : existingQuote ? 'Save changes' : 'Create quote'}
+          </button>
+        )}
+        {!['accepted', 'declined'].includes(existingQuote?.status) && (
+          <div className="flex gap-1.5">
+            <button
+              type="button"
+              className="btn-secondary flex-1 inline-flex items-center justify-center gap-1.5"
+              aria-label="Send WhatsApp"
+              aria-busy={sending === 'whatsapp' || undefined}
+              disabled={saving || downloading || sending || !existingQuote?.id}
+              title={!existingQuote?.id ? 'Save the quote first' : undefined}
+              onClick={() => sendQuote(['whatsapp'])}
+            >
+              {sending === 'whatsapp' ? <><Loader2 size={14} className="animate-spin" /> Sending…</> : 'Send WhatsApp'}
+            </button>
+            <button
+              type="button"
+              className="btn-secondary flex-1 inline-flex items-center justify-center gap-1.5"
+              aria-label="Send Email"
+              aria-busy={sending === 'email' || undefined}
+              disabled={saving || downloading || sending || !existingQuote?.id}
+              title={!existingQuote?.id ? 'Save the quote first' : undefined}
+              onClick={() => sendQuote(['email'])}
+            >
+              {sending === 'email' ? <><Loader2 size={14} className="animate-spin" /> Sending…</> : 'Send Email'}
+            </button>
+          </div>
+        )}
+        <button
+          type="button"
+          className="btn-secondary w-full inline-flex items-center justify-center gap-1.5"
+          disabled={saving || downloading || sending || !existingQuote?.id}
+          title={!existingQuote?.id ? 'Save the quote first' : undefined}
+          onClick={downloadPdf}
+        >
+          <Download size={14} /> {downloading ? 'Preparing PDF…' : 'Download PDF'}
         </button>
       </form>
     </Modal>

@@ -1,9 +1,7 @@
 ---
-alwaysApply: true
----
----
 description: Global architectural standards, coding practices, and CRM domain rules.
 globs: *
+alwaysApply: true
 ---
 - **Product Context**: You are building a production-grade CRM for the Roofing Industry (managing leads, roof inspections, insurance claims, estimates, and crew scheduling). Treat all code as enterprise-ready.
 - **Code Standards**: 

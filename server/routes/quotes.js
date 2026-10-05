@@ -1,56 +1,78 @@
-// Quotation creation & sending (PRD §9.4) + decision flow
 const express = require('express');
 const crypto = require('crypto');
 const path = require('path');
-const { db, pj, j, nextRef, getSetting, money, DATA_DIR } = require('../db');
-const { requireAuth, requireOffice } = require('../auth');
-const { setStage, logActivity } = require('../services/pipeline');
+const { Op } = require('sequelize');
+const { Quote, Customer, Followup, Job } = require('../models');
+const { nextRef, getSetting, money, DATA_DIR, plain } = require('../db');
+const { requireAuth, requireOffice, asyncHandler } = require('../auth');
+const { setStage, logActivity, resolveLeadForCustomer } = require('../services/pipeline');
 const { sendToCustomer } = require('../services/messenger');
-const { scheduleForQuote, render } = require('../services/followups');
-const { resolveRule, ensureTask } = require('../services/taskEngine');
+const { scheduleForQuote, render, cancelPendingForQuote } = require('../services/followups');
+const { resolveRule, ensureTask, resolveQuoteFollowupTask } = require('../services/taskEngine');
 const { quotePdf } = require('../services/pdf');
+const contacts = require('../customerContacts');
+const geocode = require('../geocode');
 
 const router = express.Router();
 router.use(requireAuth, requireOffice);
 
 const ukTax = require('../services/ukTax');
+const catalogue = require('../catalogue');
+const { normaliseExtras, pickAcceptedExtras, jobValueFromQuote } = require('../quoteExtras');
 
-/**
- * Build the full UK breakdown for a quote and return the column values
- * ready to write. Keeps create and update in perfect agreement.
- */
-function buildTotals(items, opts) {
-  const uk = getSetting('uk') || {};
-  const treatment = opts.vat_treatment || (uk.vat_registered === false ? 'not_registered' : 'standard');
-  const calc = ukTax.calculate(items, {
-    vat_treatment: treatment,
-    cis_applies: !!opts.cis_applies,
-    cis_rate: opts.cis_rate ?? uk.default_cis_rate ?? 20,
-    retention_percent: opts.retention_percent || 0,
-    payment_schedule: opts.payment_schedule || [],
-  });
+function buildTotals(items, opts, customer) {
+  return ukTax.documentTotals(items, opts, customer, opts.uk || {});
+}
+
+/** Copy a saved quote into a new draft with a fresh ref (requirement 6.5). */
+function revisionFields(source, { ref, userId, validUntil, title }) {
+  const src = plain(source);
+  const nextTitle = String(title || src.title || '').trim();
   return {
-    calc,
-    cols: {
-      subtotal: calc.subtotal,
-      vat_amount: calc.vat_total,
-      total: calc.total,
-      vat_treatment: calc.vat_treatment,
-      labour_total: calc.labour_total,
-      materials_total: calc.materials_total,
-      vat_breakdown: j(calc.vat_breakdown),
-      cis_applies: calc.cis_applies ? 1 : 0,
-      cis_rate: calc.cis_rate,
-      cis_deduction: calc.cis_deduction,
-      retention_percent: calc.retention_percent,
-      retention_amount: calc.retention_amount,
-      due_now: calc.due_now,
-      payment_schedule: j(calc.payment_schedule),
-    },
+    customer_id: src.customer_id,
+    ref,
+    title: nextTitle || src.title,
+    items: src.items || [],
+    subtotal: src.subtotal,
+    vat_rate: src.vat_rate,
+    vat_amount: src.vat_amount,
+    total: src.total,
+    valid_until: validUntil,
+    status: 'draft',
+    notes: src.notes || null,
+    created_by: userId,
+    vat_treatment: src.vat_treatment,
+    labour_total: src.labour_total,
+    materials_total: src.materials_total,
+    vat_breakdown: src.vat_breakdown || [],
+    cis_applies: !!src.cis_applies,
+    cis_rate: src.cis_rate,
+    cis_deduction: src.cis_deduction,
+    retention_percent: src.retention_percent,
+    retention_amount: src.retention_amount,
+    due_now: src.due_now,
+    payment_schedule: src.payment_schedule || [],
+    inclusions: src.inclusions || null,
+    exclusions: src.exclusions || null,
+    warranty_years: src.warranty_years,
+    warranty_text: src.warranty_text || null,
+    lead_time: src.lead_time || null,
+    duration_estimate: src.duration_estimate || null,
+    access_requirements: src.access_requirements || null,
+    provisional_sums: src.provisional_sums || [],
+    provisional_sums_in_total: !!src.provisional_sums_in_total,
+    optional_extras: normaliseExtras(src.optional_extras),
+    accepted_optional_extras: [],
+    cancellation_rights_apply: !!src.cancellation_rights_apply,
+    waiver_signed: false,
+    site_id: src.site_id || null,
+    phone_id: src.phone_id || null,
+    email_id: src.email_id || null,
+    lead_id: src.lead_id || null,
+    revised_from_id: src.id,
   };
 }
 
-/** Signed public token so WhatsApp/Meta can fetch the PDF without auth. */
 function fileToken(filename) {
   return crypto.createHmac('sha256', process.env.JWT_SECRET || 'dev-secret-change-me').update(filename).digest('hex').slice(0, 24);
 }
@@ -58,150 +80,312 @@ function publicPdfUrl(filename) {
   return `${process.env.APP_URL || 'http://localhost:4000'}/public-files/${fileToken(filename)}/${filename}`;
 }
 
-router.get('/', (req, res) => {
-  const { status, q } = req.query;
-  let sql = `SELECT q.*, c.name AS customer_name FROM quotes q JOIN customers c ON c.id = q.customer_id WHERE 1=1`;
-  const params = [];
-  if (status && status !== 'ALL') { sql += ' AND q.status = ?'; params.push(status); }
-  if (q) { sql += ' AND (c.name LIKE ? OR q.ref LIKE ? OR q.title LIKE ?)'; params.push(...Array(3).fill(`%${q}%`)); }
-  sql += ' ORDER BY q.id DESC LIMIT 200';
-  const quotes = db.prepare(sql).all(...params).map((r) => ({ ...r, items: pj(r.items, []) }));
-  res.json({ quotes });
-});
+/**
+ * Generate (or regenerate) the branded quote PDF and store the filename.
+ * Does not send the quote or change status (requirement 6.6).
+ */
+async function generateAndStoreQuotePdf(quote) {
+  const customer = await contacts.loadCustomerWithContacts(quote.customer_id);
+  if (!customer) return { error: 'Customer not found', status: 404 };
+  const forDoc = contacts.applySelectedContacts(customer, quote);
+  const filename = await quotePdf(plain(quote), forDoc);
+  await quote.update({ pdf_file: filename });
+  return { filename, customer, forDoc };
+}
 
-router.post('/', (req, res) => {
+router.get('/', asyncHandler(async (req, res) => {
+  const { status, q } = req.query;
+  const where = {};
+  if (status && status !== 'ALL') where.status = status;
+  const customerWhere = {};
+  if (q) {
+    const like = `%${q}%`;
+    where[Op.or] = [{ ref: { [Op.iLike]: like } }, { title: { [Op.iLike]: like } }];
+    customerWhere.name = { [Op.iLike]: like };
+  }
+  const rows = await Quote.findAll({
+    where,
+    include: [{ model: Customer, attributes: ['name'], required: true }],
+    order: [['id', 'DESC']],
+    limit: 200,
+  });
+  const quotes = rows.map((r) => {
+    const o = plain(r);
+    o.customer_name = o.Customer?.name;
+    delete o.Customer;
+    return o;
+  });
+  res.json({ quotes });
+}));
+
+router.post('/', asyncHandler(async (req, res) => {
   const b = req.body || {};
   const { customer_id, title, items = [], notes, valid_until } = b;
   if (!customer_id || !title) return res.status(400).json({ error: 'customer_id and title required' });
 
-  const customer = db.prepare('SELECT * FROM customers WHERE id = ?').get(customer_id);
+  const customer = await Customer.findByPk(customer_id);
   if (!customer) return res.status(404).json({ error: 'Customer not found' });
+  let lead = null;
+  try {
+    lead = await resolveLeadForCustomer(customer_id, b.lead_id);
+  } catch (err) {
+    return res.status(err.status || 400).json({ error: err.message });
+  }
+  const picked = await contacts.resolveCustomerContactSelection(customer_id, b);
+  if (picked.error) return res.status(400).json({ error: picked.error });
 
-  const defaults = getSetting('quote_defaults') || {};
+  const defaults = (await getSetting('quote_defaults')) || {};
+  const uk = (await getSetting('uk')) || {};
   const { calc, cols } = buildTotals(items, {
+    uk,
     vat_treatment: b.vat_treatment,
     cis_applies: b.cis_applies,
     cis_rate: b.cis_rate,
     retention_percent: b.retention_percent,
     payment_schedule: b.payment_schedule || defaults.payment_schedule || [],
-  });
+    provisional_sums: b.provisional_sums || [],
+    provisional_sums_in_total: b.provisional_sums_in_total,
+    optional_extras: b.optional_extras || [],
+  }, customer);
 
-  const ref = nextRef('quote');
-  const validUntil = valid_until || new Date(Date.now() + getSetting('quote_validity_days') * 86400000).toISOString().slice(0, 10);
-
-  // The 14-day cancellation right applies to consumers, not businesses.
+  const ref = await nextRef('quote');
+  const validUntil = valid_until || new Date(Date.now() + (await getSetting('quote_validity_days')) * 86400000).toISOString().slice(0, 10);
   const isDomestic = (customer.customer_type || 'domestic') === 'domestic';
 
-  const r = db.prepare(
-    `INSERT INTO quotes (
-       customer_id, ref, title, items, subtotal, vat_rate, vat_amount, total, valid_until, notes, created_by,
-       vat_treatment, labour_total, materials_total, vat_breakdown,
-       cis_applies, cis_rate, cis_deduction, retention_percent, retention_amount, due_now,
-       payment_schedule, inclusions, exclusions, warranty_years, warranty_text,
-       lead_time, duration_estimate, access_requirements, provisional_sums,
-       cancellation_rights_apply
-     ) VALUES (?,?,?,?,?,?,?,?,?,?,?, ?,?,?,?, ?,?,?,?,?,?, ?,?,?,?,?, ?,?,?,?, ?)`
-  ).run(
-    customer_id, ref, title, j(items), cols.subtotal, getSetting('vat_rate'), cols.vat_amount, cols.total, validUntil, notes || null, req.user.id,
-    cols.vat_treatment, cols.labour_total, cols.materials_total, cols.vat_breakdown,
-    cols.cis_applies, cols.cis_rate, cols.cis_deduction, cols.retention_percent, cols.retention_amount, cols.due_now,
-    cols.payment_schedule,
-    b.inclusions ?? defaults.inclusions ?? null,
-    b.exclusions ?? defaults.exclusions ?? null,
-    b.warranty_years ?? defaults.warranty_years ?? null,
-    b.warranty_text ?? defaults.warranty_text ?? null,
-    b.lead_time ?? defaults.lead_time ?? null,
-    b.duration_estimate ?? null,
-    b.access_requirements ?? null,
-    j(b.provisional_sums || []),
-    isDomestic ? 1 : 0
-  );
-
-  resolveRule(`produce_quote:customer:${customer_id}`);
-  logActivity(customer_id, req.user.id, 'quote_created', `Quote ${ref} created — ${money(cols.total)}`, 'quote', r.lastInsertRowid);
-  res.json({ id: r.lastInsertRowid, ref, calc });
-});
-
-/** Live totals preview for the quote builder — no database write. */
-router.post('/preview', (req, res) => {
-  const b = req.body || {};
-  const { calc } = buildTotals(b.items || [], b);
-  res.json(calc);
-});
-
-/** Reference data the quote builder needs (VAT codes, CIS rates, defaults). */
-router.get('/meta/options', (req, res) => {
-  res.json({
-    vat_rates: ukTax.VAT_RATES,
-    cis_rates: ukTax.CIS_RATES,
-    uk: getSetting('uk'),
-    defaults: getSetting('quote_defaults'),
+  const created = await Quote.create({
+    customer_id, lead_id: lead?.id || null, ref, title, items,
+    subtotal: cols.subtotal,
+    vat_rate: await getSetting('vat_rate'),
+    vat_amount: cols.vat_amount,
+    total: cols.total,
+    valid_until: validUntil,
+    notes: notes || null,
+    created_by: req.user.id,
+    vat_treatment: cols.vat_treatment,
+    labour_total: cols.labour_total,
+    materials_total: cols.materials_total,
+    vat_breakdown: cols.vat_breakdown,
+    cis_applies: cols.cis_applies,
+    cis_rate: cols.cis_rate,
+    cis_deduction: cols.cis_deduction,
+    retention_percent: cols.retention_percent,
+    retention_amount: cols.retention_amount,
+    due_now: cols.due_now,
+    payment_schedule: cols.payment_schedule,
+    inclusions: b.inclusions ?? defaults.inclusions ?? null,
+    exclusions: b.exclusions ?? defaults.exclusions ?? null,
+    warranty_years: b.warranty_years ?? defaults.warranty_years ?? null,
+    warranty_text: b.warranty_text ?? defaults.warranty_text ?? null,
+    lead_time: b.lead_time ?? defaults.lead_time ?? null,
+    duration_estimate: b.duration_estimate ?? null,
+    access_requirements: b.access_requirements ?? null,
+    provisional_sums: b.provisional_sums || [],
+    provisional_sums_in_total: !!cols.provisional_sums_in_total,
+    optional_extras: normaliseExtras(b.optional_extras),
+    accepted_optional_extras: [],
+    cancellation_rights_apply: isDomestic,
+    site_id: picked.site_id,
+    phone_id: picked.phone_id,
+    email_id: picked.email_id,
   });
-});
 
-router.get('/:id', (req, res) => {
-  const q = db.prepare('SELECT q.*, c.name AS customer_name, c.phone, c.email FROM quotes q JOIN customers c ON c.id = q.customer_id WHERE q.id = ?').get(req.params.id);
-  if (!q) return res.status(404).json({ error: 'Quote not found' });
-  q.items = pj(q.items, []);
-  const followups = db.prepare('SELECT * FROM followups WHERE quote_id = ? ORDER BY step').all(q.id);
-  res.json({ quote: q, followups });
-});
+  await resolveRule(`produce_quote:customer:${customer_id}`);
+  if (lead?.id) await resolveRule(`produce_quote:lead:${lead.id}`);
+  const enquiryStage = lead?.stage || customer.stage;
+  if (['ENQUIRY', 'SITE_VISIT_BOOKED'].includes(enquiryStage)) {
+    if (lead?.id) {
+      await setStage(customer_id, 'QUOTE_PENDING', req.user.id, `Quote ${ref} created`, { leadId: lead.id });
+    } else {
+      await setStage(customer_id, 'QUOTE_PENDING', req.user.id, `Quote ${ref} created`);
+    }
+  }
+  await logActivity(customer_id, req.user.id, 'quote_created', `Quote ${ref} created — ${money(cols.total)}`, 'quote', created.id);
+  res.json({ id: created.id, ref, calc });
+}));
 
-router.put('/:id', (req, res) => {
-  const quote = db.prepare('SELECT * FROM quotes WHERE id = ?').get(req.params.id);
-  if (!quote) return res.status(404).json({ error: 'Quote not found' });
-  if (['accepted', 'declined'].includes(quote.status)) return res.status(400).json({ error: 'Quote already decided — create a new revision instead' });
+router.post('/preview', asyncHandler(async (req, res) => {
   const b = req.body || {};
-  const newItems = b.items !== undefined ? b.items : pj(quote.items, []);
+  const uk = (await getSetting('uk')) || {};
+  let customer = null;
+  if (b.customer_id) customer = await Customer.findByPk(b.customer_id);
+  const { calc } = buildTotals(b.items || [], { ...b, uk }, customer);
+  res.json(calc);
+}));
 
+router.get('/meta/options', asyncHandler(async (req, res) => {
+  const uk = (await getSetting('uk')) || {};
+  res.json({
+    vat_rates: ukTax.mergeVatRates(uk.vat_rates),
+    cis_rates: ukTax.CIS_RATES,
+    uk,
+    defaults: await getSetting('quote_defaults'),
+    catalogue: await catalogue.listItems(),
+  });
+}));
+
+router.get('/:id', asyncHandler(async (req, res) => {
+  const q = await Quote.findByPk(req.params.id);
+  if (!q) return res.status(404).json({ error: 'Quote not found' });
+  const customer = await contacts.loadCustomerWithContacts(q.customer_id);
+  const quote = plain(q);
+  const forDoc = contacts.applySelectedContacts(customer, quote);
+  quote.customer_name = customer.name;
+  quote.phone = forDoc.phone;
+  quote.email = forDoc.email;
+  const followups = plain(await Followup.findAll({ where: { quote_id: q.id }, order: [['step', 'ASC']] }));
+  res.json({ quote, followups, customer });
+}));
+
+router.put('/:id', asyncHandler(async (req, res) => {
+  const quote = await Quote.findByPk(req.params.id);
+  if (!quote) return res.status(404).json({ error: 'Quote not found' });
+  if (['accepted', 'declined'].includes(quote.status)) {
+    return res.status(400).json({ error: 'Quote already decided — clone it with a new title instead' });
+  }
+  const b = req.body || {};
+  const newItems = b.items !== undefined ? b.items : (quote.items || []);
+  const uk = (await getSetting('uk')) || {};
+  const customer = await Customer.findByPk(quote.customer_id);
   const { calc, cols } = buildTotals(newItems, {
+    uk,
     vat_treatment: b.vat_treatment ?? quote.vat_treatment,
     cis_applies: b.cis_applies ?? quote.cis_applies,
     cis_rate: b.cis_rate ?? quote.cis_rate,
     retention_percent: b.retention_percent ?? quote.retention_percent,
-    payment_schedule: b.payment_schedule ?? pj(quote.payment_schedule, []),
-  });
+    payment_schedule: b.payment_schedule ?? quote.payment_schedule ?? [],
+    provisional_sums: b.provisional_sums ?? quote.provisional_sums ?? [],
+    provisional_sums_in_total: b.provisional_sums_in_total ?? quote.provisional_sums_in_total,
+    optional_extras: b.optional_extras ?? quote.optional_extras ?? [],
+  }, customer);
 
-  db.prepare(
-    `UPDATE quotes SET title = ?, items = ?, subtotal = ?, vat_amount = ?, total = ?, notes = ?, valid_until = ?,
-       vat_treatment = ?, labour_total = ?, materials_total = ?, vat_breakdown = ?,
-       cis_applies = ?, cis_rate = ?, cis_deduction = ?, retention_percent = ?, retention_amount = ?, due_now = ?,
-       payment_schedule = ?, inclusions = ?, exclusions = ?, warranty_years = ?, warranty_text = ?,
-       lead_time = ?, duration_estimate = ?, access_requirements = ?, provisional_sums = ?,
-       cancellation_rights_apply = ?, updated_at = datetime('now')
-     WHERE id = ?`
-  ).run(
-    b.title || quote.title, j(newItems), cols.subtotal, cols.vat_amount, cols.total,
-    b.notes ?? quote.notes, b.valid_until || quote.valid_until,
-    cols.vat_treatment, cols.labour_total, cols.materials_total, cols.vat_breakdown,
-    cols.cis_applies, cols.cis_rate, cols.cis_deduction, cols.retention_percent, cols.retention_amount, cols.due_now,
-    cols.payment_schedule,
-    b.inclusions ?? quote.inclusions,
-    b.exclusions ?? quote.exclusions,
-    b.warranty_years ?? quote.warranty_years,
-    b.warranty_text ?? quote.warranty_text,
-    b.lead_time ?? quote.lead_time,
-    b.duration_estimate ?? quote.duration_estimate,
-    b.access_requirements ?? quote.access_requirements,
-    j(b.provisional_sums ?? pj(quote.provisional_sums, [])),
-    b.cancellation_rights_apply !== undefined ? (b.cancellation_rights_apply ? 1 : 0) : quote.cancellation_rights_apply,
+  const picked = await contacts.resolveCustomerContactSelection(quote.customer_id, {
+    site_id: b.site_id !== undefined ? b.site_id : quote.site_id,
+    phone_id: b.phone_id !== undefined ? b.phone_id : quote.phone_id,
+    email_id: b.email_id !== undefined ? b.email_id : quote.email_id,
+  });
+  if (picked.error) return res.status(400).json({ error: picked.error });
+
+  await quote.update({
+    title: b.title || quote.title,
+    items: newItems,
+    subtotal: cols.subtotal,
+    vat_amount: cols.vat_amount,
+    total: cols.total,
+    notes: b.notes ?? quote.notes,
+    valid_until: b.valid_until || quote.valid_until,
+    vat_treatment: cols.vat_treatment,
+    labour_total: cols.labour_total,
+    materials_total: cols.materials_total,
+    vat_breakdown: cols.vat_breakdown,
+    cis_applies: cols.cis_applies,
+    cis_rate: cols.cis_rate,
+    cis_deduction: cols.cis_deduction,
+    retention_percent: cols.retention_percent,
+    retention_amount: cols.retention_amount,
+    due_now: cols.due_now,
+    payment_schedule: cols.payment_schedule,
+    inclusions: b.inclusions ?? quote.inclusions,
+    exclusions: b.exclusions ?? quote.exclusions,
+    warranty_years: b.warranty_years ?? quote.warranty_years,
+    warranty_text: b.warranty_text ?? quote.warranty_text,
+    lead_time: b.lead_time ?? quote.lead_time,
+    duration_estimate: b.duration_estimate ?? quote.duration_estimate,
+    access_requirements: b.access_requirements ?? quote.access_requirements,
+    provisional_sums: b.provisional_sums ?? quote.provisional_sums ?? [],
+    provisional_sums_in_total: cols.provisional_sums_in_total,
+    optional_extras: b.optional_extras !== undefined ? normaliseExtras(b.optional_extras) : (quote.optional_extras || []),
+    cancellation_rights_apply: b.cancellation_rights_apply !== undefined ? !!b.cancellation_rights_apply : quote.cancellation_rights_apply,
+    site_id: picked.site_id,
+    phone_id: picked.phone_id,
+    email_id: picked.email_id,
+  });
+  res.json({ ok: true, calc });
+}));
+
+async function copyQuoteAsDraft(req, res, { title, activityDetail }) {
+  const quote = await Quote.findByPk(req.params.id);
+  if (!quote) return res.status(404).json({ error: 'Quote not found' });
+  const validUntil = new Date(Date.now() + (await getSetting('quote_validity_days')) * 86400000).toISOString().slice(0, 10);
+  const ref = await nextRef('quote');
+  const created = await Quote.create(revisionFields(quote, {
+    ref,
+    userId: req.user.id,
+    validUntil,
+    title,
+  }));
+  await logActivity(
+    quote.customer_id,
+    req.user.id,
+    'quote_created',
+    activityDetail(ref, quote, created),
+    'quote',
+    created.id
+  );
+  res.json({ id: created.id, ref, quote: plain(created) });
+}
+
+router.post('/:id/revise', asyncHandler(async (req, res) => {
+  await copyQuoteAsDraft(req, res, {
+    title: req.body?.title,
+    activityDetail: (ref, quote, created) => (
+      `Quote ${ref} created as a revision of ${quote.ref} — ${money(created.total)}`
+    ),
+  });
+}));
+
+router.post('/:id/clone', asyncHandler(async (req, res) => {
+  const title = String(req.body?.title || '').trim();
+  if (!title) return res.status(400).json({ error: 'Quote title is required' });
+  await copyQuoteAsDraft(req, res, {
+    title,
+    activityDetail: (ref, quote, created) => (
+      `Quote ${ref} cloned from ${quote.ref} — ${money(created.total)}`
+    ),
+  });
+}));
+
+router.delete('/:id', asyncHandler(async (req, res) => {
+  const quote = await Quote.findByPk(req.params.id);
+  if (!quote) return res.status(404).json({ error: 'Quote not found' });
+  const job = await Job.findOne({ where: { quote_id: quote.id } });
+  if (job) {
+    return res.status(400).json({ error: 'This quote has a job and cannot be deleted' });
+  }
+  await cancelPendingForQuote(quote.id, 'quote deleted');
+  await resolveQuoteFollowupTask(quote.id);
+  await Followup.destroy({ where: { quote_id: quote.id } });
+  await quote.destroy();
+  await logActivity(
+    quote.customer_id,
+    req.user.id,
+    'quote_deleted',
+    `Quote ${quote.ref} deleted`,
+    'quote',
     quote.id
   );
-  res.json({ ok: true, calc });
-});
+  res.json({ ok: true });
+}));
 
-/** Send the quote via WhatsApp and/or email (PDF attached), start follow-ups, stage → QUOTED. */
-router.post('/:id/send', async (req, res) => {
-  const { channels = ['whatsapp'] } = req.body || {};
-  const quote = db.prepare('SELECT * FROM quotes WHERE id = ?').get(req.params.id);
+router.post('/:id/pdf', asyncHandler(async (req, res) => {
+  const quote = await Quote.findByPk(req.params.id);
   if (!quote) return res.status(404).json({ error: 'Quote not found' });
-  const customer = db.prepare('SELECT * FROM customers WHERE id = ?').get(quote.customer_id);
+  const result = await generateAndStoreQuotePdf(quote);
+  if (result.error) return res.status(result.status).json({ error: result.error });
+  res.json({ pdf: result.filename, quote: plain(quote) });
+}));
 
-  // (re)generate the PDF
-  const filename = quotePdf(quote, customer);
-  db.prepare('UPDATE quotes SET pdf_file = ? WHERE id = ?').run(filename, quote.id);
+router.post('/:id/send', asyncHandler(async (req, res) => {
+  const { channels = ['whatsapp'] } = req.body || {};
+  const quote = await Quote.findByPk(req.params.id);
+  if (!quote) return res.status(404).json({ error: 'Quote not found' });
+  if (!['draft', 'sent'].includes(quote.status)) {
+    return res.status(400).json({ error: 'This quote cannot be sent — clone it with a new title instead' });
+  }
+  const result = await generateAndStoreQuotePdf(quote);
+  if (result.error) return res.status(result.status).json({ error: result.error });
+  const { filename, customer, forDoc } = result;
 
-  const templates = getSetting('templates');
+  const templates = await getSetting('templates');
   const vars = { name: (customer.name || '').split(' ')[0], ref: quote.ref, title: quote.title, total: money(quote.total), valid_until: quote.valid_until };
   const results = {};
   const errors = [];
@@ -215,12 +399,14 @@ router.post('/:id/send', async (req, res) => {
           docName: `${quote.ref}.pdf`,
           template: process.env.WHATSAPP_TEMPLATE_QUOTE || 'quote_sent',
           templateParams: [vars.name],
+          phone: forDoc.phone,
         });
       } else if (ch === 'email') {
         results.email = await sendToCustomer(customer.id, 'email', render(templates.quote_email_body, vars), {
           userId: req.user.id,
           subject: render(templates.quote_email_subject, vars),
           attachments: [{ filename: `${quote.ref}.pdf`, path: path.join(DATA_DIR, 'files', filename) }],
+          email: forDoc.email,
         });
       }
     } catch (err) {
@@ -232,48 +418,92 @@ router.post('/:id/send', async (req, res) => {
     return res.status(400).json({ error: `Could not send on any channel — ${errors.join('; ')}` });
   }
 
-  db.prepare(`UPDATE quotes SET status = 'sent', sent_at = datetime('now'), sent_via = ?, updated_at = datetime('now') WHERE id = ?`)
-    .run(Object.keys(results).join('+'), quote.id);
-  const fresh = db.prepare('SELECT * FROM quotes WHERE id = ?').get(quote.id);
-  scheduleForQuote(fresh);
-  setStage(customer.id, 'QUOTED', req.user.id, `Quote ${quote.ref} sent (${Object.keys(results).join(', ')})`);
-  logActivity(customer.id, req.user.id, 'quote_sent', `Quote ${quote.ref} (${money(quote.total)}) sent via ${Object.keys(results).join(' & ')}`, 'quote', quote.id);
+  await quote.update({ status: 'sent', sent_at: new Date(), sent_via: Object.keys(results).join('+') });
+  const fresh = await Quote.findByPk(quote.id);
+  await scheduleForQuote(plain(fresh));
+  await setStage(customer.id, 'QUOTED', req.user.id, `Quote ${quote.ref} sent (${Object.keys(results).join(', ')})`, { leadId: quote.lead_id });
+  await logActivity(customer.id, req.user.id, 'quote_sent', `Quote ${quote.ref} (${money(quote.total)}) sent via ${Object.keys(results).join(' & ')}`, 'quote', quote.id);
   res.json({ ok: true, results, errors, pdf: filename });
-});
+}));
 
-/** Record the customer's decision. Accept → WON + Job auto-created (PRD flow). */
-router.post('/:id/decision', (req, res) => {
-  const { decision, reason } = req.body || {}; // 'accepted' | 'declined'
-  const quote = db.prepare('SELECT * FROM quotes WHERE id = ?').get(req.params.id);
+router.post('/:id/decision', asyncHandler(async (req, res) => {
+  const { decision, reason, accepted_extra_indexes } = req.body || {};
+  const quote = await Quote.findByPk(req.params.id);
   if (!quote) return res.status(404).json({ error: 'Quote not found' });
   if (!['accepted', 'declined'].includes(decision)) return res.status(400).json({ error: 'decision must be accepted or declined' });
-  const customer = db.prepare('SELECT * FROM customers WHERE id = ?').get(quote.customer_id);
+  const customer = await contacts.loadCustomerWithContacts(quote.customer_id);
 
-  db.prepare(`UPDATE quotes SET status = ?, decided_at = datetime('now'), updated_at = datetime('now') WHERE id = ?`).run(decision, quote.id);
-  db.prepare("UPDATE followups SET status = 'cancelled', stop_reason = ? WHERE quote_id = ? AND status = 'pending'").run(`quote ${decision}`, quote.id);
-
+  let acceptedExtras = [];
   if (decision === 'accepted') {
-    setStage(customer.id, 'WON', req.user.id, `Quote ${quote.ref} accepted`);
-    const jr = db.prepare(
-      `INSERT INTO jobs (customer_id, quote_id, title, description, address, status, value, required_skills)
-       VALUES (?,?,?,?,?,'PENDING',?, '[]')`
-    ).run(customer.id, quote.id, quote.title, quote.notes || null, customer.address, quote.total);
-    ensureTask({
-      ruleKey: `schedule_job:job:${jr.lastInsertRowid}`,
-      title: `Schedule job — ${quote.title}`,
-      detail: `${customer.name} accepted quote ${quote.ref} (${money(quote.total)}). Job needs lads and dates.`,
-      priority: 'high',
-      entityType: 'job',
-      entityId: jr.lastInsertRowid,
-    });
-    logActivity(customer.id, req.user.id, 'quote_accepted', `Quote ${quote.ref} accepted — job created`, 'job', jr.lastInsertRowid);
-    return res.json({ ok: true, job_id: jr.lastInsertRowid });
+    const existingJob = await Job.findOne({ where: { quote_id: quote.id } });
+    if (existingJob) {
+      return res.json({ ok: true, job_id: existingJob.id, job_value: existingJob.value });
+    }
+    const picked = pickAcceptedExtras(quote.optional_extras, accepted_extra_indexes);
+    if (picked.error) return res.status(400).json({ error: picked.error });
+    acceptedExtras = picked.extras;
   }
 
-  setStage(customer.id, 'LOST', req.user.id, `Quote ${quote.ref} declined${reason ? ` — ${reason}` : ''}`);
-  if (reason) db.prepare('UPDATE customers SET lost_reason = ? WHERE id = ?').run(reason, customer.id);
-  logActivity(customer.id, req.user.id, 'quote_declined', `Quote ${quote.ref} declined${reason ? ` — ${reason}` : ''}`, 'quote', quote.id);
+  await quote.update({
+    status: decision,
+    decided_at: new Date(),
+    accepted_optional_extras: decision === 'accepted' ? acceptedExtras : [],
+  });
+  await cancelPendingForQuote(quote.id, `quote ${decision}`);
+  await resolveQuoteFollowupTask(quote.id);
+
+  if (decision === 'accepted') {
+    const jobValue = jobValueFromQuote(quote, acceptedExtras);
+    await setStage(customer.id, 'WON', req.user.id, `Quote ${quote.ref} accepted`, { leadId: quote.lead_id });
+    const job = await Job.create({
+      customer_id: customer.id,
+      lead_id: quote.lead_id || null,
+      quote_id: quote.id,
+      title: quote.title,
+      description: quote.notes || null,
+      address: contacts.formatSite((customer.sites || []).find((s) => s.id === quote.site_id)) || customer.address,
+      status: 'PENDING',
+      value: jobValue,
+      required_skills: [],
+      site_id: quote.site_id,
+      phone_id: quote.phone_id,
+      email_id: quote.email_id,
+    });
+    await geocode.ensureJobSitePoint(job, { refresh: true });
+    await ensureTask({
+      ruleKey: `schedule_job:job:${job.id}`,
+      title: `Schedule job — ${quote.title}`,
+      detail: `${customer.name} accepted quote ${quote.ref} (${money(jobValue)}). Job needs lads and dates.`,
+      priority: 'high',
+      entityType: 'job',
+      entityId: job.id,
+    });
+    await logActivity(customer.id, req.user.id, 'quote_accepted', `Quote ${quote.ref} accepted — job created`, 'job', job.id);
+    const { safeNotify, notifyOffice } = require('../notifications');
+    await safeNotify(() => notifyOffice({
+      kind: 'quote_accepted',
+      message: `${customer.name} accepted quote ${quote.ref}.`,
+      entity_type: 'customer',
+      entity_id: customer.id,
+    }, { excludeId: req.user.id }));
+    return res.json({ ok: true, job_id: job.id, job_value: jobValue });
+  }
+
+  await setStage(customer.id, 'LOST', req.user.id, `Quote ${quote.ref} declined${reason ? ` — ${reason}` : ''}`, { leadId: quote.lead_id });
+  if (reason) await Customer.update({ lost_reason: reason }, { where: { id: customer.id } });
+  await logActivity(customer.id, req.user.id, 'quote_declined', `Quote ${quote.ref} declined${reason ? ` — ${reason}` : ''}`, 'quote', quote.id);
   res.json({ ok: true });
-});
+}));
+
+router.post('/:id/followups/cancel', asyncHandler(async (req, res) => {
+  const quote = await Quote.findByPk(req.params.id);
+  if (!quote) return res.status(404).json({ error: 'Quote not found' });
+  const cancelled = await cancelPendingForQuote(quote.id, 'cancelled by office');
+  await resolveQuoteFollowupTask(quote.id);
+  if (cancelled > 0) {
+    await logActivity(quote.customer_id, req.user.id, 'followups_cancelled', `Office cancelled remaining follow-ups for quote ${quote.ref}`, 'quote', quote.id);
+  }
+  res.json({ ok: true, cancelled });
+}));
 
 module.exports = router;

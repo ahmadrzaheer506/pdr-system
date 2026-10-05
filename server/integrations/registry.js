@@ -1,8 +1,5 @@
-// ============================================================
-// Integration registry — status of every connection for the
-// Settings screen, plus recent event log.
-// ============================================================
-const { db } = require('../db');
+const { IntegrationEvent } = require('../models');
+const { plain } = require('../db');
 const whatsapp = require('./whatsapp');
 const email = require('./email');
 const meta = require('./meta');
@@ -26,22 +23,21 @@ function telephonyStatus() {
   };
 }
 
-function all() {
+async function all(userId) {
   return [
     ai.status(),
     whatsapp.status(),
     meta.status(),
     email.status(),
-    gcal.status(),
-    quickbooks.status(),
+    await gcal.status(userId),
+    await quickbooks.status(),
     telephonyStatus(),
   ];
 }
 
-function recentEvents(limit = 50) {
-  return db
-    .prepare('SELECT * FROM integration_events ORDER BY id DESC LIMIT ?')
-    .all(limit);
+async function recentEvents(limit = 50) {
+  const rows = await IntegrationEvent.findAll({ order: [['id', 'DESC']], limit });
+  return plain(rows);
 }
 
 module.exports = { all, recentEvents };

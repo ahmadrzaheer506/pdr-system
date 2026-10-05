@@ -1,4 +1,20 @@
 services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: pdr
+      POSTGRES_PASSWORD: pdr
+      POSTGRES_DB: pdr_crm
+    volumes:
+      - pdr-postgres:/var/lib/postgresql/data
+    # Host 5432 is not published so local Postgres used for development is unaffected.
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U pdr -d pdr_crm"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
   app:
     build: .
     restart: unless-stopped
@@ -8,9 +24,14 @@ services:
       - .env
     environment:
       DATA_DIR: /data
+      DATABASE_URL: postgres://pdr:pdr@postgres:5432/pdr_crm
+    depends_on:
+      postgres:
+        condition: service_healthy
     volumes:
-      # database + generated quote/invoice PDFs — back this up
+      # generated quote/invoice PDFs and clock-out photos
       - pdr-data:/data
 
 volumes:
   pdr-data:
+  pdr-postgres:

@@ -15,21 +15,17 @@ function getPosition(timeout = 8000) {
   });
 }
 
-function elapsedLabel(fromSql, breakMinutes, onBreak, breakStartedAt) {
+function elapsedLabel(fromSql) {
   if (!fromSql) return '0:00';
-  const start = new Date(String(fromSql).replace(' ', 'T') + 'Z').getTime();
-  let mins = (Date.now() - start) / 60000 - (Number(breakMinutes) || 0);
-  if (onBreak && breakStartedAt) {
-    const bs = new Date(String(breakStartedAt).replace(' ', 'T') + 'Z').getTime();
-    mins -= (Date.now() - bs) / 60000;
-  }
-  mins = Math.max(0, mins);
+  const start = new Date(fromSql).getTime();
+  if (!Number.isFinite(start)) return '0:00';
+  const mins = Math.max(0, (Date.now() - start) / 60000);
   const h = Math.floor(mins / 60);
   const m = Math.floor(mins % 60);
   return `${h}:${String(m).padStart(2, '0')}`;
 }
 
-export default function ClockWidget({ jobId = null, jobTitle = '', onChange, compact = false }) {
+export default function ClockWidget({ jobId = null, jobTitle = '', onChange }) {
   const [state, setState] = useState(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
@@ -46,8 +42,8 @@ export default function ClockWidget({ jobId = null, jobTitle = '', onChange, com
   if (!state || state.enabled === false) return null;
 
   const shift = state.active;
-  const onThisJob = shift && jobId && Number(shift.job_id) === Number(jobId);
-  const onOtherJob = shift && jobId && Number(shift.job_id) !== Number(jobId);
+  const shiftLabel = shift?.job_title || 'yard / travel';
+  const onOtherJob = !!(shift && jobId && Number(shift.job_id) !== Number(jobId));
 
   const act = async (fn) => {
     setBusy(true);
@@ -58,8 +54,10 @@ export default function ClockWidget({ jobId = null, jobTitle = '', onChange, com
   };
 
   const clockIn = () => act(async () => {
-    const pos = state.require_location ? await getPosition() : null;
-    await api.post('/staff/clock/in', { job_id: jobId, ...(pos || {}) });
+    const pos = await getPosition();
+    const body = { ...(pos || {}) };
+    if (jobId) body.job_id = jobId;
+    await api.post('/staff/clock/in', body);
   });
 
   const toggleBreak = () => act(async () => {
@@ -73,18 +71,20 @@ export default function ClockWidget({ jobId = null, jobTitle = '', onChange, com
         {error && <div className="bg-red-50 text-red-700 text-sm rounded-lg px-3 py-2 mb-3">{error}</div>}
         <button
           onClick={clockIn}
-          disabled={busy || !jobId}
+          disabled={busy}
           className="w-full bg-emerald-600 hover:bg-emerald-700 active:bg-emerald-800 text-white rounded-xl py-4 font-semibold text-lg flex items-center justify-center gap-2 disabled:opacity-50"
         >
           {busy ? <Loader2 className="animate-spin" size={20} /> : <Play size={20} />}
-          Clock in
+          {jobId ? 'Clock in' : 'Clock in (yard / travel)'}
         </button>
-        {!jobId && <p className="text-xs text-slate-400 text-center mt-2">Open a job to clock in against it.</p>}
-        {state.require_location && jobId && (
-          <p className="text-xs text-slate-400 text-center mt-2 flex items-center justify-center gap-1">
-            <MapPin size={11} /> Your location is recorded to confirm you were on site
+        {!jobId && (
+          <p className="text-xs text-slate-400 text-center mt-2">
+            Yard or travel. Open a job to clock this shift against it.
           </p>
         )}
+        <p className="text-xs text-slate-400 text-center mt-2 flex items-center justify-center gap-1">
+          <MapPin size={11} /> Location is recorded if the phone allows it — missing GPS is flagged, not blocked.
+        </p>
         <div className="text-center text-xs text-slate-400 mt-3 pt-3 border-t border-slate-100">
           {state.week_hours}h logged this week
         </div>
@@ -99,7 +99,7 @@ export default function ClockWidget({ jobId = null, jobTitle = '', onChange, com
         <div className="flex items-start gap-2 text-sm text-amber-800">
           <AlertTriangle size={16} className="flex-shrink-0 mt-0.5" />
           <div>
-            You're currently clocked in on <strong>{shift.job_title || 'another job'}</strong>.
+            You're currently clocked in on <strong>{shiftLabel}</strong>.
             Clock out there before starting this one.
           </div>
         </div>
@@ -108,7 +108,7 @@ export default function ClockWidget({ jobId = null, jobTitle = '', onChange, com
   }
 
   // ---------- clocked in ----------
-  const running = elapsedLabel(shift.clock_in, shift.break_minutes, state.on_break, shift.break_started_at);
+  const running = elapsedLabel(shift.clock_in);
 
   return (
     <>
@@ -116,20 +116,25 @@ export default function ClockWidget({ jobId = null, jobTitle = '', onChange, com
         {error && <div className="bg-red-50 text-red-700 text-sm rounded-lg px-3 py-2 mb-3">{error}</div>}
         <div className="text-center mb-3">
           <div className="text-xs font-medium uppercase tracking-wide text-slate-500">
-            {state.on_break ? 'On break' : 'Clocked in'}
+            {state.on_break ? 'On break — still on the clock' : 'Clocked in'}
           </div>
-          <div className={`text-4xl font-bold tabular-nums mt-1 ${state.on_break ? 'text-amber-700' : 'text-emerald-700'}`}>
+          <div className={`text-4xl font-bold tabular-nums mt-1 ${state.on_break ? 'text-amber-700' : 'text-emerald-700'}`} data-tick={tick}>
             {running}
           </div>
-          {!compact && shift.job_title && <div className="text-xs text-slate-500 mt-1">{shift.job_title}</div>}
+          <div className="text-xs text-slate-500 mt-1">{shiftLabel}</div>
           {Number(shift.break_minutes) > 0 && (
-            <div className="text-xs text-slate-400 mt-0.5">{Math.round(shift.break_minutes)} min break taken</div>
+            <div className="text-xs text-slate-400 mt-0.5">{Math.round(shift.break_minutes)} min break logged</div>
           )}
         </div>
 
         {shift.location_flag === 'far_from_site' && (
           <div className="text-xs bg-amber-100 text-amber-800 rounded-lg px-2.5 py-1.5 mb-3 flex items-center gap-1.5">
             <AlertTriangle size={12} /> Clocked in {shift.in_distance_m}m from the job address
+          </div>
+        )}
+        {shift.location_flag === 'no_location' && (
+          <div className="text-xs bg-amber-100 text-amber-800 rounded-lg px-2.5 py-1.5 mb-3 flex items-center gap-1.5">
+            <MapPin size={12} /> Location was not captured — shift still saved
           </div>
         )}
 
@@ -157,14 +162,13 @@ export default function ClockWidget({ jobId = null, jobTitle = '', onChange, com
         open={outOpen}
         onClose={() => setOutOpen(false)}
         requirePhoto={state.require_photo}
-        requireLocation={state.require_location}
         onDone={() => { setOutOpen(false); load(); onChange && onChange(); }}
       />
     </>
   );
 }
 
-function ClockOutModal({ open, onClose, requirePhoto, requireLocation, onDone }) {
+function ClockOutModal({ open, onClose, requirePhoto, onDone }) {
   const [notes, setNotes] = useState('');
   const [photo, setPhoto] = useState(null);
   const [busy, setBusy] = useState(false);
@@ -199,7 +203,7 @@ function ClockOutModal({ open, onClose, requirePhoto, requireLocation, onDone })
     setBusy(true);
     setError('');
     try {
-      const pos = requireLocation ? await getPosition() : null;
+      const pos = await getPosition();
       const res = await api.post('/staff/clock/out', { notes, photo, ...(pos || {}) });
       onDone(res);
     } catch (err) {
@@ -221,10 +225,7 @@ function ClockOutModal({ open, onClose, requirePhoto, requireLocation, onDone })
           <label className="label">Site photo {requirePhoto ? '(required)' : '(optional)'}</label>
           <input ref={fileRef} type="file" accept="image/*" capture="environment" className="hidden" onChange={pickPhoto} />
           {photo ? (
-            <div className="relative">
-              <img src={photo} alt="Site" className="w-full rounded-lg" />
-              <button onClick={() => setPhoto(null)} className="absolute top-2 right-2 bg-black/60 text-white rounded-full w-7 h-7">×</button>
-            </div>
+            <ClockOutPhotoPreview src={photo} onClear={() => setPhoto(null)} />
           ) : (
             <button onClick={() => fileRef.current?.click()} className="btn-secondary w-full py-3">
               <Camera size={16} /> Take a photo
@@ -236,5 +237,15 @@ function ClockOutModal({ open, onClose, requirePhoto, requireLocation, onDone })
         </button>
       </div>
     </Modal>
+  );
+}
+
+/** Fixed-height preview so a portrait site photo cannot push Confirm clock out off-screen. */
+export function ClockOutPhotoPreview({ src, onClear }) {
+  return (
+    <div className="relative h-40 overflow-hidden rounded-lg bg-slate-100">
+      <img src={src} alt="Site" className="h-full w-full object-contain" />
+      <button type="button" onClick={onClear} className="absolute top-2 right-2 bg-black/60 text-white rounded-full w-7 h-7">×</button>
+    </div>
   );
 }
