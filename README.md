@@ -96,7 +96,9 @@ This walks the entire journey — enquiry → dedupe → site visit → quote �
 
 ## Deploying
 
-The system is one Node process serving both the API and the web app.
+Nginx is the public entry on port 80. Two PM2 processes stay on loopback: `pdr-web` (`127.0.0.1:4000`, React + `/api` proxy) and `pdr-api` (`127.0.0.1:4001`, Express + cron). The API is not exposed publicly.
+
+Copy `scripts/nginx/frontend` to `/etc/nginx/sites-available/frontend`, enable it, and disable the default site. Set `APP_URL` in `.env` to the public URL people type (the droplet IP or domain — not `:4000` or `:5173`).
 
 On a droplet where Node, PM2 and Nginx are already installed:
 
@@ -104,7 +106,7 @@ On a droplet where Node, PM2 and Nginx are already installed:
 ./scripts/deploy.sh
 ```
 
-That builds the frontend, checks the backend, applies pending migrations, then creates or restarts two PM2 processes: `pdr-api` (Node API on 4001) and `pdr-web` (built React on 4000, proxying `/api` to the API). Nginx can keep pointing at `127.0.0.1:4000`. Do not run `seed:clean` on a live database.
+That installs dependencies, applies pending Sequelize migrations, builds the frontend, then starts or reloads both PM2 apps from `ecosystem.config.cjs`. Do not run `npm run dev` or `seed:clean` on a live database. Visit `http://<droplet-ip>/`, not port 4000.
 
 ```bash
 docker compose up -d --build      # or:
