@@ -75,12 +75,15 @@ app.use('/api/integrations', require('./routes/integrations'));
 
 app.get('/api/health', (req, res) => res.json({ ok: true, time: new Date().toISOString() }));
 
-// ---------- serve the built React app (production) ----------
-const clientDist = path.join(__dirname, '..', 'client', 'dist');
-app.use(express.static(clientDist));
-app.get(/^(?!\/api|\/public-files).*/, (req, res, next) => {
-  res.sendFile(path.join(clientDist, 'index.html'), (err) => { if (err) next(); });
-});
+// Static React files are served by the separate PM2 frontend process in production.
+// Local `npm start` still serves client/dist from this process unless SERVE_FRONTEND=0.
+if (process.env.SERVE_FRONTEND !== '0') {
+  const clientDist = path.join(__dirname, '..', 'client', 'dist');
+  app.use(express.static(clientDist));
+  app.get(/^(?!\/api|\/public-files).*/, (req, res, next) => {
+    res.sendFile(path.join(clientDist, 'index.html'), (err) => { if (err) next(); });
+  });
+}
 
 // ---------- error handler ----------
 app.use((err, req, res, next) => {
