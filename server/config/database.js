@@ -3,6 +3,7 @@
 // ============================================================
 require('dotenv').config({ path: require('path').join(__dirname, '..', '..', '.env') });
 const { Sequelize } = require('sequelize');
+const { sequelizeDialectOptions } = require('./postgresSsl');
 
 const DATABASE_URL = process.env.DATABASE_URL;
 
@@ -15,6 +16,7 @@ if (!DATABASE_URL) {
 const sequelize = new Sequelize(DATABASE_URL, {
   dialect: 'postgres',
   logging: false,
+  dialectOptions: sequelizeDialectOptions(DATABASE_URL),
   define: {
     freezeTableName: true,
     underscored: true,

@@ -14,7 +14,8 @@
     "build": "npm run build --prefix client",
     "seed": "node server/seed.js",
     "seed:clean": "node server/seed.js --clean",
-    "start": "node server/index.js"
+    "start": "node server/index.js",
+    "deploy": "bash scripts/deploy.sh"
   },
   "devDependencies": {
     "concurrently": "^9.1.0"

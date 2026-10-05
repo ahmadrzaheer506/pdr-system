@@ -98,6 +98,24 @@ This walks the entire journey — enquiry → dedupe → site visit → quote �
 
 The system is one Node process serving both the API and the web app.
 
+### DigitalOcean droplet (recommended)
+
+On a fresh Ubuntu droplet (UK/EU region):
+
+```bash
+sudo ./scripts/setup-digitalocean.sh   # Node 22, PM2, Nginx, swap
+cp .env.example .env                   # set JWT_SECRET, DATABASE_URL, APP_URL=https://your-domain
+./scripts/deploy.sh                    # install, build, migrate, start or restart PM2
+```
+
+`./scripts/deploy.sh` builds the React app, syntax-checks the server, applies pending migrations, then **creates** the `pdr-system` PM2 process if it does not exist or **restarts** it if it does. Do not run `seed:clean` on a live database.
+
+Point Nginx at `127.0.0.1:4000` (`scripts/nginx-pdr.conf.example`) and issue TLS with `certbot --nginx -d your-domain`. Set `APP_URL` to that `https://` address.
+
+DigitalOcean Managed Postgres: put `?sslmode=require` on `DATABASE_URL` (or `DATABASE_SSL=true` in `.env`).
+
+### Docker or local production build
+
 ```bash
 docker compose up -d --build      # or:
 npm run install:all && npm run build && npm start

@@ -7,7 +7,8 @@
     "dev": "node --watch index.js",
     "start": "node index.js",
     "seed": "node seed.js",
-    "migrate": "npx sequelize-cli db:migrate",
+    "migrate": "node migrate.js",
+    "migrate:cli": "npx sequelize-cli db:migrate",
     "migrate:undo": "npx sequelize-cli db:migrate:undo",
     "test": "jest"
   },

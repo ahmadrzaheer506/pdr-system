@@ -14,6 +14,9 @@ const { asyncHandler, requireAuth, forbidStaffPdfs, enforceCsrf } = require('./a
 const { runAutomationCycle, applyIntervalFromSettings } = require('./automation');
 
 const app = express();
+if ((process.env.APP_URL || '').startsWith('https://') || process.env.TRUST_PROXY === '1') {
+  app.set('trust proxy', 1);
+}
 app.use(cors({ origin: true, credentials: true }));
 app.use(cookieParser());
 
@@ -85,14 +88,15 @@ app.use((err, req, res, next) => {
   res.status(500).json({ error: 'Server error', detail: process.env.NODE_ENV === 'production' ? undefined : err.message });
 });
 
-const PORT = process.env.PORT || 4000;
+const PORT = Number(process.env.PORT) || 4000;
+const HOST = process.env.HOST || '0.0.0.0';
 
 async function start() {
   await initDb();
   await applyIntervalFromSettings();
-  app.listen(PORT, () => {
+  app.listen(PORT, HOST, () => {
     console.log(`\n  Paul Douglas Roofing — Business OS`);
-    console.log(`  Server running on http://localhost:${PORT}`);
+    console.log(`  Server running on http://${HOST}:${PORT}`);
     console.log(`  Data dir: ${DATA_DIR}\n`);
     setTimeout(runAutomationCycle, 4000);
   });
