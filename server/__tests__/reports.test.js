@@ -60,15 +60,15 @@ describe('winLoss (requirement 14.1)', () => {
   beforeEach(() => jest.clearAllMocks());
 
   test('counts current WON vs LOST and groups lost reasons', async () => {
-    Customer.findAll.mockResolvedValue([
-      { id: 1, name: 'Helen', stage: 'WON', lost_reason: null, updated_at: '2026-09-20T10:00:00.000Z', toJSON() { return this; } },
-      { id: 2, name: 'Dave', stage: 'LOST', lost_reason: 'Cheaper quote', updated_at: '2026-09-21T10:00:00.000Z', toJSON() { return this; } },
-      { id: 3, name: 'Priya', stage: 'LOST', lost_reason: 'Cheaper quote', updated_at: '2026-09-22T10:00:00.000Z', toJSON() { return this; } },
+    Lead.findAll.mockResolvedValue([
+      { id: 1, ref: 'L-0001', customer_id: 1, stage: 'WON', lost_reason: null, updated_at: '2026-09-20T10:00:00.000Z', Customer: { id: 1, name: 'Helen' }, toJSON() { return this; } },
+      { id: 2, ref: 'L-0002', customer_id: 2, stage: 'LOST', lost_reason: 'Cheaper quote', updated_at: '2026-09-21T10:00:00.000Z', Customer: { id: 2, name: 'Dave' }, toJSON() { return this; } },
+      { id: 3, ref: 'L-0003', customer_id: 3, stage: 'LOST', lost_reason: 'Cheaper quote', updated_at: '2026-09-22T10:00:00.000Z', Customer: { id: 3, name: 'Priya' }, toJSON() { return this; } },
     ]);
     const fromDt = new Date('2026-08-29T00:00:00.000Z');
     const toDt = new Date('2026-09-28T23:59:59.999Z');
     const data = await winLoss(fromDt, toDt);
-    expect(Customer.findAll).toHaveBeenCalledWith(expect.objectContaining({
+    expect(Lead.findAll).toHaveBeenCalledWith(expect.objectContaining({
       where: expect.objectContaining({
         stage: { [require('sequelize').Op.in]: ['WON', 'LOST'] },
       }),
@@ -81,7 +81,7 @@ describe('winLoss (requirement 14.1)', () => {
   });
 
   test('can omit the customer list for the home summary', async () => {
-    Customer.findAll.mockResolvedValue([]);
+    Lead.findAll.mockResolvedValue([]);
     const data = await winLoss(new Date(), new Date(), { includeCustomers: false });
     expect(data.customers).toBeUndefined();
     expect(data.won).toBe(0);
@@ -136,7 +136,7 @@ describe('pipelineValueSnapshot (requirement 4.5 / 14.1)', () => {
   beforeEach(() => jest.clearAllMocks());
 
   test('returns live totals and a zero-filled Enquiry → Follow-up breakdown', async () => {
-    Customer.findAll.mockResolvedValue([
+    Lead.findAll.mockResolvedValue([
       { stage: 'QUOTED', pipeline_value: 900 },
       { stage: 'QUOTED', pipeline_value: 600 },
       { stage: 'ENQUIRY', pipeline_value: 0 },
@@ -151,7 +151,7 @@ describe('pipelineValueSnapshot (requirement 4.5 / 14.1)', () => {
   });
 
   test('does not double-count extra draft quotes on the same customer', async () => {
-    Customer.findAll.mockResolvedValue([
+    Lead.findAll.mockResolvedValue([
       { stage: 'ENQUIRY', pipeline_value: 60 },
     ]);
     const data = await pipelineValueSnapshot();

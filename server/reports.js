@@ -7,26 +7,19 @@
 const { Op, fn, col, literal } = require('sequelize');
 const { Lead, Quote, Customer, Job, Invoice, Timesheet, User, Appointment, Task } = require('./models');
 const { STAGES, ACTIVE_PIPELINE_STAGES, STAGE_LABELS } = require('./services/pipeline');
-const { PIPELINE_VALUE_SQL } = require('./pipelineFilters');
+const { LEAD_PIPELINE_VALUE_SQL } = require('./pipelineFilters');
 const invoicePayments = require('./invoicePayments');
+const { ymdInZone, addCalendarDays, zoneDayStart, zoneDayEnd } = require('./ukTime');
 
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 const DEFAULT_RANGE_DAYS = 30;
 
-function utcDayStart(isoDate) {
-  return new Date(`${isoDate}T00:00:00.000Z`);
-}
-
-function utcDayEnd(isoDate) {
-  return new Date(`${isoDate}T23:59:59.999Z`);
-}
-
 function todayIso() {
-  return new Date().toISOString().slice(0, 10);
+  return ymdInZone();
 }
 
 function daysAgoIso(days) {
-  return new Date(Date.now() - days * 86400000).toISOString().slice(0, 10);
+  return addCalendarDays(todayIso(), -days);
 }
 
 /**
@@ -47,7 +40,7 @@ function parseReportRange(query = {}, { required = false } = {}) {
   if (!DATE_RE.test(from)) return { error: 'Invalid from date' };
   if (!DATE_RE.test(to)) return { error: 'Invalid to date' };
   if (from > to) return { error: 'from must be on or before to' };
-  return { from, to, fromDt: utcDayStart(from), toDt: utcDayEnd(to) };
+  return { from, to, fromDt: zoneDayStart(from), toDt: zoneDayEnd(to) };
 }
 
 function winRate(won, lost) {
@@ -74,9 +67,9 @@ async function leadVolume(fromDt, toDt, { includeTrend = true, includeLeads = fa
   const result = { total, bySource };
   if (includeTrend) {
     result.trend = (await Lead.findAll({
-      attributes: [[literal('DATE(created_at)'), 'day'], [fn('COUNT', col('id')), 'leads']],
+      attributes: [[literal("DATE(created_at AT TIME ZONE 'Europe/London')"), 'day'], [fn('COUNT', col('id')), 'leads']],
       where,
-      group: [literal('DATE(created_at)')],
+      group: [literal("DATE(created_at AT TIME ZONE 'Europe/London')")],
       order: [[literal('day'), 'ASC']],
       raw: true,
     })).map((r) => ({ day: r.day, leads: Number(r.leads) }));
@@ -106,18 +99,20 @@ async function leadVolume(fromDt, toDt, { includeTrend = true, includeLeads = fa
 }
 
 /**
- * Customers currently WON or LOST whose updated_at falls in the window (14.1).
+ * Enquiries currently WON or LOST whose updated_at falls in the window (14.1).
+ * Names come from the customer record so the win/loss report still lists people.
  * @param {Date} fromDt
  * @param {Date} toDt
  * @param {{ includeCustomers?: boolean }} [opts]
  */
 async function winLoss(fromDt, toDt, { includeCustomers = true } = {}) {
-  const rows = await Customer.findAll({
+  const rows = await Lead.findAll({
     where: {
       stage: { [Op.in]: ['WON', 'LOST'] },
       updated_at: { [Op.between]: [fromDt, toDt] },
     },
-    attributes: ['id', 'name', 'stage', 'lost_reason', 'updated_at'],
+    attributes: ['id', 'ref', 'customer_id', 'stage', 'lost_reason', 'updated_at'],
+    include: [{ model: Customer, attributes: ['id', 'name'] }],
     order: [['updated_at', 'DESC']],
   });
   const list = rows.map((row) => (typeof row.toJSON === 'function' ? row.toJSON() : row));
@@ -138,8 +133,10 @@ async function winLoss(fromDt, toDt, { includeCustomers = true } = {}) {
   const result = { won, lost, winRate: winRate(won, lost), byReason };
   if (includeCustomers) {
     result.customers = list.map((row) => ({
-      id: row.id,
-      name: row.name,
+      id: row.customer_id,
+      lead_id: row.id,
+      ref: row.ref || null,
+      name: row.Customer?.name || row.customer?.name || '',
       stage: row.stage,
       lost_reason: row.lost_reason || null,
       updated_at: row.updated_at,
@@ -149,13 +146,13 @@ async function winLoss(fromDt, toDt, { includeCustomers = true } = {}) {
 }
 
 /**
- * Live pipeline value — latest sent/draft quote per customer, Enquiry → Follow-up
+ * Live pipeline value — latest sent/draft quote per enquiry, Enquiry → Follow-up
  * (requirement 4.5). Matches the board cards and column totals. Not date-windowed.
  */
 async function pipelineValueSnapshot() {
-  const rows = await Customer.findAll({
+  const rows = await Lead.findAll({
     where: { stage: { [Op.in]: ACTIVE_PIPELINE_STAGES } },
-    attributes: ['id', 'stage', [literal(PIPELINE_VALUE_SQL), 'pipeline_value']],
+    attributes: ['id', 'stage', [literal(LEAD_PIPELINE_VALUE_SQL), 'pipeline_value']],
     raw: true,
   });
   const byStageMap = {};
@@ -168,12 +165,12 @@ async function pipelineValueSnapshot() {
     byStageMap[row.stage] = (byStageMap[row.stage] || 0) + value;
   }
   return {
-    pipelineValue,
+    pipelineValue: roundMoney(pipelineValue),
     pipelineCount,
     byStage: ACTIVE_PIPELINE_STAGES.map((stage) => ({
       stage,
       label: STAGE_LABELS[stage],
-      value: byStageMap[stage] || 0,
+      value: roundMoney(byStageMap[stage] || 0),
     })),
   };
 }
@@ -182,12 +179,6 @@ function isoDay(value) {
   if (!value) return '';
   if (value instanceof Date) return value.toISOString().slice(0, 10);
   return String(value).slice(0, 10);
-}
-
-function addUtcDay(isoDate) {
-  const d = utcDayStart(isoDate);
-  d.setUTCDate(d.getUTCDate() + 1);
-  return d.toISOString().slice(0, 10);
 }
 
 /**
@@ -200,15 +191,10 @@ function fillDailyTrend(fromIso, toIso, points) {
     if (day) byDay[day] = Number(row.leads) || 0;
   }
   const trend = [];
-  for (let day = fromIso; day <= toIso; day = addUtcDay(day)) {
+  for (let day = fromIso; day <= toIso; day = addCalendarDays(day, 1)) {
     trend.push({ day, leads: byDay[day] || 0 });
   }
   return trend;
-}
-
-function localTodayIso() {
-  const d = new Date();
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 }
 
 /**
@@ -218,7 +204,7 @@ function localTodayIso() {
 async function dashboardHome(fromDt, toDt, { from, to, today } = {}) {
   const fromIso = from || isoDay(fromDt);
   const toIso = to || isoDay(toDt);
-  const todayIso = today || localTodayIso();
+  const todayIso = today || ymdInZone();
   const [
     leads,
     outcome,
@@ -259,7 +245,7 @@ async function dashboardHome(fromDt, toDt, { from, to, today } = {}) {
       },
       raw: true,
     }),
-    Customer.findAll({
+    Lead.findAll({
       attributes: ['stage', [fn('COUNT', col('id')), 'count']],
       group: ['stage'],
       raw: true,

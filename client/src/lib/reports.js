@@ -2,6 +2,8 @@
  * Report types, 7/30/90 windows (14.1), and from/to + CSV (14.2).
  * Pipeline value stays a live 4.5 snapshot (no date filter) on Home / Pipeline.
  */
+import { ymdInZone, addCalendarDays } from './ukTime.js';
+
 export const RANGE_PRESETS = [7, 30, 90];
 
 export const LIVE_REPORTS = Object.freeze([
@@ -19,7 +21,7 @@ export const REPORT_CARDS = Object.freeze([
   {
     id: 'win-loss',
     title: 'Win / loss',
-    detail: 'Customers currently Won or Lost, updated in the selected window.',
+    detail: 'Enquiries currently Won or Lost, updated in the selected window.',
   },
   {
     id: 'customers',
@@ -46,8 +48,8 @@ export const REPORT_CARDS = Object.freeze([
 
 export function isoRange(days) {
   const n = RANGE_PRESETS.includes(days) ? days : 30;
-  const to = new Date().toISOString().slice(0, 10);
-  const from = new Date(Date.now() - n * 86400000).toISOString().slice(0, 10);
+  const to = ymdInZone();
+  const from = addCalendarDays(to, -n);
   return { from, to };
 }
 

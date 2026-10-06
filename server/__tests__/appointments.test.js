@@ -12,6 +12,7 @@ jest.mock('../models', () => ({
   Appointment: { create: jest.fn(), findAll: jest.fn(), findByPk: jest.fn() },
   AppointmentAssignee: { findAll: jest.fn(), destroy: jest.fn(), bulkCreate: jest.fn() },
   Customer: {},
+  Lead: {},
   User: { findAll: jest.fn() },
 }));
 
@@ -85,6 +86,57 @@ function mockAssignees() {
   AppointmentAssignee.bulkCreate.mockResolvedValue([]);
   AppointmentAssignee.findAll.mockResolvedValue([]);
 }
+
+describe('GET /api/appointments', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    Appointment.findAll.mockResolvedValue([]);
+  });
+
+  test('excludes cancelled visits by default', async () => {
+    const res = await request(app).get('/api/appointments');
+    expect(res.status).toBe(200);
+    expect(Appointment.findAll).toHaveBeenCalledWith(expect.objectContaining({
+      where: expect.objectContaining({
+        status: { [Op.ne]: 'cancelled' },
+      }),
+    }));
+  });
+
+  test('lists every status when status=ALL', async () => {
+    Appointment.findAll.mockResolvedValue([{
+      toJSON: () => ({
+        id: 1, status: 'booked', title: 'Site visit', Customer: { name: 'Dave' }, Lead: { id: 2, ref: 'L-0001' }, assignees: [],
+      }),
+    }]);
+    const res = await request(app).get('/api/appointments?status=ALL');
+    expect(res.status).toBe(200);
+    expect(Appointment.findAll.mock.calls[0][0].where.status).toBeUndefined();
+    expect(res.body.appointments).toHaveLength(1);
+    expect(res.body.appointments[0].lead_name).toBe('L-0001 - Dave');
+    expect(res.body.appointments[0].lead_ref).toBe('L-0001');
+    expect(res.body.counts).toEqual({ all: 1, booked: 1, done: 0, cancelled: 0 });
+  });
+
+  test('rejects an invalid status', async () => {
+    const res = await request(app).get('/api/appointments?status=nope');
+    expect(res.status).toBe(400);
+    expect(Appointment.findAll).not.toHaveBeenCalled();
+  });
+
+  test('filters by visit type and calendar dates', async () => {
+    Appointment.findAll
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([]);
+    const res = await request(app).get('/api/appointments?status=booked&visit_type=measure&from=2026-10-01&to=2026-10-08');
+    expect(res.status).toBe(200);
+    const where = Appointment.findAll.mock.calls[0][0].where;
+    expect(where.status).toBe('booked');
+    expect(where.visit_type).toBe('measure');
+    expect(where.start[Op.gte]).toEqual(new Date('2026-10-01T00:00:00'));
+    expect(where.start[Op.lte]).toEqual(new Date('2026-10-08T23:59:59.999'));
+  });
+});
 
 describe('POST /api/appointments (requirement 5.1)', () => {
   beforeEach(() => {

@@ -1,13 +1,13 @@
 const express = require('express');
 const { Op } = require('sequelize');
-const { Appointment, AppointmentAssignee, Customer, User } = require('../models');
+const { Appointment, AppointmentAssignee, Customer, Lead, User } = require('../models');
 const { requireAuth, requireOffice, asyncHandler } = require('../auth');
 const { ROLES } = require('../roles');
 const { setStage, logActivity, resolveLeadForCustomer } = require('../services/pipeline');
 const gcal = require('../integrations/gcal');
 const { plain } = require('../db');
 const contacts = require('../customerContacts');
-const { parseVisitType, visitTitle, visitChangeBlock } = require('../visitTypes');
+const { parseVisitType, visitTitle, visitChangeBlock, VISIT_TYPE_VALUES } = require('../visitTypes');
 const visitAssignees = require('../appointmentAssignees');
 const { completeVisit } = require('../services/taskEngine');
 
@@ -20,12 +20,21 @@ const assigneeInclude = {
   through: { attributes: [] },
 };
 
+function leadDisplayName(lead, customerName) {
+  const name = String(customerName || '').trim() || 'Unknown';
+  const ref = String(lead?.ref || '').trim();
+  return ref ? `${ref} - ${name}` : name;
+}
+
 function publicAppointment(row) {
   const o = plain(row);
   o.customer_name = o.Customer?.name;
+  o.lead_ref = o.Lead?.ref || null;
+  o.lead_name = leadDisplayName(o.Lead, o.customer_name);
   o.phone = o.selectedPhone?.value || null;
   Object.assign(o, visitAssignees.decorateAssignees(o));
   delete o.Customer;
+  delete o.Lead;
   delete o.selectedPhone;
   return o;
 }
@@ -57,21 +66,94 @@ async function notifyStaffAssignees(userIds, { message, appointmentId }) {
   }));
 }
 
+function parseDayBound(value, endOfDay) {
+  if (value == null || value === '') return null;
+  const raw = String(value).trim();
+  if (/^\d{4}-\d{2}-\d{2}$/.test(raw)) {
+    return new Date(`${raw}T${endOfDay ? '23:59:59.999' : '00:00:00'}`);
+  }
+  const date = new Date(raw);
+  return Number.isNaN(date.getTime()) ? null : date;
+}
+
+const LIST_STATUSES = Object.freeze(['booked', 'done', 'cancelled']);
+
+function visitCounts(rows) {
+  const counts = { all: 0, booked: 0, done: 0, cancelled: 0 };
+  for (const row of rows) {
+    counts.all += 1;
+    if (row.status === 'booked') counts.booked += 1;
+    else if (row.status === 'done') counts.done += 1;
+    else if (row.status === 'cancelled') counts.cancelled += 1;
+  }
+  return counts;
+}
+
 router.get('/', asyncHandler(async (req, res) => {
-  const { from, to } = req.query;
-  const where = { status: { [Op.ne]: 'cancelled' } };
-  if (from) where.start = { ...(where.start || {}), [Op.gte]: new Date(from) };
-  if (to) where.start = { ...(where.start || {}), [Op.lte]: new Date(to) };
+  const { from, to, status, visit_type, q } = req.query;
+  const where = {};
+  if (status == null || status === '') {
+    where.status = { [Op.ne]: 'cancelled' };
+  } else if (status !== 'ALL') {
+    if (!LIST_STATUSES.includes(status)) {
+      return res.status(400).json({ error: 'Invalid status' });
+    }
+    where.status = status;
+  }
+  if (visit_type && visit_type !== 'ALL') {
+    if (!VISIT_TYPE_VALUES.includes(visit_type)) {
+      return res.status(400).json({ error: 'Invalid visit type' });
+    }
+    where.visit_type = visit_type;
+  }
+  const fromAt = parseDayBound(from, false);
+  const toAt = parseDayBound(to, true);
+  if (from && !fromAt) return res.status(400).json({ error: 'Invalid from date' });
+  if (to && !toAt) return res.status(400).json({ error: 'Invalid to date' });
+  if (fromAt || toAt) {
+    where.start = {};
+    if (fromAt) where.start[Op.gte] = fromAt;
+    if (toAt) where.start[Op.lte] = toAt;
+  }
+  const search = String(q || '').trim();
+  if (search) {
+    const like = `%${search.replace(/\\/g, '\\\\').replace(/%/g, '\\%').replace(/_/g, '\\_')}%`;
+    where[Op.or] = [
+      { title: { [Op.iLike]: like } },
+      { address: { [Op.iLike]: like } },
+      { '$Customer.name$': { [Op.iLike]: like } },
+      { '$Lead.ref$': { [Op.iLike]: like } },
+    ];
+  }
+  const visitIncludes = [
+    { model: Customer, attributes: ['name'] },
+    { model: Lead, attributes: ['id', 'ref'] },
+    { association: 'selectedPhone', attributes: ['id', 'value'] },
+    assigneeInclude,
+  ];
   const rows = await Appointment.findAll({
     where,
-    include: [
-      { model: Customer, attributes: ['name'] },
-      { association: 'selectedPhone', attributes: ['id', 'value'] },
-      assigneeInclude,
-    ],
+    include: visitIncludes,
     order: [['start', 'ASC']],
   });
-  res.json({ appointments: rows.map(publicAppointment) });
+  const listed = rows.map(publicAppointment);
+  let counts;
+  if (!status || status === '' || status === 'ALL') {
+    counts = visitCounts(listed);
+  } else {
+    const countWhere = { ...where };
+    delete countWhere.status;
+    const countRows = await Appointment.findAll({
+      where: countWhere,
+      include: [
+        { model: Customer, attributes: ['name'] },
+        { model: Lead, attributes: ['id', 'ref'] },
+      ],
+      attributes: ['id', 'status'],
+    });
+    counts = visitCounts(countRows.map(plain));
+  }
+  res.json({ appointments: listed, counts });
 }));
 
 function parseAppointmentTime(value, field) {

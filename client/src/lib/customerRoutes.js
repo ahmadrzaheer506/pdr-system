@@ -20,6 +20,7 @@ export function leadBackLink(from, customerId) {
   if (from === 'inbox') return { to: '/inbox', label: 'Back to inbox' };
   if (from === 'pipeline') return { to: '/pipeline', label: 'Back to pipeline' };
   if (from === 'quotes') return { to: '/quotes', label: 'Back to quotes' };
+  if (from === 'visits') return { to: '/visits', label: 'Back to visits' };
   if (from === 'tasks') return { to: '/tasks', label: 'Back to tasks' };
   if (from === 'schedule') return { to: '/schedule', label: 'Back to schedule' };
   if (from === 'invoices') return { to: '/invoices', label: 'Back to invoices' };

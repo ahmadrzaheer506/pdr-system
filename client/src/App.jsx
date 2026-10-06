@@ -19,6 +19,7 @@ import CustomerDetail from './pages/CustomerDetail.jsx';
 import CustomerRecord from './pages/CustomerRecord.jsx';
 import Customers from './pages/Customers.jsx';
 import Quotes from './pages/Quotes.jsx';
+import Visits from './pages/Visits.jsx';
 import Schedule from './pages/Schedule.jsx';
 import Invoices from './pages/Invoices.jsx';
 import Holidays from './pages/Holidays.jsx';
@@ -73,6 +74,7 @@ export default function App() {
       <Route path="/customers/:id" element={<OfficeRoute><CustomerRecord /></OfficeRoute>} />
       <Route path="/leads/:id" element={<OfficeRoute><CustomerDetail /></OfficeRoute>} />
       <Route path="/quotes" element={<OfficeRoute><Quotes /></OfficeRoute>} />
+      <Route path="/visits" element={<OfficeRoute><Visits /></OfficeRoute>} />
       <Route path="/schedule" element={<OfficeRoute><Schedule /></OfficeRoute>} />
       <Route path="/invoices" element={<OfficeRoute><Invoices /></OfficeRoute>} />
       <Route path="/holidays" element={<OfficeRoute><Holidays /></OfficeRoute>} />

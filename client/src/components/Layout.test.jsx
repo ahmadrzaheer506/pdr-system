@@ -28,13 +28,30 @@ vi.mock('../lib/api', () => ({
 }));
 
 describe('office sidebar', () => {
-  it('places Reports in Management after Tasks', () => {
+  it('orders Management links as pipeline, visits, quotes, then schedule', () => {
+    render(<MemoryRouter><Layout><div>child</div></Layout></MemoryRouter>);
+    const labels = screen.getAllByRole('link').map((el) => el.textContent.trim());
+    const pipeline = labels.indexOf('Pipeline');
+    expect(labels[pipeline + 1]).toBe('Visits');
+    expect(labels[pipeline + 2]).toBe('Quotes');
+    expect(labels[pipeline + 3]).toBe('Schedule & AI');
+    expect(labels[pipeline + 4]).toBe('Invoices');
+    expect(labels[pipeline + 5]).toBe('Tasks');
+    expect(labels[pipeline + 6]).toBe('Timesheets');
+    expect(labels[pipeline + 7]).toBe('Holidays');
+    expect(labels[pipeline + 8]).toBe('Customers');
+    expect(labels[pipeline + 9]).toBe('Reports');
+    expect(labels[pipeline + 10]).toBe('Team Chat');
+    expect(screen.getByRole('link', { name: 'Visits' })).toHaveAttribute('href', '/visits');
+  });
+
+  it('places Reports in Management after Customers', () => {
     render(<MemoryRouter><Layout><div>child</div></Layout></MemoryRouter>);
     const reports = screen.getByRole('link', { name: 'Reports' });
     expect(reports).toHaveAttribute('href', '/reports');
     const labels = screen.getAllByRole('link').map((el) => el.textContent.trim());
     expect(labels.indexOf('Lead Inbox')).toBeLessThan(labels.indexOf('Reports'));
-    expect(labels.indexOf('Tasks')).toBeLessThan(labels.indexOf('Reports'));
+    expect(labels.indexOf('Customers')).toBeLessThan(labels.indexOf('Reports'));
     expect(labels.indexOf('Reports')).toBeLessThan(labels.indexOf('Team Chat'));
   });
 

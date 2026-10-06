@@ -294,7 +294,7 @@ export default function Dashboard() {
           sub={rangeHint}
           icon={Users}
           tone="orange"
-          to="/customers"
+          to="/inbox"
         />
         <MetricCard
           label="Site visits"
@@ -302,7 +302,7 @@ export default function Dashboard() {
           sub={rangeHint}
           icon={Eye}
           tone="green"
-          to="/schedule"
+          to="/visits"
         />
         <MetricCard
           label="Quotes sent"
@@ -484,8 +484,8 @@ export default function Dashboard() {
       <div className={CARD}>
         <div className="mb-5 flex items-start justify-between gap-3">
           <div>
-            <h2 className="font-semibold text-slate-900">Customers by pipeline stage</h2>
-            <p className="mt-0.5 text-xs text-slate-400">Live board — all customers</p>
+            <h2 className="font-semibold text-slate-900">Leads by pipeline stage</h2>
+            <p className="mt-0.5 text-xs text-slate-400">Live board — every enquiry</p>
           </div>
           <Link to="/pipeline" className="inline-flex items-center gap-1 text-sm font-medium text-slate-500 hover:text-brand-500">
             Open pipeline
@@ -493,7 +493,7 @@ export default function Dashboard() {
           </Link>
         </div>
         {stages.every((row) => !row.count) ? (
-          <p className="py-12 text-center text-sm text-slate-400">No customers on the board yet.</p>
+          <p className="py-12 text-center text-sm text-slate-400">No leads on the board yet.</p>
         ) : (
           <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
             {PIPELINE_GROUPS.map((group) => (

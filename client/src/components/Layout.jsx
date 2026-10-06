@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { NavLink } from 'react-router-dom';
 import {
-  LayoutDashboard, Inbox, Kanban, Users, Calendar, FileText, Receipt, CheckSquare,
+  LayoutDashboard, Inbox, Kanban, Users, Calendar, CalendarDays, FileText, Receipt, CheckSquare,
   MessageSquare, Settings, Menu, X, PlaneTakeoff, Clock, BarChart3,
 } from 'lucide-react';
 import BrandLogo from './BrandLogo.jsx';
@@ -19,13 +19,14 @@ const NAV_SECTIONS = [
     header: 'MANAGEMENT',
     items: [
       { to: '/pipeline', label: 'Pipeline', icon: Kanban },
-      { to: '/customers', label: 'Customers', icon: Users },
-      { to: '/schedule', label: 'Schedule & AI', icon: Calendar },
+      { to: '/visits', label: 'Visits', icon: CalendarDays },
       { to: '/quotes', label: 'Quotes', icon: FileText },
+      { to: '/schedule', label: 'Schedule & AI', icon: Calendar },
       { to: '/invoices', label: 'Invoices', icon: Receipt },
+      { to: '/tasks', label: 'Tasks', icon: CheckSquare },
       { to: '/timesheets', label: 'Timesheets', icon: Clock },
       { to: '/holidays', label: 'Holidays', icon: PlaneTakeoff },
-      { to: '/tasks', label: 'Tasks', icon: CheckSquare },
+      { to: '/customers', label: 'Customers', icon: Users },
       { to: '/reports', label: 'Reports', icon: BarChart3 },
       { to: '/chat', label: 'Team Chat', icon: MessageSquare },
     ],

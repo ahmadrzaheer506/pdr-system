@@ -63,7 +63,9 @@ describe('Dashboard home summary (requirement 14.1)', () => {
   it('shows lead volume, win/loss, pipeline value, and the operational tiles', async () => {
     render(<MemoryRouter><Dashboard /></MemoryRouter>);
     expect(await screen.findByText('New leads')).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: /new leads/i })).toHaveAttribute('href', '/inbox');
     expect(screen.getByText('Site visits')).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: /site visits/i })).toHaveAttribute('href', '/visits');
     expect(screen.getByText('9')).toBeInTheDocument();
     expect(screen.getByText('Quotes sent')).toBeInTheDocument();
     expect(screen.getByText('8')).toBeInTheDocument();
@@ -75,7 +77,7 @@ describe('Dashboard home summary (requirement 14.1)', () => {
     expect(screen.getByText('£2400.00')).toBeInTheDocument();
     expect(screen.getByText('Leads over time')).toBeInTheDocument();
     expect(screen.getByText('Leads by source')).toBeInTheDocument();
-    expect(screen.getByText('Customers by pipeline stage')).toBeInTheDocument();
+    expect(screen.getByText('Leads by pipeline stage')).toBeInTheDocument();
     expect(screen.getByText(/6 overdue tasks/i)).toBeInTheDocument();
     expect(screen.getByRole('link', { name: /view tasks/i })).toHaveAttribute('href', '/tasks?when=overdue');
     expect(screen.getByText('Lead pipeline')).toBeInTheDocument();

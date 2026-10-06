@@ -16,6 +16,8 @@ describe('customer vs lead routes', () => {
   it('sends lead-page back links to the surface that opened them', () => {
     expect(leadBackLink('inbox', 44)).toEqual({ to: '/inbox', label: 'Back to inbox' });
     expect(leadBackLink('pipeline', 44)).toEqual({ to: '/pipeline', label: 'Back to pipeline' });
+    expect(leadBackLink('quotes', 37)).toEqual({ to: '/quotes', label: 'Back to quotes' });
+    expect(leadBackLink('visits', 37)).toEqual({ to: '/visits', label: 'Back to visits' });
     expect(leadBackLink('tasks', 37)).toEqual({ to: '/tasks', label: 'Back to tasks' });
     expect(leadBackLink('schedule', 37)).toEqual({ to: '/schedule', label: 'Back to schedule' });
     expect(leadBackLink(null, 37)).toEqual({ to: '/customers/37', label: 'Back to customer' });
