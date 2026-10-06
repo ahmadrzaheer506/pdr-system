@@ -2,6 +2,7 @@ jest.mock('../models', () => ({
   Timesheet: { findOne: jest.fn(), create: jest.fn() },
   Job: { findByPk: jest.fn() },
   JobDayAssignment: { findOne: jest.fn() },
+  Invoice: { findOne: jest.fn(), findAll: jest.fn() },
   User: {},
   Customer: {},
 }));
@@ -15,14 +16,16 @@ jest.mock('../db', () => ({
   plain: (row) => (row && typeof row.toJSON === 'function' ? row.toJSON() : { ...row }),
 }));
 
-const { Timesheet, Job, JobDayAssignment } = require('../models');
-const { clockIn, parseOptionalJobId } = require('../services/timesheets');
+const { Timesheet, Job, JobDayAssignment, Invoice } = require('../models');
+const { clockIn, parseOptionalJobId, PAID_CLOCK_IN_ERROR } = require('../services/timesheets');
 
 describe('clockIn (requirement 9.1)', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     Timesheet.findOne.mockResolvedValue(null);
     Timesheet.create.mockImplementation(async (row) => ({ id: 11, ...row }));
+    Invoice.findOne.mockResolvedValue(null);
+    Job.findByPk.mockResolvedValue({ id: 8, status: 'SCHEDULED' });
   });
 
   test('allows a yard / travel shift with no job', async () => {
@@ -64,6 +67,21 @@ describe('clockIn (requirement 9.1)', () => {
   test('rejects a missing job', async () => {
     Job.findByPk.mockResolvedValue(null);
     await expect(clockIn(4, { job_id: 99 })).rejects.toThrow('Job not found');
+  });
+
+  test('rejects clock-in when the job status is PAID', async () => {
+    Job.findByPk.mockResolvedValue({ id: 8, status: 'PAID' });
+    JobDayAssignment.findOne.mockResolvedValue({ job_id: 8, user_id: 4 });
+    await expect(clockIn(4, { job_id: 8 })).rejects.toThrow(PAID_CLOCK_IN_ERROR);
+    expect(Timesheet.create).not.toHaveBeenCalled();
+  });
+
+  test('rejects clock-in when an invoice on the job is paid in full', async () => {
+    Job.findByPk.mockResolvedValue({ id: 8, status: 'COMPLETED' });
+    JobDayAssignment.findOne.mockResolvedValue({ job_id: 8, user_id: 4 });
+    Invoice.findOne.mockResolvedValue({ id: 3, job_id: 8, status: 'paid' });
+    await expect(clockIn(4, { job_id: 8 })).rejects.toThrow(PAID_CLOCK_IN_ERROR);
+    expect(Timesheet.create).not.toHaveBeenCalled();
   });
 
   test('rejects a second clock-in until they clock out', async () => {

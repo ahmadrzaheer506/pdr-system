@@ -49,4 +49,22 @@ describe('LeadCard', () => {
     await user.click(screen.getByRole('button', { name: /mark actioned/i }));
     expect(onMarkActioned).toHaveBeenCalledWith(lead);
   });
+
+  it('shows Won and Lost instead of Converted and Closed', () => {
+    const won = render(
+      <MemoryRouter>
+        <LeadCard lead={{ ...lead, status: 'CONVERTED', stage: 'WON' }} />
+      </MemoryRouter>,
+    );
+    expect(screen.getByText('Won')).toBeInTheDocument();
+    expect(screen.queryByText('Converted')).toBeNull();
+    won.unmount();
+    render(
+      <MemoryRouter>
+        <LeadCard lead={{ ...lead, customer_name: 'Neil Draper', status: 'CLOSED', stage: 'LOST' }} />
+      </MemoryRouter>,
+    );
+    expect(screen.getByText('Lost')).toBeInTheDocument();
+    expect(screen.queryByText('Closed')).toBeNull();
+  });
 });

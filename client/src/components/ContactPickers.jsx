@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { Mail, MapPin, Phone, Plus } from 'lucide-react';
 import { api } from '../lib/api';
-import { formatSite, PHONE_TYPES, EMAIL_TYPES, typeLabel, primaryOf } from '../lib/contacts';
+import { formatSite, PHONE_TYPES, EMAIL_TYPES, typeLabel, primaryOf, emailFormatError } from '../lib/contacts';
 import { duplicateFromError } from '../lib/duplicates';
 import DuplicateCustomerNotice from './DuplicateCustomerNotice.jsx';
 import SelectMenu from './SelectMenu.jsx';
@@ -171,6 +171,11 @@ export default function ContactPickers({
   const saveEmail = async () => {
     const email = draft.email.trim();
     if (!email || !ownerId) return;
+    const emailErr = emailFormatError(email);
+    if (emailErr) {
+      fail({ message: emailErr });
+      return;
+    }
     setSaving(true);
     setDuplicate(null);
     try {

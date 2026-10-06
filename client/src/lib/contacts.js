@@ -36,3 +36,18 @@ export function contactsFromSingleOptions(customer) {
 export function typeLabel(types, value) {
   return types.find((t) => t.value === value)?.label || value || '';
 }
+
+/** Same rule as the server: local@host.tld, and it must include @. */
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+/**
+ * Email is optional. When present it must include @ and a domain.
+ * @param {unknown} value
+ * @returns {string} empty when valid or blank
+ */
+export function emailFormatError(value) {
+  const email = String(value || '').trim();
+  if (!email) return '';
+  if (!EMAIL_RE.test(email)) return 'Enter a valid email address';
+  return '';
+}

@@ -11,7 +11,7 @@ import SearchSelect from '../components/SearchSelect.jsx';
 import DatePicker from '../components/DatePicker.jsx';
 import ContactPickers from '../components/ContactPickers.jsx';
 import CustomerCreateFields, { EMPTY_CUSTOMER_FORM } from '../components/CustomerCreateFields.jsx';
-import { contactsFromSingleOptions } from '../lib/contacts';
+import { contactsFromSingleOptions, emailFormatError } from '../lib/contacts';
 
 const INBOX_TABS = [
   {
@@ -34,7 +34,7 @@ const INBOX_TABS = [
   },
   {
     id: 'CONVERTED',
-    label: 'Converted',
+    label: 'Won',
     Icon: BadgeCheck,
     rail: 'bg-emerald-400',
     iconWrap: 'bg-emerald-100 text-emerald-700',
@@ -43,7 +43,7 @@ const INBOX_TABS = [
   },
   {
     id: 'CLOSED',
-    label: 'Closed',
+    label: 'Lost',
     Icon: Archive,
     rail: 'bg-slate-400',
     iconWrap: 'bg-slate-100 text-slate-600',
@@ -417,6 +417,12 @@ function AddLeadModal({ open, onClose, onSaved, onError }) {
           onError(message);
           return;
         }
+        const emailErr = emailFormatError(form.email);
+        if (emailErr) {
+          setError(emailErr);
+          onError(emailErr);
+          return;
+        }
         await api.post('/leads', {
           source: form.source,
           name: form.name,
@@ -455,12 +461,12 @@ function AddLeadModal({ open, onClose, onSaved, onError }) {
             value={form.source}
             onChange={(source) => setForm({ ...form, source })}
             options={[
-              { value: 'manual', label: 'Logged manually (e.g. personal mobile call)' },
+              { value: 'manual', label: 'Logged manually' },
               { value: 'phone', label: 'Phone' },
               { value: 'email', label: 'Email' },
+              { value: 'sms', label: 'SMS' },
               { value: 'whatsapp', label: 'WhatsApp' },
               { value: 'facebook', label: 'Facebook' },
-              { value: 'facebook_lead', label: 'Lead ad' },
             ]}
           />
         </div>

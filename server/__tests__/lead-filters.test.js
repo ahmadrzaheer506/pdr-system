@@ -1,5 +1,5 @@
 const { Op } = require('sequelize');
-const { buildLeadListWhere } = require('../leadFilters');
+const { buildLeadListWhere, inboxTabCounts } = require('../leadFilters');
 
 const sequelize = {
   escape: (v) => `'${String(v).replace(/'/g, "''")}'`,
@@ -37,5 +37,20 @@ describe('buildLeadListWhere', () => {
 
   test('rejects invalid dates', () => {
     expect(buildLeadListWhere({ created_from: '22-09-2026' }, sequelize).error).toBe('Invalid created_from date');
+  });
+
+  test('Converted and Closed inbox tabs list WON and LOST leads', () => {
+    expect(buildLeadListWhere({ status: 'CONVERTED' }, sequelize).where).toEqual({ stage: 'WON' });
+    expect(buildLeadListWhere({ status: 'CLOSED' }, sequelize).where).toEqual({ stage: 'LOST' });
+  });
+
+  test('inbox tab counts put WON on Converted and LOST on Closed', () => {
+    expect(inboxTabCounts([
+      { status: 'NEW', stage: 'ENQUIRY', c: 2 },
+      { status: 'ACTIONED', stage: 'QUOTED', c: 3 },
+      { status: 'CONVERTED', stage: 'WON', c: 4 },
+      { status: 'CONVERTED', stage: 'SCHEDULED', c: 5 },
+      { status: 'CLOSED', stage: 'LOST', c: 6 },
+    ])).toEqual({ NEW: 2, ACTIONED: 3, CONVERTED: 4, CLOSED: 6, ALL: 20 });
   });
 });

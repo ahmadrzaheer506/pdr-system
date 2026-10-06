@@ -25,7 +25,7 @@ function elapsedLabel(fromSql) {
   return `${h}:${String(m).padStart(2, '0')}`;
 }
 
-export default function ClockWidget({ jobId = null, jobTitle = '', onChange }) {
+export default function ClockWidget({ jobId = null, jobTitle = '', invoicePaid = false, onChange }) {
   const [state, setState] = useState(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
@@ -54,6 +54,7 @@ export default function ClockWidget({ jobId = null, jobTitle = '', onChange }) {
   };
 
   const clockIn = () => act(async () => {
+    if (invoicePaid) return;
     const pos = await getPosition();
     const body = { ...(pos || {}) };
     if (jobId) body.job_id = jobId;
@@ -71,8 +72,8 @@ export default function ClockWidget({ jobId = null, jobTitle = '', onChange }) {
         {error && <div className="bg-red-50 text-red-700 text-sm rounded-lg px-3 py-2 mb-3">{error}</div>}
         <button
           onClick={clockIn}
-          disabled={busy}
-          className="w-full bg-emerald-600 hover:bg-emerald-700 active:bg-emerald-800 text-white rounded-xl py-4 font-semibold text-lg flex items-center justify-center gap-2 disabled:opacity-50"
+          disabled={busy || invoicePaid}
+          className="w-full bg-emerald-600 hover:bg-emerald-700 active:bg-emerald-800 text-white rounded-xl py-4 font-semibold text-lg flex items-center justify-center gap-2 disabled:opacity-50 disabled:hover:bg-emerald-600 disabled:cursor-not-allowed"
         >
           {busy ? <Loader2 className="animate-spin" size={20} /> : <Play size={20} />}
           {jobId ? 'Clock in' : 'Clock in (yard / travel)'}
@@ -82,9 +83,15 @@ export default function ClockWidget({ jobId = null, jobTitle = '', onChange }) {
             Yard or travel. Open a job to clock this shift against it.
           </p>
         )}
-        <p className="text-xs text-slate-400 text-center mt-2 flex items-center justify-center gap-1">
-          <MapPin size={11} /> Location is recorded if the phone allows it — missing GPS is flagged, not blocked.
-        </p>
+        {invoicePaid ? (
+          <p className="text-sm text-slate-600 text-center mt-2">
+            This job is paid in full, so you cannot clock in.
+          </p>
+        ) : (
+          <p className="text-xs text-slate-400 text-center mt-2 flex items-center justify-center gap-1">
+            <MapPin size={11} /> Location is recorded if the phone allows it — missing GPS is flagged, not blocked.
+          </p>
+        )}
         <div className="text-center text-xs text-slate-400 mt-3 pt-3 border-t border-slate-100">
           {state.week_hours}h logged this week
         </div>

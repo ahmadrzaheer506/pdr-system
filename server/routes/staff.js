@@ -153,6 +153,7 @@ router.get('/jobs', asyncHandler(async (req, res) => {
     if (!list.includes(day)) list.push(day);
   }
   const ids = Object.keys(datesByJob).map(Number);
+  const paidIds = ids.length ? await ts.paidInvoiceJobIds(ids) : new Set();
   const jobs = ids.length ? await Job.findAll({
     attributes: STAFF_JOB_ATTRS,
     where: {
@@ -190,6 +191,7 @@ router.get('/jobs', asyncHandler(async (req, res) => {
       o.customer_phone = o.selectedPhone?.value || null;
       o.crew = crewByJob[j.id] || [];
       o.work_dates = (datesByJob[j.id] || []).slice().sort();
+      o.invoice_paid = o.status === 'PAID' || paidIds.has(Number(j.id));
       delete o.Customer;
       delete o.selectedPhone;
       return toPublicStaffJob(o);
@@ -230,6 +232,7 @@ router.get('/jobs/:id', asyncHandler(async (req, res) => {
       .map((s) => jobDays.toIsoDate(s.work_date))
       .filter(Boolean),
   )].sort();
+  job.invoice_paid = await ts.jobClockInClosed(job.id, job.status);
   const kit = await jobKit.attachJobKit(job);
   const withFiles = await jobFiles.attachJobFiles(kit);
   res.json({ job: toPublicStaffJob(withFiles), messages });

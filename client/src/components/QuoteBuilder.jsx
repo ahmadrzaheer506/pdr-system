@@ -417,7 +417,7 @@ export default function QuoteBuilder({ open, onClose, customerId, customer, lead
             </div>
 
             <label className="flex items-center gap-2 text-sm text-slate-700">
-              <input type="checkbox" checked={form.cis_applies} onChange={(e) => set('cis_applies', e.target.checked)} />
+              <input type="checkbox" className="h-4 w-4 shrink-0 accent-brand-500" checked={form.cis_applies} onChange={(e) => set('cis_applies', e.target.checked)} />
               Apply CIS deduction (you are working as a subcontractor)
             </label>
             {form.cis_applies && (
@@ -521,6 +521,7 @@ export default function QuoteBuilder({ open, onClose, customerId, customer, lead
               <label className="flex items-center gap-2 text-sm text-slate-700 mt-2">
                 <input
                   type="checkbox"
+                  className="h-4 w-4 shrink-0 accent-brand-500"
                   checked={!!form.provisional_sums_in_total}
                   onChange={(e) => set('provisional_sums_in_total', e.target.checked)}
                 />

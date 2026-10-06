@@ -8,6 +8,7 @@ import {
 } from '../lib/schedule';
 import { missingRequiredSkills, crewHasDriver } from '../lib/skills';
 import CrewConflictModal from './CrewConflictModal.jsx';
+import { HoverTooltip } from './ui.jsx';
 
 function heading(iso) {
   const [year, month, day] = parseIsoDate(iso).split('-').map(Number);
@@ -74,14 +75,19 @@ function DayJobCard({ job, dateIso, staff, holidays, bookings, onJobClick, onCre
 
   return (
     <div className="bg-slate-100 rounded-md px-2 py-2">
-      <button
-        type="button"
-        onClick={() => onJobClick(job.id)}
-        className="block w-full text-left hover:bg-slate-200 rounded px-1 py-1 -mx-1"
+      <HoverTooltip
+        text={[job.title, job.customer_name].map((part) => String(part || '').trim()).filter(Boolean).join('\n')}
+        className="block w-full min-w-0"
       >
-        <div className="text-sm font-medium text-slate-800 truncate">{job.title}</div>
-        <div className="text-[11px] text-slate-500 truncate">{job.customer_name}</div>
-      </button>
+        <button
+          type="button"
+          onClick={() => onJobClick(job.id)}
+          className="block w-full text-left hover:bg-slate-200 rounded px-1 py-1 -mx-1"
+        >
+          <div className="text-sm font-medium text-slate-800 truncate">{job.title}</div>
+          <div className="text-[11px] text-slate-500 truncate">{job.customer_name}</div>
+        </button>
+      </HoverTooltip>
       <div className="mt-2">
         <p className="text-[10px] text-slate-400 mb-1">Crew this day</p>
         <CrewChips
@@ -112,6 +118,7 @@ function DayJobCard({ job, dateIso, staff, holidays, bookings, onJobClick, onCre
       <CrewConflictModal
         open={conflicts.length > 0}
         conflicts={conflicts}
+        dateLabel={heading(dateIso)}
         onCancel={() => { if (saving !== job.id) { setConflicts([]); setPendingIds(null); } }}
         onConfirm={() => writeCrew(pendingIds || selectedIds, true)}
         saving={saving === job.id}

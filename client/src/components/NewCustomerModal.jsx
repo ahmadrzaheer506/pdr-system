@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { api } from '../lib/api';
 import { Modal, useToast, Toast } from './ui.jsx';
 import CustomerCreateFields, { EMPTY_CUSTOMER_FORM } from './CustomerCreateFields.jsx';
+import { emailFormatError } from '../lib/contacts';
 import DuplicateCustomerNotice from './DuplicateCustomerNotice.jsx';
 import { duplicateFromError } from '../lib/duplicates';
 
@@ -23,6 +24,11 @@ export default function NewCustomerModal({ open, onClose }) {
     e.preventDefault();
     if (form.customer_type === 'commercial' && !form.company_name.trim()) {
       show('Company name is required for commercial customers', 'error');
+      return;
+    }
+    const emailErr = emailFormatError(form.email);
+    if (emailErr) {
+      show(emailErr, 'error');
       return;
     }
     setSaving(true);
@@ -52,7 +58,7 @@ export default function NewCustomerModal({ open, onClose }) {
 
   return (
     <Modal open={open} onClose={onClose} title="New customer">
-      <form onSubmit={submit} className="space-y-3">
+      <form onSubmit={submit} className="space-y-3" noValidate>
         <DuplicateCustomerNotice duplicate={duplicate} />
         <CustomerCreateFields form={form} onChange={setForm} idPrefix="new-customer" />
         <button className="btn-primary w-full" disabled={saving}>{saving ? 'Saving…' : 'Create customer'}</button>

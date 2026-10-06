@@ -3,7 +3,7 @@
 // checking, hours calculation and labour costing.
 // ============================================================
 const { Op, fn, col, literal } = require('sequelize');
-const { Timesheet, Job, JobDayAssignment, User, Customer } = require('../models');
+const { Timesheet, Job, JobDayAssignment, User, Customer, Invoice } = require('../models');
 const { getSetting, todayStr, plain } = require('../db');
 const geocode = require('../geocode');
 
@@ -86,6 +86,30 @@ async function activeShift(userId) {
 }
 
 const ALREADY_CLOCKED_IN = 'You are already clocked in — clock out first';
+const PAID_CLOCK_IN_ERROR = 'This job is paid in full — you cannot clock in';
+
+/**
+ * Clock-in is closed once the job is PAID or any invoice on it is paid in full.
+ */
+async function jobClockInClosed(jobId, status) {
+  if (status === 'PAID') return true;
+  const paid = await Invoice.findOne({
+    where: { job_id: jobId, status: 'paid' },
+    attributes: ['id'],
+  });
+  return !!paid;
+}
+
+async function paidInvoiceJobIds(jobIds) {
+  const ids = [...new Set((jobIds || []).map(Number).filter((id) => Number.isInteger(id) && id > 0))];
+  if (!ids.length) return new Set();
+  const rows = await Invoice.findAll({
+    where: { job_id: { [Op.in]: ids }, status: 'paid' },
+    attributes: ['job_id'],
+    raw: true,
+  });
+  return new Set(rows.map((row) => Number(row.job_id)));
+}
 
 /**
  * job_id is optional (yard / travel). A provided id must be a positive integer.
@@ -105,12 +129,15 @@ function parseOptionalJobId(raw) {
  * a job they are assigned to even when that day is not "today".
  */
 async function assertAssignedToJob(userId, jobId) {
-  const job = await Job.findByPk(jobId, { attributes: ['id'] });
+  const job = await Job.findByPk(jobId, { attributes: ['id', 'status'] });
   if (!job) throw new Error('Job not found');
   const assigned = await JobDayAssignment.findOne({
     where: { job_id: jobId, user_id: Number(userId) },
   });
   if (!assigned) throw new Error('You are not assigned to that job');
+  if (await jobClockInClosed(job.id, job.status)) {
+    throw new Error(PAID_CLOCK_IN_ERROR);
+  }
 }
 
 /**
@@ -503,6 +530,9 @@ module.exports = {
   distanceMetres,
   locationCapture,
   activeShift,
+  PAID_CLOCK_IN_ERROR,
+  jobClockInClosed,
+  paidInvoiceJobIds,
   clockIn,
   parseOptionalJobId,
   startBreak,

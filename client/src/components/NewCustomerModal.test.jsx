@@ -34,4 +34,19 @@ describe('NewCustomerModal duplicates (requirement 2.5)', () => {
     expect(await screen.findByRole('link', { name: /open helen ackroyd/i })).toHaveAttribute('href', '/customers/7');
     expect(screen.getByRole('alert')).toHaveTextContent(/Helen Ackroyd/);
   });
+
+  it('does not create a customer with an email that is missing @', async () => {
+    const user = userEvent.setup();
+    render(
+      <MemoryRouter>
+        <NewCustomerModal open onClose={() => {}} />
+      </MemoryRouter>,
+    );
+    await user.type(screen.getByLabelText(/^name$/i), 'Someone New');
+    await user.type(screen.getByLabelText(/^email$/i), 'not-an-email');
+    await user.click(screen.getByRole('button', { name: /create customer/i }));
+    expect(screen.getByLabelText(/^email$/i)).toHaveAttribute('aria-invalid', 'true');
+    expect(screen.getAllByText(/enter a valid email address/i).length).toBeGreaterThan(0);
+    expect(api.post).not.toHaveBeenCalled();
+  });
 });

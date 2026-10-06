@@ -757,8 +757,6 @@ const RULES_SETTINGS = {
     require_location: true,
     site_radius_m: 300,
     require_photo_on_clockout: false,
-    auto_break_minutes: 0,
-    auto_break_after_hours: 6,
     round_to_minutes: 0,
     max_shift_hours: 14,
   },
@@ -793,6 +791,8 @@ describe('Settings timesheet rules, holiday allowance, and branding (requirement
     render(<Settings />);
     await user.click(screen.getByRole('button', { name: /^company$/i }));
     expect(await screen.findByRole('heading', { name: /timesheet rules/i })).toBeInTheDocument();
+    expect(screen.queryByLabelText(/auto-break minutes/i)).toBeNull();
+    expect(screen.queryByLabelText(/auto-break after/i)).toBeNull();
     const radius = screen.getByLabelText(/site radius/i);
     expect(radius).toHaveValue(300);
     await user.clear(radius);

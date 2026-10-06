@@ -53,10 +53,27 @@ async function stopFollowupsAfterInbound(customerId, inboundAt = new Date(), rea
   return total;
 }
 
+function fail(status, message) {
+  const err = new Error(message);
+  err.status = status;
+  throw err;
+}
+
+function parseScheduledAt(raw) {
+  if (raw == null || raw === '') return null;
+  const at = new Date(raw);
+  return Number.isNaN(at.getTime()) ? null : at;
+}
+
+/**
+ * First successful send creates the sequence. Later resends keep those rows
+ * (do not cancel and recreate).
+ */
 async function scheduleForQuote(quote) {
   const cfg = await getSetting('followups');
   if (!cfg || !cfg.enabled) return 0;
-  await cancelPendingForQuote(quote.id, 'rescheduled');
+  const existing = await Followup.count({ where: { quote_id: quote.id } });
+  if (existing > 0) return 0;
   const origin = quote.sent_at ? new Date(quote.sent_at).getTime() : Date.now();
   let created = 0;
   let firstStepAt = null;
@@ -81,6 +98,64 @@ async function scheduleForQuote(quote) {
   }
   await logActivity(quote.customer_id, null, 'followups_scheduled', `Automatic follow-ups scheduled for quote ${quote.ref} (${created} steps)`);
   return created;
+}
+
+/**
+ * Office can move a pending step. The quote follow-up task due date tracks
+ * the earliest remaining pending step.
+ */
+async function updateFollowupSchedule({ quoteId, followupId, scheduledAt, userId, quote }) {
+  const row = await Followup.findByPk(followupId);
+  if (!row || Number(row.quote_id) !== Number(quoteId)) fail(404, 'Follow-up not found');
+  if (row.status !== 'pending') fail(400, 'Only a pending follow-up can have its date changed');
+  const at = parseScheduledAt(scheduledAt);
+  if (!at) fail(400, 'Enter a valid date and time');
+  row.scheduled_at = at;
+  await row.save();
+  const earliest = await Followup.findOne({
+    where: { quote_id: quoteId, status: 'pending' },
+    order: [['scheduled_at', 'ASC']],
+  });
+  const holder = quote || await Quote.findByPk(quoteId, { attributes: ['id', 'ref', 'customer_id'] });
+  if (earliest && holder) await ensureQuoteFollowupTask(holder, earliest.scheduled_at);
+  if (holder) {
+    await logActivity(
+      holder.customer_id,
+      userId || null,
+      'followup_rescheduled',
+      `Follow-up step ${row.step} for ${holder.ref} moved to ${at.toISOString()}`,
+      'quote',
+      quoteId,
+    );
+  }
+  return row;
+}
+
+async function cancelFollowup({ quoteId, followupId, userId, quote }) {
+  const row = await Followup.findByPk(followupId);
+  if (!row || Number(row.quote_id) !== Number(quoteId)) fail(404, 'Follow-up not found');
+  if (row.status !== 'pending') fail(400, 'Only a pending follow-up can be cancelled');
+  row.status = 'cancelled';
+  row.stop_reason = 'cancelled by office';
+  await row.save();
+  const earliest = await Followup.findOne({
+    where: { quote_id: quoteId, status: 'pending' },
+    order: [['scheduled_at', 'ASC']],
+  });
+  const holder = quote || await Quote.findByPk(quoteId, { attributes: ['id', 'ref', 'customer_id'] });
+  if (earliest && holder) await ensureQuoteFollowupTask(holder, earliest.scheduled_at);
+  else await resolveQuoteFollowupTask(quoteId);
+  if (holder) {
+    await logActivity(
+      holder.customer_id,
+      userId || null,
+      'followup_cancelled',
+      `Follow-up step ${row.step} for ${holder.ref} cancelled`,
+      'quote',
+      quoteId,
+    );
+  }
+  return row;
 }
 
 async function customerRepliedSince(customerId, sinceIso) {
@@ -176,6 +251,8 @@ async function processDue() {
 
 module.exports = {
   scheduleForQuote,
+  updateFollowupSchedule,
+  cancelFollowup,
   processDue,
   render,
   cancelPendingForQuote,

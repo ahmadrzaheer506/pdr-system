@@ -86,6 +86,49 @@ describe('PUT /api/jobs/:id/status (requirement 7.2)', () => {
   });
 });
 
+describe('POST /api/jobs/:id/unschedule', () => {
+  beforeEach(() => jest.clearAllMocks());
+
+  test('returns scheduled jobs to pending, clears dates and crew', async () => {
+    const row = {
+      id: 4,
+      title: 'Re-roof',
+      status: 'SCHEDULED',
+      customer_id: 9,
+      lead_id: 2,
+      start_date: '2026-10-08',
+      end_date: '2026-10-09',
+      update: jest.fn(async function patch(fields) { Object.assign(this, fields); }),
+    };
+    Job.findByPk.mockResolvedValue(row);
+    const { Customer, JobDayAssignment } = require('../models');
+    JobDayAssignment.findAll.mockResolvedValue([{ work_date: '2026-10-08', user_id: 3 }]);
+    JobDayAssignment.destroy.mockResolvedValue(1);
+    Customer.findByPk.mockResolvedValue({ stage: 'SCHEDULED' });
+
+    const res = await request(app).post('/api/jobs/4/unschedule').send();
+    expect(res.status).toBe(200);
+    expect(JobDayAssignment.destroy).toHaveBeenCalledWith({ where: { job_id: 4 }, transaction: undefined });
+    expect(row.update).toHaveBeenCalledWith({ status: 'PENDING', start_date: null, end_date: null });
+    const { setStage, logActivity } = require('../services/pipeline');
+    expect(setStage).toHaveBeenCalledWith(9, 'WON', 1, expect.stringMatching(/unscheduled/i), { leadId: 2 });
+    expect(logActivity).toHaveBeenCalledWith(9, 1, 'job_unscheduled', expect.any(String), 'job', 4);
+  });
+
+  test('rejects jobs that are not scheduled or in progress', async () => {
+    Job.findByPk.mockResolvedValue({
+      id: 4,
+      title: 'Re-roof',
+      status: 'COMPLETED',
+      customer_id: 9,
+      update: jest.fn(),
+    });
+    const res = await request(app).post('/api/jobs/4/unschedule').send();
+    expect(res.status).toBe(400);
+    expect(res.body.error).toMatch(/scheduled or in-progress/i);
+  });
+});
+
 describe('PUT /api/jobs/:id required_skills (requirement 7.2)', () => {
   beforeEach(() => jest.clearAllMocks());
 
@@ -249,6 +292,25 @@ describe('PUT /api/jobs/:id needs_driver (requirement 8.3)', () => {
   });
 });
 
+describe('PUT /api/jobs/:id priority', () => {
+  beforeEach(() => jest.clearAllMocks());
+
+  test('stores a valid priority', async () => {
+    const row = { id: 4, title: 'Re-roof', customer_id: 9, priority: 'normal', update: jest.fn() };
+    Job.findByPk.mockResolvedValue(row);
+    const res = await request(app).put('/api/jobs/4').send({ priority: 'high' });
+    expect(res.status).toBe(200);
+    expect(row.update).toHaveBeenCalledWith({ priority: 'high' });
+  });
+
+  test('rejects an unknown priority', async () => {
+    Job.findByPk.mockResolvedValue({ id: 4, title: 'Re-roof', customer_id: 9, update: jest.fn() });
+    const res = await request(app).put('/api/jobs/4').send({ priority: 'critical' });
+    expect(res.status).toBe(400);
+    expect(res.body.error).toMatch(/low, normal, high, or urgent/i);
+  });
+});
+
 describe('PUT /api/jobs/:id dates (requirement 8.1)', () => {
   beforeEach(() => jest.clearAllMocks());
 
@@ -259,6 +321,17 @@ describe('PUT /api/jobs/:id dates (requirement 8.1)', () => {
     const res = await request(app).put('/api/jobs/4').send({ start_date: '2026-09-26', end_date: '2026-09-25' });
     expect(res.status).toBe(400);
     expect(res.body.error).toBe('End date cannot be before the start date');
+  });
+
+  test('stores a blank end date as null', async () => {
+    const row = {
+      id: 4, title: 'Re-roof', customer_id: 9, start_date: '2026-09-26', end_date: '2026-09-28',
+      status: 'SCHEDULED', update: jest.fn(), reload: jest.fn(),
+    };
+    Job.findByPk.mockResolvedValue(row);
+    const res = await request(app).put('/api/jobs/4').send({ end_date: '' });
+    expect(res.status).toBe(200);
+    expect(row.update).toHaveBeenCalledWith({ end_date: null });
   });
 });
 

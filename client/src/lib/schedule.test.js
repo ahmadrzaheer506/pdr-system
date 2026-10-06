@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { datesInRange, jobOnDate, crewForDate, addIsoDays, isOnHoliday, bookingsFromJobs, mergeCrewBookings, jobDatesForCrewDay, staffDayFlags, crewConflictLabel, crewSaveConflicts, jobConflictCaption, teamAvailabilityRows } from './schedule';
+import { datesInRange, jobOnDate, crewForDate, addIsoDays, isOnHoliday, bookingsFromJobs, mergeCrewBookings, jobDatesForCrewDay, staffDayFlags, crewConflictLabel, crewChipHoverHint, crewSaveConflicts, jobConflictCaption, teamAvailabilityRows } from './schedule';
 
 describe('schedule helpers (requirement 8.1)', () => {
   it('lists inclusive dates and matches jobs on a day', () => {
@@ -44,6 +44,12 @@ describe('schedule helpers (requirement 8.1)', () => {
     expect(flags.onHoliday).toBe(true);
     expect(flags.busyOn.map((b) => b.job_id)).toEqual([9]);
     expect(crewConflictLabel(flags)).toBe('holiday');
+    expect(crewChipHoverHint({ name: 'Jamie Fisher', ...flags })).toBe('Jamie Fisher is on holiday this day. You can still book.');
+    expect(crewChipHoverHint({
+      name: 'Callum Ashworth',
+      onHoliday: false,
+      busyOn: [{ job_title: 'Guttering & fascia replacement' }],
+    })).toBe('Callum Ashworth is already booked on “Guttering & fascia replacement”. You can still book.');
     expect(staffDayFlags({
       holidays: [],
       bookings: [{ user_id: '3', job_id: '9', job_title: 'Guttering', work_date: '2026-09-22' }],

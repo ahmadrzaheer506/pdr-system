@@ -557,8 +557,6 @@ async function seedSettings() {
     require_location: true,
     site_radius_m: 250,
     require_photo_on_clockout: false,
-    auto_break_minutes: 0,
-    auto_break_after_hours: 6,
     round_to_minutes: 0,
     max_shift_hours: 14,
   };

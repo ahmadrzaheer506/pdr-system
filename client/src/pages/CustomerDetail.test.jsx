@@ -16,6 +16,14 @@ vi.mock('../components/BookVisit.jsx', () => ({ default: () => null }));
 vi.mock('../components/JobModal.jsx', () => ({
   default: ({ jobId }) => (jobId ? <div>Job modal {jobId}</div> : null),
 }));
+vi.mock('../components/DatePicker.jsx', () => ({
+  default: ({ id, label, value, onChange }) => (
+    <label htmlFor={id}>
+      {label}
+      <input id={id} value={value} onChange={(e) => onChange(e.target.value)} />
+    </label>
+  ),
+}));
 
 vi.mock('../lib/api', () => ({
   api: { get: vi.fn(), post: vi.fn(), put: vi.fn(), del: vi.fn(), upload: vi.fn(), download: vi.fn() },
@@ -547,6 +555,26 @@ describe('CustomerDetail type (requirement 2.1)', () => {
     expect(api.post).not.toHaveBeenCalledWith('/quotes/5/send', expect.anything());
   });
 
+  it('shows why WhatsApp send failed instead of Quote sent', async () => {
+    const user = userEvent.setup();
+    api.get.mockImplementation((path) => {
+      if (String(path).includes('/settings/users')) {
+        return Promise.resolve({ users: [{ id: 1, name: 'Paul Douglas', role: 'ADMIN', active: true }] });
+      }
+      return Promise.resolve({
+        ...DETAIL,
+        quotes: [{ id: 5, ref: 'Q-2026-0005', title: 'Felt', total: 1200, status: 'draft', optional_extras: [] }],
+      });
+    });
+    api.post.mockRejectedValue(new Error(
+      'WhatsApp is not connected. Add WHATSAPP_ACCESS_TOKEN and WHATSAPP_PHONE_NUMBER_ID in .env, then restart the server.',
+    ));
+    renderDetail();
+    await user.click(await screen.findByRole('button', { name: /send whatsapp/i }));
+    expect(await screen.findByText(/whatsapp is not connected/i)).toBeInTheDocument();
+    expect(screen.queryByText(/^quote sent$/i)).toBeNull();
+  });
+
   it('clones a quote after asking for a new title', async () => {
     const user = userEvent.setup();
     api.get.mockImplementation((path) => {
@@ -899,6 +927,72 @@ describe('CustomerDetail type (requirement 2.1)', () => {
     expect(screen.getAllByRole('button', { name: /cancel remaining/i })).toHaveLength(1);
     await user.click(screen.getByRole('button', { name: /cancel remaining/i }));
     expect(api.post).toHaveBeenCalledWith('/quotes/4/followups/cancel');
+  });
+
+  it('lets the office change a pending follow-up date and time', async () => {
+    const user = userEvent.setup();
+    api.get.mockImplementation((path) => {
+      if (String(path).includes('/settings/users')) {
+        return Promise.resolve({ users: [] });
+      }
+      return Promise.resolve({
+        ...DETAIL,
+        followups: [
+          {
+            id: 1, quote_id: 4, quote_ref: 'Q-2026-0004', step: 1, channel: 'whatsapp',
+            status: 'pending', scheduled_at: '2026-09-22T10:00:00Z',
+          },
+          {
+            id: 3, quote_id: 5, quote_ref: 'Q-2026-0005', step: 1, channel: 'email',
+            status: 'sent', scheduled_at: '2026-09-20T10:00:00Z',
+          },
+        ],
+      });
+    });
+    api.put.mockResolvedValue({ ok: true });
+    renderDetail();
+    expect(await screen.findByRole('button', { name: /change date/i })).toBeInTheDocument();
+    expect(screen.queryAllByRole('button', { name: /change date/i })).toHaveLength(1);
+    await user.click(screen.getByRole('button', { name: /change date/i }));
+    const date = screen.getByLabelText(/^date$/i);
+    const time = screen.getByLabelText(/^time$/i);
+    await user.clear(date);
+    await user.type(date, '2026-10-12');
+    await user.clear(time);
+    await user.type(time, '14:30');
+    await user.click(screen.getByRole('button', { name: /save time/i }));
+    expect(api.put).toHaveBeenCalledWith('/quotes/4/followups/1', {
+      scheduled_at: new Date('2026-10-12T14:30').toISOString(),
+    });
+  });
+
+  it('cancels a single pending follow-up without cancelling the rest', async () => {
+    const user = userEvent.setup();
+    api.get.mockImplementation((path) => {
+      if (String(path).includes('/settings/users')) {
+        return Promise.resolve({ users: [] });
+      }
+      return Promise.resolve({
+        ...DETAIL,
+        followups: [
+          {
+            id: 1, quote_id: 4, quote_ref: 'Q-2026-0004', step: 1, channel: 'whatsapp',
+            status: 'pending', scheduled_at: '2026-09-22T10:00:00Z',
+          },
+          {
+            id: 2, quote_id: 4, quote_ref: 'Q-2026-0004', step: 2, channel: 'email',
+            status: 'pending', scheduled_at: '2026-09-25T10:00:00Z',
+          },
+        ],
+      });
+    });
+    api.post.mockResolvedValue({ ok: true });
+    renderDetail();
+    const cancelOne = await screen.findAllByRole('button', { name: /cancel this follow-up/i });
+    expect(cancelOne).toHaveLength(2);
+    await user.click(cancelOne[0]);
+    expect(api.post).toHaveBeenCalledWith('/quotes/4/followups/1/cancel');
+    expect(api.post).not.toHaveBeenCalledWith('/quotes/4/followups/cancel');
   });
 
   it('links the open follow-up task on the customer card (requirement 12.2)', async () => {

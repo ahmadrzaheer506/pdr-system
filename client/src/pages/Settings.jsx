@@ -29,11 +29,14 @@ const TIMESHEET_DEFAULTS = {
   require_location: true,
   site_radius_m: 300,
   require_photo_on_clockout: false,
-  auto_break_minutes: 0,
-  auto_break_after_hours: 6,
   round_to_minutes: 0,
   max_shift_hours: 14,
 };
+
+function timesheetSettingsPayload(raw) {
+  const src = { ...TIMESHEET_DEFAULTS, ...(raw || {}) };
+  return Object.fromEntries(Object.keys(TIMESHEET_DEFAULTS).map((key) => [key, src[key]]));
+}
 
 const TIMESHEET_BOOL_FIELDS = [
   { key: 'enabled', label: 'Timesheets enabled' },
@@ -67,8 +70,6 @@ const STAFF_ROLE_FILTER = [
 
 const TIMESHEET_NUM_FIELDS = [
   { key: 'site_radius_m', label: 'Site radius (metres)', min: 0, max: 10000 },
-  { key: 'auto_break_minutes', label: 'Auto-break minutes', min: 0, max: 480 },
-  { key: 'auto_break_after_hours', label: 'Auto-break after (hours)', min: 0, max: 24, step: 0.5 },
   { key: 'round_to_minutes', label: 'Round to (minutes)', min: 0, max: 60 },
   { key: 'max_shift_hours', label: 'Max shift (hours)', min: 0, max: 24, step: 0.5 },
 ];
@@ -112,7 +113,7 @@ function CheckRow({ id, checked, disabled, onChange, children }) {
       htmlFor={id}
       className={`flex items-center gap-3 rounded-xl border border-slate-200 px-3.5 py-2.5 text-sm text-slate-800 ${disabled ? 'opacity-60' : 'cursor-pointer hover:border-slate-300 hover:bg-slate-50'}`}
     >
-      <input id={id} type="checkbox" checked={checked} disabled={disabled} onChange={onChange} className="h-4 w-4 rounded border-slate-300" />
+      <input id={id} type="checkbox" checked={checked} disabled={disabled} onChange={onChange} className="h-4 w-4 shrink-0 rounded border-slate-300 accent-brand-500" />
       {children}
     </label>
   );
@@ -261,7 +262,7 @@ function CompanyTab({ canEdit }) {
         ...s,
         followups: hydrateFollowups(s),
         automation: { interval_minutes: Number(s.automation?.interval_minutes) || 5 },
-        timesheets: { ...TIMESHEET_DEFAULTS, ...(s.timesheets || {}) },
+        timesheets: timesheetSettingsPayload(s.timesheets),
         holiday_allowance_days: Number.isFinite(Number(s.holiday_allowance_days))
           ? Number(s.holiday_allowance_days)
           : 28,
@@ -309,20 +310,20 @@ function CompanyTab({ canEdit }) {
         holiday_allowance_days: settings.holiday_allowance_days,
         automation: { interval_minutes: interval },
         followups: settings.followups,
-        timesheets: { ...TIMESHEET_DEFAULTS, ...(settings.timesheets || {}) },
+        timesheets: timesheetSettingsPayload(settings.timesheets),
       });
       show('Saved');
     } catch (err) { show(err.message, 'error'); } finally { setSaving(false); }
   };
 
-  const ts = { ...TIMESHEET_DEFAULTS, ...(settings.timesheets || {}) };
+  const ts = timesheetSettingsPayload(settings.timesheets);
   const setTsBool = (k) => (e) => setSettings((s) => ({
     ...s,
-    timesheets: { ...TIMESHEET_DEFAULTS, ...(s.timesheets || {}), [k]: e.target.checked },
+    timesheets: timesheetSettingsPayload({ ...(s.timesheets || {}), [k]: e.target.checked }),
   }));
   const setTsNum = (k) => (e) => setSettings((s) => ({
     ...s,
-    timesheets: { ...TIMESHEET_DEFAULTS, ...(s.timesheets || {}), [k]: Number(e.target.value) },
+    timesheets: timesheetSettingsPayload({ ...(s.timesheets || {}), [k]: Number(e.target.value) }),
   }));
 
   const uploadLogo = async (e) => {
@@ -530,7 +531,7 @@ function CompanyTab({ canEdit }) {
       <SettingsSection
         icon={Clock}
         title="Timesheet rules"
-        hint="Clock-in still uses enabled, site radius, rounding, and max shift only. The other four keys are stored here and are not newly enforced."
+        hint="Clock-in uses enabled, site radius, rounding, and max shift."
       >
         <div className="space-y-2">
           {TIMESHEET_BOOL_FIELDS.map((field) => (
@@ -810,7 +811,7 @@ function SkillFields({ form, toggleSkill, setDriver }) {
         </div>
       </div>
       <label className="flex items-center gap-2 text-sm text-slate-600">
-        <input type="checkbox" checked={form.is_driver} onChange={(e) => setDriver(e.target.checked)} /> Can drive
+        <input type="checkbox" className="h-4 w-4 shrink-0 rounded border-slate-300 accent-brand-500" checked={form.is_driver} onChange={(e) => setDriver(e.target.checked)} /> Can drive
       </label>
     </>
   );
@@ -1165,7 +1166,7 @@ function AddStaffModal({ open, onClose, onSaved }) {
         )}
         {form.role === ROLES.OFFICE && (
           <label className="flex items-center gap-2 text-sm text-slate-600">
-            <input type="checkbox" checked={form.financials_restricted} onChange={(e) => setForm({ ...form, financials_restricted: e.target.checked })} />
+            <input type="checkbox" className="h-4 w-4 shrink-0 rounded border-slate-300 accent-brand-500" checked={form.financials_restricted} onChange={(e) => setForm({ ...form, financials_restricted: e.target.checked })} />
             Restrict job costing and labour-cost figures
           </label>
         )}
@@ -1290,7 +1291,7 @@ function EditUserModal({ user, lockRole, onClose, onSaved }) {
         )}
         {form.role === ROLES.OFFICE && (
           <label className="flex items-center gap-2 text-sm text-slate-600">
-            <input type="checkbox" checked={form.financials_restricted} onChange={(e) => setForm({ ...form, financials_restricted: e.target.checked })} />
+            <input type="checkbox" className="h-4 w-4 shrink-0 rounded border-slate-300 accent-brand-500" checked={form.financials_restricted} onChange={(e) => setForm({ ...form, financials_restricted: e.target.checked })} />
             Restrict job costing and labour-cost figures
           </label>
         )}

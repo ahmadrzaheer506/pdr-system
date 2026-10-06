@@ -1,6 +1,7 @@
 import React from 'react';
-import { Avatar } from './ui.jsx';
-import { staffDayFlags, crewConflictLabel, crewSaveConflicts, crewConflictSummaryLine } from '../lib/schedule';
+import { Check } from 'lucide-react';
+import { Avatar, HoverTooltip } from './ui.jsx';
+import { staffDayFlags, crewConflictLabel, crewSaveConflicts, crewConflictSummaryLine, crewChipHoverHint } from '../lib/schedule';
 import { staffMatchesRequiredSkills, skillLabel } from '../lib/skills';
 
 function chipClass({ selected, onHoliday, busy, matches }) {
@@ -54,7 +55,9 @@ export function CrewConflictNotes({
       role="status"
       className="mt-2 rounded-xl bg-amber-50 px-3 py-2.5 ring-1 ring-amber-200"
     >
-      <p className="text-xs font-semibold text-amber-950">{heading}</p>
+      <p className="text-xs font-semibold leading-snug text-amber-950">
+        {heading}. You can still assign them.
+      </p>
       <ul className="mt-1.5 space-y-1 text-xs leading-snug text-amber-900">
         {rows.map((row) => (
           <li key={`${row.type}-${row.user_id}-${row.job_id || row.detail}`}>
@@ -90,18 +93,19 @@ export default function CrewChips({
           holidays, bookings, userId: s.id, iso: workDate, excludeJobId,
         });
         const conflict = crewConflictLabel({ onHoliday, busyOn });
+        const hint = crewChipHoverHint({ name: s.name, onHoliday, busyOn });
         let label = s.name;
         if (matches) label += ' matches required skills';
         if (s.is_driver) label += ' driver';
         if (onHoliday) label += ' on holiday';
         else if (busyOn.length) label += ` already on ${busyOn[0].job_title}`;
-        return (
+        const chip = (
           <button
-            key={s.id}
             type="button"
             disabled={disabled}
             onClick={() => onToggle?.(s.id)}
             aria-label={label}
+            aria-pressed={selected}
             className={`flex items-center gap-1.5 rounded-full pl-1 pr-3 py-1 text-xs font-medium border ${chipClass({
               selected, onHoliday, busy: busyOn.length > 0, matches,
             })} ${disabled ? 'opacity-60 cursor-not-allowed' : ''}`}
@@ -110,7 +114,20 @@ export default function CrewChips({
             {matches && <span className="text-[10px] uppercase tracking-wide">match</span>}
             {s.is_driver && <span className="text-[10px] uppercase tracking-wide">driver</span>}
             {conflict && <span className="text-[10px] uppercase tracking-wide">{conflict}</span>}
+            {selected ? (
+              <span
+                className="inline-flex h-4 w-4 shrink-0 items-center justify-center rounded-full bg-emerald-500 text-white"
+                aria-hidden="true"
+              >
+                <Check size={10} strokeWidth={3} />
+              </span>
+            ) : null}
           </button>
+        );
+        return (
+          <HoverTooltip key={s.id} text={hint}>
+            {chip}
+          </HoverTooltip>
         );
       })}
     </div>

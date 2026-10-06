@@ -739,7 +739,7 @@ function ReviewTab({ from, to, setFrom, setTo, show, showCosts }) {
                       {t.status === 'completed' && (
                         <input
                           type="checkbox"
-                          className="h-4 w-4 rounded border-slate-300 text-brand-600"
+                          className="h-4 w-4 rounded border-slate-300 accent-brand-500"
                           checked={selected.includes(t.id)}
                           onChange={() => toggle(t.id)}
                           aria-label={`Select ${t.user_name}`}

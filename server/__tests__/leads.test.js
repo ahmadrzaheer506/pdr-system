@@ -108,7 +108,7 @@ describe('GET /api/leads (requirement 3.1)', () => {
       expect.objectContaining({ source: 'phone', status: 'CLOSED', customer_name: 'Neil Draper' }),
     ]);
     expect(Lead.findAll).toHaveBeenCalledWith(expect.objectContaining({
-      where: { status: 'CLOSED' },
+      where: { stage: 'LOST' },
     }));
   });
 
@@ -203,6 +203,13 @@ describe('POST /api/leads (requirement 3.3)', () => {
       channel: 'note',
       name: 'Walk-in caller',
       phone: '07700 900100',
+    }));
+    const sms = await request(app).post('/api/leads').send({ source: 'sms', name: 'Text lead' });
+    expect(sms.status).toBe(200);
+    expect(ingestInbound).toHaveBeenCalledWith(expect.objectContaining({
+      source: 'sms',
+      channel: 'sms',
+      name: 'Text lead',
     }));
     const leadAd = await request(app).post('/api/leads').send({ source: 'facebook_lead', name: 'Lead' });
     expect(leadAd.status).toBe(200);

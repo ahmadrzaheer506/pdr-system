@@ -1,11 +1,15 @@
 import React from 'react';
-import { Avatar, PriorityBadge } from './ui.jsx';
+import { Avatar, PriorityBadge, HoverTooltip } from './ui.jsx';
 import {
   startOfWeekMonday, localIsoDate, jobOnDate, crewForDate,
   holidaysOnDate, bookingsFromJobs, staffDayFlags, crewConflictLabel, jobConflictCaption,
 } from '../lib/schedule';
 import { missingRequiredSkills, crewHasDriver } from '../lib/skills';
 import { CrewFitNotes } from './CrewChips.jsx';
+
+function jobCardHoverText(job) {
+  return [job?.title, job?.customer_name].map((part) => String(part || '').trim()).filter(Boolean).join('\n');
+}
 
 export function JobChip({ job, dateIso, onJobClick, holidays = [], bookings = [] }) {
   const crew = crewForDate(job, dateIso);
@@ -14,32 +18,40 @@ export function JobChip({ job, dateIso, onJobClick, holidays = [], bookings = []
   const hasDriver = crewHasDriver(crew, crewIds);
   const conflictNote = jobConflictCaption(crew, { holidays, bookings, iso: dateIso, excludeJobId: job.id });
   return (
-    <button type="button" onClick={() => onJobClick(job.id)} className="block w-full text-left bg-slate-100 hover:bg-slate-200 rounded-md px-2 py-1.5 transition-colors">
+    <HoverTooltip text={jobCardHoverText(job)} className="block w-full min-w-0">
+      <button type="button" onClick={() => onJobClick(job.id)} className="block w-full text-left bg-slate-100 hover:bg-slate-200 rounded-md px-2 py-1.5 transition-colors">
       <div className="text-xs font-medium text-slate-800 truncate">{job.title}</div>
       <div className="text-[10px] text-slate-500 truncate">{job.customer_name}</div>
-      <div className="flex items-center gap-1 mt-1 flex-wrap">
-        {crew.slice(0, 4).map((c) => {
-          const flags = staffDayFlags({
-            holidays, bookings, userId: c.user_id, iso: dateIso, excludeJobId: job.id,
-          });
-          const conflict = crewConflictLabel(flags);
-          return (
-            <span
-              key={c.user_id}
-              className={`relative rounded-full ${conflict ? 'ring-2 ring-amber-400' : ''}`}
-              title={conflict ? `${c.name} — ${conflict}` : c.name}
-            >
-              <Avatar name={c.name} color={c.color} size={4.5} />
-            </span>
-          );
-        })}
-        {job.priority !== 'normal' && <span className="ml-auto"><PriorityBadge priority={job.priority} /></span>}
-      </div>
+      {job.priority !== 'normal' ? (
+        <div className="mt-1 flex justify-end">
+          <PriorityBadge priority={job.priority} />
+        </div>
+      ) : null}
+      {crew.length > 0 ? (
+        <div className="mt-1 flex flex-wrap items-center gap-1">
+          {crew.map((c) => {
+            const flags = staffDayFlags({
+              holidays, bookings, userId: c.user_id, iso: dateIso, excludeJobId: job.id,
+            });
+            const conflict = crewConflictLabel(flags);
+            return (
+              <span
+                key={c.user_id}
+                className={`relative rounded-full ${conflict ? 'ring-2 ring-amber-400' : ''}`}
+                title={conflict ? `${c.name} — ${conflict}` : c.name}
+              >
+                <Avatar name={c.name} color={c.color} size={4.5} />
+              </span>
+            );
+          })}
+        </div>
+      ) : null}
       {conflictNote && (
         <div className="text-[10px] text-amber-700 mt-1">{conflictNote}</div>
       )}
       <CrewFitNotes missingSkills={missingSkills} needsDriver={!!job.needs_driver} hasDriver={hasDriver} />
     </button>
+    </HoverTooltip>
   );
 }
 

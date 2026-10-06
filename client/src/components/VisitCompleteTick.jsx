@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { Check } from 'lucide-react';
+import { Check, MessageSquareText } from 'lucide-react';
 import { Modal } from './ui.jsx';
 
 /**
@@ -23,7 +23,7 @@ export default function VisitCompleteTick({ done, saving, onComplete, large = fa
     <label className={`inline-flex cursor-pointer select-none items-center gap-2 font-medium text-slate-800 ${large ? 'text-base' : 'text-sm'} ${saving ? 'opacity-60' : ''}`}>
       <input
         type="checkbox"
-        className="h-5 w-5 rounded border-slate-300 text-brand-600 focus:ring-brand-500"
+        className="h-5 w-5 rounded border-slate-300 accent-brand-500"
         checked={false}
         disabled={saving}
         onChange={() => onComplete()}
@@ -34,13 +34,32 @@ export default function VisitCompleteTick({ done, saving, onComplete, large = fa
   );
 }
 
-export function VisitCompleteRemarks({ note, className = 'text-sm text-slate-600' }) {
+export function VisitCompleteRemarks({ note, className = '' }) {
+  const [expanded, setExpanded] = useState(false);
   if (!note) return null;
+  const long = note.length > 160 || note.split('\n').length > 3;
   return (
-    <p className={className}>
-      <span className="font-medium text-slate-500">Remarks: </span>
-      {note}
-    </p>
+    <aside
+      className={`rounded-xl bg-sky-50 p-3 ring-1 ring-sky-100 ${className}`}
+      aria-label="Completion remarks"
+    >
+      <div className="flex items-center gap-1.5 text-xs font-semibold text-sky-900">
+        <MessageSquareText size={13} strokeWidth={2.2} />
+        Remarks
+      </div>
+      <p className={`mt-1.5 text-sm leading-relaxed text-slate-800 whitespace-pre-wrap ${!expanded && long ? 'line-clamp-3' : ''}`}>
+        {note}
+      </p>
+      {long ? (
+        <button
+          type="button"
+          className="mt-1.5 text-xs font-medium text-sky-800 hover:text-sky-950 hover:underline"
+          onClick={() => setExpanded((v) => !v)}
+        >
+          {expanded ? 'Show less' : 'Show more'}
+        </button>
+      ) : null}
+    </aside>
   );
 }
 
@@ -65,7 +84,7 @@ export function VisitCompleteModal({ visit, open, saving, onClose, onConfirm }) 
     <Modal open={open} onClose={() => !saving && onClose()} title="Complete visit">
       <form onSubmit={submit} className="space-y-3">
         <p className="text-sm text-slate-500">
-          Mark the site visit for {title} as completed. Add remarks if anything is worth recording.
+        Mark the site visit for {title} as completed. Add remarks if anything is worth recording.
         </p>
         <div>
           <label className="label" htmlFor="complete-visit-note">Completion remarks (optional)</label>
@@ -75,7 +94,7 @@ export function VisitCompleteModal({ visit, open, saving, onClose, onConfirm }) 
             rows={3}
             value={note}
             onChange={(e) => setNote(e.target.value)}
-            placeholder="What was found on site"
+            placeholder="What was found on site — access, measurements, extras…"
           />
         </div>
         <div className="flex gap-2 justify-end">

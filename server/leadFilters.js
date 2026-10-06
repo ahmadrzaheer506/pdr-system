@@ -18,7 +18,9 @@ function buildLeadListWhere(query = {}, sequelize, opts = {}) {
 
   if (includeStatus) {
     const status = query.status == null ? 'NEW' : String(query.status);
-    if (status && status !== 'ALL') and.push({ status });
+    if (status === 'CONVERTED') and.push({ stage: 'WON' });
+    else if (status === 'CLOSED') and.push({ stage: 'LOST' });
+    else if (status && status !== 'ALL') and.push({ status });
   }
 
   if (query.source) {
@@ -71,4 +73,32 @@ function leadTextSearchOr(value, sequelize) {
   return { clause: { [Op.or]: or } };
 }
 
-module.exports = { buildLeadListWhere, leadTextSearchOr };
+/**
+ * Converted / Closed inbox cards count WON / LOST pipeline leads, not later job stages.
+ * @param {Array<{ status?: string, stage?: string, c?: number }>} rows
+ */
+function inboxTabCounts(rows) {
+  const counts = { NEW: 0, ACTIONED: 0, CONVERTED: 0, CLOSED: 0, ALL: 0 };
+  for (const row of rows || []) {
+    const n = Number(row.c) || 0;
+    counts.ALL += n;
+    const key = inboxCountKey(row);
+    if (key) counts[key] += n;
+  }
+  return counts;
+}
+
+function inboxCountKey(row) {
+  if (row.stage === 'WON') return 'CONVERTED';
+  if (row.stage === 'LOST') return 'CLOSED';
+  if (row.stage && row.stage !== 'ENQUIRY') {
+    if (row.status === 'NEW' || row.status === 'ACTIONED') return row.status;
+    return null;
+  }
+  if (row.status === 'NEW' || row.status === 'ACTIONED' || row.status === 'CONVERTED' || row.status === 'CLOSED') {
+    return row.status;
+  }
+  return null;
+}
+
+module.exports = { buildLeadListWhere, leadTextSearchOr, inboxTabCounts };

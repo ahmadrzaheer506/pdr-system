@@ -128,6 +128,19 @@ describe('staff view allowlist (requirement 1.5)', () => {
     expect(pub.value).toBeUndefined();
   });
 
+  test('toPublicStaffJob copies invoice_paid without invoice amounts', () => {
+    const pub = toPublicStaffJob({
+      id: 1,
+      title: 'Re-roof',
+      invoice_paid: true,
+      invoice_id: 7,
+      value: 12000,
+    });
+    expect(pub.invoice_paid).toBe(true);
+    expect(pub.invoice_id).toBeUndefined();
+    expect(pub.value).toBeUndefined();
+  });
+
   test('toPublicStaffJob drops variations (requirement 7.5)', () => {
     const pub = toPublicStaffJob({
       id: 1,

@@ -112,7 +112,7 @@ export default function StaffVisitDetail() {
               onComplete={() => setConfirming(true)}
             />
             {visit.status === 'done' && (
-              <VisitCompleteRemarks note={visit.complete_note} className="mt-2 text-sm text-slate-600" />
+              <VisitCompleteRemarks note={visit.complete_note} className="mt-3" />
             )}
           </div>
         )}

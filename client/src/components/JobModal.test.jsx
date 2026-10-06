@@ -54,6 +54,7 @@ describe('JobModal (requirement 7.2)', () => {
       return { job: { ...JOB, material_lines: [], checklist_items: [], files: [], notes: '', variations: [] }, messages: [] };
     });
     api.put.mockResolvedValue({ ok: true, warnings: [] });
+    api.post.mockResolvedValue({ ok: true });
   });
 
   it('blocks going back a status and allows skip ahead', async () => {
@@ -64,6 +65,34 @@ describe('JobModal (requirement 7.2)', () => {
     expect(screen.getByRole('button', { name: /^scheduled$/i })).toBeDisabled();
     await user.click(screen.getByRole('button', { name: /^completed$/i }));
     expect(api.put).toHaveBeenCalledWith('/jobs/8/status', { status: 'COMPLETED' });
+  });
+
+  it('unschedules in-progress jobs back to the unscheduled queue', async () => {
+    const user = userEvent.setup();
+    const onChanged = vi.fn();
+    renderJob(<JobModal jobId={8} onClose={() => {}} onChanged={onChanged} staff={STAFF} />);
+    expect(await screen.findByText('Porch roof rebuild')).toBeInTheDocument();
+    const unscheduleBtn = screen.getByRole('button', { name: /unschedule this job/i });
+    await user.hover(unscheduleBtn);
+    expect(await screen.findByRole('tooltip', { name: /unschedule this job/i })).toBeInTheDocument();
+    await user.click(unscheduleBtn);
+    expect(api.post).toHaveBeenCalledWith('/jobs/8/unschedule');
+    expect(onChanged).toHaveBeenCalled();
+  });
+
+  it('hides unschedule once the job is completed', async () => {
+    api.get.mockImplementation(async (path) => {
+      if (path === '/jobs/checklist-templates') {
+        return { templates: [{ id: 'generic', label: 'Generic', items: ['PPE on'] }] };
+      }
+      if (String(path).startsWith('/jobs/availability')) {
+        return { holidays: [], bookings: [] };
+      }
+      return { job: { ...JOB, status: 'COMPLETED', material_lines: [], checklist_items: [], files: [], notes: '', variations: [] }, messages: [] };
+    });
+    renderJob(<JobModal jobId={8} onClose={() => {}} onChanged={() => {}} staff={STAFF} />);
+    expect(await screen.findByText('Porch roof rebuild')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /unschedule/i })).not.toBeInTheDocument();
   });
 
   it('opens the enquiry workspace for this job from the modal header', async () => {
@@ -86,21 +115,86 @@ describe('JobModal (requirement 7.2)', () => {
     const user = userEvent.setup();
     renderJob(<JobModal jobId={8} onClose={() => {}} onChanged={() => {}} staff={STAFF} />);
     expect(await screen.findByText('Porch roof rebuild')).toBeInTheDocument();
-    await user.click(screen.getByRole('button', { name: /^Liam Ozturk$/i }));
+    const liam = screen.getByRole('button', { name: /^Liam Ozturk$/i });
+    expect(liam).toHaveAttribute('aria-pressed', 'false');
+    await user.click(liam);
+    expect(liam).toHaveAttribute('aria-pressed', 'true');
     await user.click(screen.getByRole('button', { name: /save crew/i }));
     expect(api.put).toHaveBeenCalledWith('/jobs/8/assignments', { work_date: '2026-09-22', user_ids: [4] });
   });
 
-  it('lets office change the crew date then save crew', async () => {
+  it('lets office pick a day chip then save crew', async () => {
     const user = userEvent.setup();
+    api.get.mockImplementation(async (path) => {
+      if (path === '/jobs/checklist-templates') {
+        return { templates: [{ id: 'generic', label: 'Generic', items: ['PPE on'] }] };
+      }
+      if (String(path).startsWith('/jobs/availability')) {
+        return { holidays: [], bookings: [] };
+      }
+      return {
+        job: {
+          ...JOB,
+          start_date: '2026-09-22',
+          end_date: '2026-09-24',
+          material_lines: [],
+          checklist_items: [],
+          files: [],
+          notes: '',
+          variations: [],
+        },
+        messages: [],
+      };
+    });
     renderJob(<JobModal jobId={8} onClose={() => {}} onChanged={() => {}} staff={STAFF} />);
-    expect(await screen.findByLabelText(/^crew date$/i)).toHaveAttribute('data-value', '2026-09-22');
-    await pickDate(user, /^crew date$/i, '2026-10-05');
-    expect(screen.getByLabelText(/^crew date$/i)).toHaveAttribute('data-value', '2026-10-05');
+    expect(await screen.findByLabelText(/^start date$/i)).toHaveAttribute('data-value', '2026-09-22');
+    expect(screen.queryByLabelText(/^crew date$/i)).not.toBeInTheDocument();
+    await user.click(await screen.findByRole('button', { name: /crew for 2026-09-24/i }));
     await user.click(screen.getByRole('button', { name: /^Liam Ozturk$/i }));
     await user.click(screen.getByRole('button', { name: /save crew/i }));
-    expect(api.put).toHaveBeenCalledWith('/jobs/8', { start_date: '2026-10-05', end_date: '2026-10-05' });
-    expect(api.put).toHaveBeenCalledWith('/jobs/8/assignments', { work_date: '2026-10-05', user_ids: [4] });
+    expect(api.put).toHaveBeenCalledWith('/jobs/8/assignments', { work_date: '2026-09-24', user_ids: [4] });
+  });
+
+  it('shows an empty end date when none is stored and lets office set it', async () => {
+    const user = userEvent.setup();
+    api.get.mockImplementation(async (path) => {
+      if (path === '/jobs/checklist-templates') {
+        return { templates: [{ id: 'generic', label: 'Generic', items: ['PPE on'] }] };
+      }
+      if (String(path).startsWith('/jobs/availability')) {
+        return { holidays: [], bookings: [] };
+      }
+      return {
+        job: {
+          ...JOB,
+          end_date: null,
+          material_lines: [],
+          checklist_items: [],
+          files: [],
+          notes: '',
+          variations: [],
+        },
+        messages: [],
+      };
+    });
+    renderJob(<JobModal jobId={8} onClose={() => {}} onChanged={() => {}} staff={STAFF} />);
+    expect(await screen.findByLabelText(/^end date$/i)).toHaveAttribute('data-value', '');
+    await pickDate(user, /^end date$/i, '2026-09-25');
+    expect(api.put).toHaveBeenCalledWith('/jobs/8', { end_date: '2026-09-25' });
+  });
+
+  it('scrolls to crew assigned when the header date badge is clicked', async () => {
+    const user = userEvent.setup();
+    const scrollIntoView = vi.fn();
+    const original = Element.prototype.scrollIntoView;
+    Element.prototype.scrollIntoView = scrollIntoView;
+    try {
+      renderJob(<JobModal jobId={8} onClose={() => {}} onChanged={() => {}} staff={STAFF} />);
+      await user.click(await screen.findByRole('button', { name: /show crew dates/i }));
+      expect(scrollIntoView).toHaveBeenCalled();
+    } finally {
+      Element.prototype.scrollIntoView = original;
+    }
   });
 
   it('shows photo groups, documents, and progress notes (requirement 7.4)', async () => {
@@ -154,6 +248,10 @@ describe('JobModal (requirement 7.2)', () => {
     renderJob(<JobModal jobId={8} onClose={() => {}} onChanged={() => {}} staff={STAFF} />);
     expect(await screen.findByLabelText(/Liam Ozturk on holiday/i)).toBeInTheDocument();
     expect(screen.getByLabelText(/Jamie Fisher matches required skills already on Guttering/i)).toBeInTheDocument();
+    await user.hover(screen.getByRole('button', { name: /Liam Ozturk on holiday/i }));
+    expect(await screen.findByRole('tooltip', { name: /Liam Ozturk is on holiday this day\. You can still book/i })).toBeInTheDocument();
+    await user.hover(screen.getByRole('button', { name: /Jamie Fisher matches required skills already on Guttering/i }));
+    expect(await screen.findByRole('tooltip', { name: /Jamie Fisher is already booked on “Guttering”\. You can still book/i })).toBeInTheDocument();
     await user.click(screen.getByRole('button', { name: /Liam Ozturk on holiday/i }));
     await user.click(screen.getByRole('button', { name: /save crew/i }));
     expect(api.put).not.toHaveBeenCalledWith('/jobs/8/assignments', expect.anything());
@@ -193,7 +291,7 @@ describe('JobModal (requirement 7.2)', () => {
     });
     renderJob(<JobModal jobId={8} onClose={() => {}} onChanged={() => {}} staff={STAFF} />);
     expect(await screen.findByText('Jamie Fisher is already booked on “Guttering”.')).toBeInTheDocument();
-    expect(screen.getByText('These people are already booked')).toBeInTheDocument();
+    expect(screen.getByText('These people are already booked. You can still assign them.')).toBeInTheDocument();
   });
 
   it('names assigned crew booked on an invoiced job the calendar already flags', async () => {
@@ -238,7 +336,7 @@ describe('JobModal (requirement 7.2)', () => {
       />,
     );
     expect(await screen.findByText('Jamie Fisher is already booked on “test”.')).toBeInTheDocument();
-    expect(screen.getByText('These people are already booked')).toBeInTheDocument();
+    expect(screen.getByText('These people are already booked. You can still assign them.')).toBeInTheDocument();
   });
 
   it('toggles needs a driver and warns when skills or a driver are missing (requirement 8.3)', async () => {
@@ -270,6 +368,23 @@ describe('JobModal (requirement 7.2)', () => {
     expect(screen.getByText(/needs a driver — nobody assigned can drive/i)).toBeInTheDocument();
     await user.click(screen.getByLabelText(/needs a driver/i));
     expect(api.put).toHaveBeenCalledWith('/jobs/8', { needs_driver: false });
+  });
+
+  it('lets office change job priority', async () => {
+    const user = userEvent.setup();
+    renderJob(<JobModal jobId={8} onClose={() => {}} onChanged={() => {}} staff={STAFF} />);
+    expect(await screen.findByText(/^normal$/i)).toBeInTheDocument();
+    expect(screen.queryByLabelText(/^priority$/i)).not.toBeInTheDocument();
+    await user.hover(screen.getByRole('button', { name: /change priority/i }));
+    expect(await screen.findByRole('tooltip', { name: /change priority/i })).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: /change priority/i }));
+    const prioritySelect = screen.getByLabelText(/^priority$/i);
+    expect(prioritySelect).toHaveAttribute('data-value', 'normal');
+    await user.click(prioritySelect);
+    await user.click(screen.getByRole('option', { name: /^high$/i }));
+    expect(api.put).toHaveBeenCalledWith('/jobs/8', { priority: 'high' });
+    expect(await screen.findByRole('button', { name: /change priority/i })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /edit priority/i })).not.toBeInTheDocument();
   });
 
   it('lets office create an invoice when the job has none (requirement 11.1)', async () => {

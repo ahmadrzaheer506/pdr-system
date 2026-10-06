@@ -10,6 +10,26 @@ const JOB_STATUSES = Object.freeze([
   'PAID',
 ]);
 
+const JOB_PRIORITIES = Object.freeze(['low', 'normal', 'high', 'urgent']);
+
+/**
+ * Jobs default to normal. Office may set low, high, or urgent.
+ * @param {unknown} raw
+ * @param {{ fallback?: string }} [opts]
+ * @returns {{ value?: string, error?: string }}
+ */
+function parseJobPriority(raw, { fallback } = {}) {
+  if (raw == null || String(raw).trim() === '') {
+    if (fallback !== undefined) return { value: fallback };
+    return { value: undefined };
+  }
+  const priority = String(raw).trim().toLowerCase();
+  if (!JOB_PRIORITIES.includes(priority)) {
+    return { error: 'Priority must be low, normal, high, or urgent' };
+  }
+  return { value: priority };
+}
+
 function canAdvanceJobStatus(from, to) {
   const next = JOB_STATUSES.indexOf(to);
   if (next < 0) return false;
@@ -18,4 +38,9 @@ function canAdvanceJobStatus(from, to) {
   return next >= current;
 }
 
-module.exports = { JOB_STATUSES, canAdvanceJobStatus };
+/** Office may pull a live booking off the calendar — not a general go-back. */
+function canUnscheduleJob(status) {
+  return status === 'SCHEDULED' || status === 'IN_PROGRESS';
+}
+
+module.exports = { JOB_STATUSES, JOB_PRIORITIES, parseJobPriority, canAdvanceJobStatus, canUnscheduleJob };

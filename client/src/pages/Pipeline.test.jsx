@@ -117,6 +117,9 @@ describe('Pipeline board (requirement 4.1)', () => {
     expect(screen.getAllByText('Updated 2d ago').length).toBeGreaterThanOrEqual(1);
     expect(screen.getByText('Helen Ackroyd')).toBeInTheDocument();
     expect(screen.getByRole('link', { name: /dave whitfield/i })).toHaveAttribute('href', '/leads/9?from=pipeline&lead=9');
+    const daveCard = screen.getByRole('link', { name: /dave whitfield/i }).closest('[data-customer-id]');
+    const goToLead = [...daveCard.querySelectorAll('a')].find((a) => a.textContent.includes('Go to lead'));
+    expect(goToLead).toHaveAttribute('href', '/leads/9?from=pipeline&lead=9');
   });
 
   it('renders two cards when the same customer has two enquiries', async () => {
@@ -380,52 +383,5 @@ describe('Pipeline value and stall (requirement 4.5)', () => {
     expect(dave.textContent).not.toMatch(/Stalled/);
     expect(helen.textContent).not.toMatch(/Stalled/);
     expect(kevin.textContent).not.toMatch(/Stalled/);
-  });
-});
-
-const DAVE_DETAIL = {
-  customer: {
-    id: 9,
-    name: 'Dave Whitfield',
-    sites: [{ id: 1, address: '14 Elm Grove', postcode: 'RG1 5AB', is_primary: true }],
-    phones: [{ id: 3, value: '07700 900100', type: 'mobile', is_primary: true }],
-    emails: [{ id: 4, value: 'dave@example.com', type: 'personal', is_primary: true }],
-  },
-};
-
-describe('Pipeline book visit (requirement 5.1)', () => {
-  beforeEach(() => {
-    vi.clearAllMocks();
-    api.get.mockImplementation((url) => {
-      if (String(url) === '/settings/users') {
-        return Promise.resolve({ users: [{ id: 3, name: 'Jamie Fisher', role: 'STAFF', active: true }] });
-      }
-      if (String(url).startsWith('/customers/') && !String(url).includes('pipeline')) {
-        return Promise.resolve(DAVE_DETAIL);
-      }
-      return Promise.resolve(FULL_BOARD);
-    });
-    api.post.mockResolvedValue({ id: 50 });
-  });
-
-  it('opens Book visit from a card, loads the customer, and posts the appointment', async () => {
-    const user = userEvent.setup();
-    render(<MemoryRouter><Pipeline /></MemoryRouter>);
-    const dave = await screen.findByText('Dave Whitfield');
-    const card = dave.closest('[data-customer-id]');
-    await user.click(card.querySelector('button'));
-    expect(await screen.findByRole('heading', { name: /book a site visit/i })).toBeInTheDocument();
-    expect(api.get).toHaveBeenCalledWith('/customers/9');
-    expect(await screen.findByLabelText(/^site$/i)).toHaveAttribute('data-value', '1');
-    await pickSelectOption(user, /^assigned to$/i, /jamie fisher/i);
-    const submit = screen.getAllByRole('button', { name: /^book visit$/i }).find((b) => b.className.includes('btn-primary'));
-    await user.click(submit);
-    expect(api.post).toHaveBeenCalledWith('/appointments', expect.objectContaining({
-      customer_id: 9,
-      lead_id: 9,
-      site_id: 1,
-      assignee_ids: [3],
-    }));
-    expect(await screen.findByText('Visit booked')).toBeInTheDocument();
   });
 });

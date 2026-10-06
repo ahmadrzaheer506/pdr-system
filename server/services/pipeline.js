@@ -145,6 +145,8 @@ async function setStage(customerId, toStage, userId = null, note = null, opts = 
   if (fromStage !== toStage) {
     if (lead) {
       lead.stage = toStage;
+      if (toStage === 'WON') lead.status = 'CONVERTED';
+      if (toStage === 'LOST') lead.status = 'CLOSED';
       await lead.save();
     }
     customer.stage = toStage;

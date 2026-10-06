@@ -29,6 +29,65 @@ describe('WeekView (requirement 8.1)', () => {
     expect(onDayClick).toHaveBeenCalledWith('2026-09-21');
   });
 
+  it('shows the full title and customer on hover, without ellipsis', async () => {
+    const user = userEvent.setup();
+    render(
+      <WeekView
+        anchorDate={new Date(2026, 9, 6)}
+        jobs={[{
+          id: 1,
+          title: 'Flat roof overlay — hall extension',
+          customer_name: 'Community Hall Trust',
+          start_date: '2026-10-06',
+          end_date: '2026-10-06',
+          priority: 'high',
+          day_assignments: [],
+        }]}
+        holidays={[]}
+        onJobClick={() => {}}
+        onDayClick={() => {}}
+      />,
+    );
+    await user.hover(screen.getByRole('button', { name: /flat roof overlay — hall extension/i }));
+    const tip = await screen.findByRole('tooltip');
+    expect(tip).toHaveTextContent('Flat roof overlay — hall extension');
+    expect(tip).toHaveTextContent('Community Hall Trust');
+    expect(tip.textContent).not.toMatch(/\.\.\./);
+  });
+
+  it('shows every assigned crew member on the job card', () => {
+    const crew = [
+      { work_date: '2026-10-06', user_id: 1, name: 'Ryan Kaczmarek', color: '#1d4ed8' },
+      { work_date: '2026-10-06', user_id: 2, name: 'Jamie Fisher', color: '#16a34a' },
+      { work_date: '2026-10-06', user_id: 3, name: 'Liam Ozturk', color: '#d97706' },
+      { work_date: '2026-10-06', user_id: 4, name: 'Nathan Wren', color: '#0f766e' },
+      { work_date: '2026-10-06', user_id: 5, name: 'Connor Blake', color: '#7c3aed' },
+      { work_date: '2026-10-06', user_id: 6, name: 'Callum Ashworth', color: '#db2777' },
+      { work_date: '2026-10-06', user_id: 7, name: 'sahilmubeen', color: '#ea580c' },
+    ];
+    render(
+      <WeekView
+        anchorDate={new Date(2026, 9, 6)}
+        jobs={[{
+          id: 1,
+          title: 'Guttering & fascia replacement',
+          customer_name: 'Alan & Denise Fitch',
+          start_date: '2026-10-06',
+          end_date: '2026-10-06',
+          priority: 'urgent',
+          day_assignments: crew,
+        }]}
+        holidays={[]}
+        onJobClick={() => {}}
+        onDayClick={() => {}}
+      />,
+    );
+    expect(screen.getByText('Urgent')).toBeInTheDocument();
+    crew.forEach((member) => {
+      expect(screen.getAllByTitle(member.name).length).toBeGreaterThan(0);
+    });
+  });
+
   it('marks assigned crew who are on holiday or another job (requirement 8.2)', () => {
     render(
       <WeekView

@@ -9,7 +9,10 @@ jest.mock('../db', () => ({
   plain: (row) => (row && typeof row.toJSON === 'function' ? row.toJSON() : row),
 }));
 jest.mock('../services/pipeline', () => ({ logActivity: jest.fn(), setStage: jest.fn() }));
-jest.mock('../services/timesheets', () => ({}));
+jest.mock('../services/timesheets', () => ({
+  jobClockInClosed: jest.fn(async () => false),
+  paidInvoiceJobIds: jest.fn(async () => new Set()),
+}));
 jest.mock('../services/taskEngine', () => ({ completeVisit: jest.fn() }));
 jest.mock('../models', () => ({
   Job: { findByPk: jest.fn(), findAll: jest.fn() },

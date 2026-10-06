@@ -1,7 +1,7 @@
 import { describe, it, expect, vi } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import VisitCompleteTick, { VisitCompleteModal } from './VisitCompleteTick.jsx';
+import VisitCompleteTick, { VisitCompleteModal, VisitCompleteRemarks } from './VisitCompleteTick.jsx';
 
 describe('VisitCompleteTick', () => {
   it('lets staff tick a booked visit complete', async () => {
@@ -34,5 +34,11 @@ describe('VisitCompleteTick', () => {
     await user.type(screen.getByLabelText(/completion remarks/i), 'Ridge is ok');
     await user.click(screen.getByRole('button', { name: /^complete visit$/i }));
     expect(onConfirm).toHaveBeenCalledWith('Ridge is ok');
+  });
+
+  it('shows completion remarks in a remarks card', () => {
+    render(<VisitCompleteRemarks note="Valley flashing is sound" />);
+    expect(screen.getByLabelText(/completion remarks/i)).toBeInTheDocument();
+    expect(screen.getByText('Valley flashing is sound')).toBeInTheDocument();
   });
 });

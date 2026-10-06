@@ -99,39 +99,43 @@ export default function TaskCard({
           </div>
         </div>
         {showActions ? (
-          <div className="flex shrink-0 items-center gap-0.5 self-end rounded-xl bg-slate-50 p-1 ring-1 ring-slate-200/70 sm:self-start">
+          <div className="flex shrink-0 items-center gap-2 self-end sm:self-start">
             {canDone && (
               <button
                 type="button"
-                className="inline-flex h-8 items-center gap-1.5 rounded-lg px-2.5 text-xs font-semibold text-emerald-700 hover:bg-white"
+                className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 text-sm font-medium text-slate-700 shadow-sm transition hover:border-emerald-300 hover:bg-emerald-50 hover:text-emerald-800 active:scale-[0.98]"
                 aria-label={`Mark "${task.title}" done`}
                 onClick={onDone}
               >
-                <Check size={14} strokeWidth={2.4} />
-                Done
+                <Check size={15} strokeWidth={2.4} className="text-emerald-600" />
+                Mark done
               </button>
             )}
-            {onEdit && (
-              <button
-                type="button"
-                className="inline-flex h-8 items-center gap-1.5 rounded-lg px-2.5 text-xs font-medium text-slate-600 hover:bg-white hover:text-slate-900"
-                aria-label={`Edit ${task.title}`}
-                onClick={onEdit}
-              >
-                <Pencil size={13} />
-                Edit
-              </button>
-            )}
-            {onDelete && (
-              <button
-                type="button"
-                aria-label={`Delete ${task.title}`}
-                onClick={onDelete}
-                className="inline-flex h-8 w-8 items-center justify-center rounded-lg text-slate-400 hover:bg-white hover:text-rose-600"
-              >
-                <Trash2 size={14} />
-              </button>
-            )}
+            {(onEdit || onDelete) ? (
+              <div className="flex items-center gap-0.5 rounded-xl bg-slate-50 p-1 ring-1 ring-slate-200/70">
+                {onEdit && (
+                  <button
+                    type="button"
+                    className="inline-flex h-8 items-center gap-1.5 rounded-lg px-2.5 text-xs font-medium text-slate-600 hover:bg-white hover:text-slate-900"
+                    aria-label={`Edit ${task.title}`}
+                    onClick={onEdit}
+                  >
+                    <Pencil size={13} />
+                    Edit
+                  </button>
+                )}
+                {onDelete && (
+                  <button
+                    type="button"
+                    aria-label={`Delete ${task.title}`}
+                    onClick={onDelete}
+                    className="inline-flex h-8 w-8 items-center justify-center rounded-lg text-slate-400 hover:bg-white hover:text-rose-600"
+                  >
+                    <Trash2 size={14} />
+                  </button>
+                )}
+              </div>
+            ) : null}
           </div>
         ) : null}
       </div>

@@ -1,6 +1,6 @@
 import React, { useEffect } from 'react';
-import { AlertTriangle, Loader2 } from 'lucide-react';
-import { Modal } from './ui.jsx';
+import { AlertTriangle, Briefcase, CalendarDays, CalendarOff, Loader2 } from 'lucide-react';
+import { Avatar, Modal } from './ui.jsx';
 
 function conflictKind(row) {
   return row?.type === 'holiday' ? 'Holiday' : 'Already booked';
@@ -8,6 +8,12 @@ function conflictKind(row) {
 
 function conflictText(row) {
   return row?.detail || row?.message || '';
+}
+
+function bookedJobTitle(row) {
+  if (row?.job_title) return row.job_title;
+  const fromDetail = String(row?.detail || '').match(/Already on [“"](.+)[”"]/);
+  return fromDetail ? fromDetail[1] : '';
 }
 
 function busyLabel(confirmLabel) {
@@ -42,6 +48,9 @@ export default function CrewConflictModal({
     if (!saving) onCancel?.();
   };
 
+  const count = conflicts.length;
+  const peopleLabel = count === 1 ? 'This person is not free' : 'These people are not free';
+
   return (
     <Modal
       open={open}
@@ -49,9 +58,7 @@ export default function CrewConflictModal({
       zClass="z-[130]"
       size="xl"
       title="Assign with conflicts?"
-      subtitle={dateLabel
-        ? `These people are not free on ${dateLabel}. Confirm to assign them anyway, or cancel to leave the crew as it is.`
-        : 'These people are not free. Confirm to assign them anyway, or cancel to leave the crew as it is.'}
+      subtitle={`${peopleLabel}. Assign anyway, or cancel to leave the crew as it is.`}
       footer={(
         <>
           <button type="button" onClick={close} disabled={saving} className="btn-secondary">Cancel</button>
@@ -69,27 +76,64 @@ export default function CrewConflictModal({
         </>
       )}
     >
-      <div className="flex items-start gap-3">
-        <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-amber-50 text-amber-600 ring-1 ring-amber-100">
-          <AlertTriangle size={18} />
+      <div className="space-y-3">
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="inline-flex items-center gap-1.5 rounded-full bg-amber-50 px-2.5 py-1 text-xs font-semibold text-amber-800 ring-1 ring-amber-200/80">
+            <AlertTriangle size={12} />
+            {count} {count === 1 ? 'conflict' : 'conflicts'}
+          </span>
+          {dateLabel ? (
+            <span className="inline-flex items-center gap-1.5 rounded-full bg-slate-100 px-2.5 py-1 text-xs font-medium text-slate-600">
+              <CalendarDays size={12} className="text-slate-400" />
+              {dateLabel}
+            </span>
+          ) : null}
         </div>
-        <ul className="min-w-0 flex-1 space-y-2">
-          {conflicts.map((row, i) => (
-            <li
-              key={`${row.type}-${row.user_id}-${i}`}
-              className="flex items-start justify-between gap-3 rounded-xl bg-slate-50 px-3 py-2.5 ring-1 ring-slate-200/80"
-            >
-              <div className="min-w-0">
-                <div className="truncate text-sm font-medium text-slate-900">{row.name || `User ${row.user_id}`}</div>
-                <div className="mt-0.5 truncate text-xs text-slate-500">{conflictText(row)}</div>
-              </div>
-              <span className={`shrink-0 rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide ${
-                row.type === 'holiday' ? 'bg-amber-100 text-amber-800' : 'bg-sky-100 text-sky-800'
-              }`}>
-                {conflictKind(row)}
-              </span>
-            </li>
-          ))}
+
+        <ul className="space-y-2">
+          {conflicts.map((row, i) => {
+            const holiday = row.type === 'holiday';
+            const jobTitle = bookedJobTitle(row);
+            const name = row.name || `User ${row.user_id}`;
+            return (
+              <li
+                key={`${row.type}-${row.user_id}-${i}`}
+                className={`flex items-start gap-3 rounded-2xl px-3.5 py-3 ring-1 ${
+                  holiday
+                    ? 'bg-amber-50/80 ring-amber-200/90'
+                    : 'bg-sky-50/70 ring-sky-200/90'
+                }`}
+              >
+                <Avatar name={name} size={9} />
+                <div className="min-w-0 flex-1">
+                  <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+                    <span className="text-sm font-semibold text-slate-900">{name}</span>
+                    <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-medium ${
+                      holiday ? 'bg-amber-100 text-amber-900' : 'bg-sky-100 text-sky-900'
+                    }`}>
+                      {conflictKind(row)}
+                    </span>
+                  </div>
+                  {holiday ? (
+                    <p className="mt-1.5 flex items-start gap-1.5 text-sm leading-snug text-slate-600">
+                      <CalendarOff size={14} className="mt-0.5 shrink-0 text-amber-600" />
+                      <span>{conflictText(row) || 'On approved holiday'}</span>
+                    </p>
+                  ) : jobTitle ? (
+                    <p className="mt-1.5 flex items-start gap-1.5 text-sm leading-snug text-slate-600">
+                      <Briefcase size={14} className="mt-0.5 shrink-0 text-sky-600" />
+                      <span>
+                        Already booked on{' '}
+                        <span className="font-medium text-slate-800">“{jobTitle}”</span>
+                      </span>
+                    </p>
+                  ) : (
+                    <p className="mt-1.5 text-sm leading-snug text-slate-600">{conflictText(row)}</p>
+                  )}
+                </div>
+              </li>
+            );
+          })}
         </ul>
       </div>
     </Modal>

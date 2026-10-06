@@ -43,6 +43,18 @@ body { font-family: 'Inter', ui-sans-serif, system-ui, sans-serif; }
   .badge { @apply inline-flex items-center whitespace-nowrap rounded-full px-2 py-0.5 text-xs font-medium; }
 }
 
+/* Native checkboxes/radios default to browser blue — use logo red everywhere. */
+input[type='checkbox']:not(.sr-only),
+input[type='radio']:not(.sr-only) {
+  accent-color: #dc1114;
+  color-scheme: light;
+}
+input[type='checkbox']:not(.sr-only):focus-visible,
+input[type='radio']:not(.sr-only):focus-visible {
+  outline: 2px solid rgb(220 17 20 / 0.45);
+  outline-offset: 2px;
+}
+
 .login-field:-webkit-autofill,
 .login-field:-webkit-autofill:hover,
 .login-field:-webkit-autofill:focus {

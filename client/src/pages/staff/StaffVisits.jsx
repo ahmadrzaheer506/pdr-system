@@ -145,7 +145,7 @@ export default function StaffVisits() {
                     </div>
                   )}
                   {v.status === 'done' && (
-                    <VisitCompleteRemarks note={v.complete_note} className="text-sm text-slate-600 border-t border-slate-100 pt-3" />
+                    <VisitCompleteRemarks note={v.complete_note} className="border-t border-slate-100 pt-3" />
                   )}
                 </div>
               ))}

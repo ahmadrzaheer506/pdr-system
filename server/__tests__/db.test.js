@@ -80,6 +80,24 @@ describe('db helpers', () => {
     expect(timesheets.enabled).toBe(DEFAULT_SETTINGS.timesheets.enabled);
     expect(timesheets.max_shift_hours).toBe(DEFAULT_SETTINGS.timesheets.max_shift_hours);
     expect(timesheets.require_photo_on_clockout).toBe(false);
+    expect(timesheets.auto_break_minutes).toBeUndefined();
+    expect(timesheets.auto_break_after_hours).toBeUndefined();
+  });
+
+  test('getSetting strips retired auto-break timesheet keys', async () => {
+    Setting.findByPk.mockResolvedValue({
+      key: 'timesheets',
+      value: {
+        enabled: true,
+        site_radius_m: 250,
+        auto_break_minutes: 30,
+        auto_break_after_hours: 6,
+      },
+    });
+    const timesheets = await getSetting('timesheets');
+    expect(timesheets.site_radius_m).toBe(250);
+    expect(timesheets.auto_break_minutes).toBeUndefined();
+    expect(timesheets.auto_break_after_hours).toBeUndefined();
   });
 
   test('getSetting strips retired follow-up template keys', async () => {
@@ -112,6 +130,20 @@ describe('db helpers', () => {
     Setting.upsert.mockResolvedValue([{}, true]);
     await setSetting('company', { name: 'Test Ltd' });
     expect(Setting.upsert).toHaveBeenCalledWith({ key: 'company', value: { name: 'Test Ltd' } });
+  });
+
+  test('setSetting strips retired auto-break timesheet keys', async () => {
+    Setting.upsert.mockResolvedValue([{}, true]);
+    await setSetting('timesheets', {
+      enabled: true,
+      site_radius_m: 250,
+      auto_break_minutes: 30,
+      auto_break_after_hours: 6,
+    });
+    expect(Setting.upsert).toHaveBeenCalledWith({
+      key: 'timesheets',
+      value: { enabled: true, site_radius_m: 250 },
+    });
   });
 
   test('nextRef uses the highest yearly sequence, not the row count', async () => {

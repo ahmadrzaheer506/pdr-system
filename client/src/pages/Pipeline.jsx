@@ -1,10 +1,9 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
-import { Check, ChevronDown, Clock, MapPin, Search, X } from 'lucide-react';
+import { ArrowRight, Check, ChevronDown, Clock, MapPin, Search, X } from 'lucide-react';
 import { money, fmtTimeAgo, api } from '../lib/api';
 import { EmptyState, PageLoading, Toast, useToast } from '../components/ui.jsx';
 import LostReasonModal from '../components/LostReasonModal.jsx';
-import BookVisit from '../components/BookVisit.jsx';
 import { stallLevel, sumPipelineTotals } from '../lib/pipelineBoard.js';
 import { leadPath } from '../lib/customerRoutes.js';
 import SelectMenu from '../components/SelectMenu.jsx';
@@ -429,12 +428,13 @@ function cardPlace(customer) {
 }
 
 /** Kanban card — same fields as before, easier to scan (requirement 4.1). */
-function PipelineCard({ customer, accent, onDragStart, onDragOverCard, onDropOnCard, onBookVisit }) {
+function PipelineCard({ customer, accent, onDragStart, onDragOverCard, onDropOnCard }) {
   const ago = fmtTimeAgo(customer.updated_at);
   const place = cardPlace(customer);
   const source = sourceLabel(customer.source);
   const stall = stallLevel(customer.updated_at, customer.stage);
   const stallClass = stall === 'red' ? 'text-rose-600' : stall === 'amber' ? 'text-amber-700' : 'text-slate-400';
+  const href = leadPath(customer.customer_id || customer.id, 'pipeline', customer.lead_id || customer.id);
   return (
     <div
       draggable
@@ -455,7 +455,7 @@ function PipelineCard({ customer, accent, onDragStart, onDragOverCard, onDropOnC
       }}
       className="card p-0 overflow-hidden hover:shadow-md hover:border-brand-300 transition-all cursor-grab active:cursor-grabbing group"
     >
-      <Link to={leadPath(customer.customer_id || customer.id, 'pipeline', customer.lead_id || customer.id)} className="block">
+      <Link to={href} className="block">
         <div className="h-1" style={{ background: accent }} />
         <div className="p-3 pb-2">
           <div className="flex items-start justify-between gap-2">
@@ -495,14 +495,14 @@ function PipelineCard({ customer, accent, onDragStart, onDragOverCard, onDropOnC
         </div>
       </Link>
       <div className="px-3 pb-3">
-        <button
-          type="button"
-          className="btn-secondary !py-1 !px-2 text-xs w-full"
+        <Link
+          to={href}
+          className="btn-secondary !py-1 !px-2 text-xs w-full inline-flex items-center justify-center gap-1"
           onMouseDown={(e) => e.stopPropagation()}
-          onClick={() => onBookVisit(customer)}
         >
-          Book visit
-        </button>
+          Go to lead
+          <ArrowRight size={12} />
+        </Link>
       </div>
     </div>
   );
@@ -515,7 +515,6 @@ export default function Pipeline() {
   const [dragCard, setDragCard] = useState(null);
   const dragCardRef = useRef(null);
   const [overStage, setOverStage] = useState(null);
-  const [visitCard, setVisitCard] = useState(null);
   const [pendingLost, setPendingLost] = useState(null);
   const [lostSaving, setLostSaving] = useState(false);
   const { toast, show } = useToast();
@@ -654,7 +653,6 @@ export default function Pipeline() {
                           requestMove(dragCardRef.current || dragCard, stage, beforeId);
                           endDrag();
                         }}
-                        onBookVisit={setVisitCard}
                       />
                     ))}
                     {cards.length === 0 && (
@@ -669,17 +667,6 @@ export default function Pipeline() {
           })}
         </div>
       )}
-      <BookVisit
-        open={visitCard != null}
-        customerId={visitCard?.customer_id || visitCard?.id}
-        leadId={visitCard?.lead_id || visitCard?.id}
-        onClose={() => setVisitCard(null)}
-        onSaved={() => {
-          setVisitCard(null);
-          load();
-          show('Visit booked');
-        }}
-      />
       <LostReasonModal
         open={pendingLost != null}
         onClose={() => setPendingLost(null)}

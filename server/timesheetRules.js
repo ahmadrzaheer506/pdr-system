@@ -1,16 +1,12 @@
 /**
  * Company timesheet rules stored in settings JSON (requirement 17.3).
- * Clock-in/out already reads enabled, site_radius_m, round_to_minutes, and
- * max_shift_hours. The other keys are stored for Settings and are not newly
- * enforced here.
+ * Clock-in/out reads enabled, site_radius_m, round_to_minutes, and max_shift_hours.
  */
 const KEYS = Object.freeze([
   'enabled',
   'require_location',
   'site_radius_m',
   'require_photo_on_clockout',
-  'auto_break_minutes',
-  'auto_break_after_hours',
   'round_to_minutes',
   'max_shift_hours',
 ]);
@@ -23,8 +19,6 @@ const BOOL_KEYS = Object.freeze([
 
 const NUMBER_LIMITS = Object.freeze({
   site_radius_m: [0, 10000],
-  auto_break_minutes: [0, 480],
-  auto_break_after_hours: [0, 24],
   round_to_minutes: [0, 60],
   max_shift_hours: [0, 24],
 });
@@ -66,6 +60,18 @@ function parseTimesheets(raw) {
 }
 
 /**
+ * Drop retired keys (auto-break) so they never leave the API or persist on save.
+ */
+function publicTimesheets(raw) {
+  const src = raw && typeof raw === 'object' && !Array.isArray(raw) ? raw : {};
+  const next = {};
+  for (const key of KEYS) {
+    if (src[key] !== undefined) next[key] = src[key];
+  }
+  return next;
+}
+
+/**
  * Company default annual holiday allowance in days (requirement 17.3).
  * @returns {{ value: number }|{ error: string }}
  */
@@ -93,6 +99,7 @@ function parseUserHolidayAllowance(raw, { allowInherit } = {}) {
 module.exports = {
   KEYS,
   parseTimesheets,
+  publicTimesheets,
   parseHolidayAllowanceDays,
   parseUserHolidayAllowance,
 };

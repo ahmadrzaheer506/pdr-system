@@ -103,7 +103,10 @@ export default function LeadCard({
             ) : (
               <span className="text-[15px] font-semibold tracking-tight text-slate-900">{lead.customer_name}</span>
             )}
-            <StatusBadge status={lead.status} className="capitalize" />
+            <StatusBadge
+              status={lead.stage === 'WON' || lead.stage === 'LOST' ? lead.stage : lead.status}
+              className="capitalize"
+            />
           </div>
           {lead.next_action ? (
             <div className="mt-2 inline-flex items-center gap-1.5 rounded-full bg-amber-50 px-2.5 py-1 text-[11px] font-medium text-amber-800 ring-1 ring-amber-100">

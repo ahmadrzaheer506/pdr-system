@@ -104,12 +104,14 @@ describe('setStage (requirement 4.2)', () => {
     });
     await setStage(9, 'LOST', 1, null, { leadId: 40 });
     expect(first.stage).toBe('LOST');
+    expect(first.status).toBe('CLOSED');
     expect(first.save).toHaveBeenCalled();
     expect(second.stage).toBe('ENQUIRY');
     expect(second.save).not.toHaveBeenCalled();
 
     await setStage(9, 'WON', 1, null, { leadId: 41 });
     expect(second.stage).toBe('WON');
+    expect(second.status).toBe('CONVERTED');
     expect(second.save).toHaveBeenCalled();
     expect(first.stage).toBe('LOST');
   });

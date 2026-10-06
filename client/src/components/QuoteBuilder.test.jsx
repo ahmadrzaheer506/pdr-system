@@ -288,6 +288,40 @@ describe('QuoteBuilder', () => {
     expect(screen.getByText(/Quote sent via WhatsApp/i)).toBeInTheDocument();
   });
 
+  it('shows why WhatsApp send failed instead of a sent notice', async () => {
+    const user = userEvent.setup();
+    api.post.mockImplementation(async (url) => {
+      if (url === '/quotes/preview') {
+        return { total: 1200, subtotal: 1000, vat_breakdown: [], grand_total: 1200, due_now: 1200 };
+      }
+      if (url === '/quotes/9/send') {
+        throw new Error('WhatsApp is not connected. Add WHATSAPP_ACCESS_TOKEN and WHATSAPP_PHONE_NUMBER_ID in .env, then restart the server.');
+      }
+      return { total: 1200 };
+    });
+    render(
+      <QuoteBuilder
+        open
+        onClose={() => {}}
+        customerId={1}
+        customer={CUSTOMER}
+        existingQuote={{
+          id: 9,
+          ref: 'Q-2026-0009',
+          status: 'draft',
+          title: 'Felt',
+          items: [{ description: 'Felt', qty: 1, unit_price: 180, vat_code: 'standard', kind: 'materials' }],
+          optional_extras: [],
+        }}
+        onSaved={() => {}}
+      />
+    );
+    await screen.findByText(/Edit quote Q-2026-0009/);
+    await user.click(screen.getByRole('button', { name: /send whatsapp/i }));
+    expect(await screen.findByText(/whatsapp is not connected/i)).toBeInTheDocument();
+    expect(screen.queryByText(/quote sent via whatsapp/i)).toBeNull();
+  });
+
   it('keeps Send disabled until the quote is saved (requirement 6.7)', async () => {
     render(
       <QuoteBuilder open onClose={() => {}} customerId={1} customer={CUSTOMER} onSaved={() => {}} />

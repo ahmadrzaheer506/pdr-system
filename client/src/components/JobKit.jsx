@@ -158,7 +158,7 @@ export default function JobKit({
           {checklistItems.map((item) => (
             <li key={item.id} className="flex items-center gap-2 rounded-xl px-1 py-0.5">
               <label className="flex items-center gap-2.5 flex-1 text-sm text-slate-700">
-                <input type="checkbox" className="h-4 w-4 rounded border-slate-300 text-brand-600 focus:ring-brand-500" checked={!!item.done} disabled={saving} onChange={() => toggleCheck(item)} />
+                <input type="checkbox" className="h-4 w-4 rounded border-slate-300 accent-brand-500" checked={!!item.done} disabled={saving} onChange={() => toggleCheck(item)} />
                 <span className={item.done ? 'line-through text-slate-400' : ''}>{item.body}</span>
               </label>
               <button type="button" disabled={saving} onClick={() => removeCheck(item)} className="text-slate-400 hover:text-red-600" aria-label={`Remove ${item.body}`}>

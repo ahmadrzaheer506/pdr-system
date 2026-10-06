@@ -237,6 +237,23 @@ export function crewConflictSummaryLine(row) {
   return `${name} is already booked this day.`;
 }
 
+/** Hover copy on a holiday / booked crew chip. */
+export function crewChipHoverHint({ name, onHoliday, busyOn } = {}) {
+  let line = '';
+  if (onHoliday) line = crewConflictSummaryLine({ name, type: 'holiday' });
+  else {
+    const booking = Array.isArray(busyOn) ? busyOn[0] : null;
+    if (booking) {
+      line = crewConflictSummaryLine({
+        name,
+        type: 'double_book',
+        job_title: booking.job_title,
+      });
+    }
+  }
+  return line ? `${line} You can still book.` : '';
+}
+
 export function proposalCrewConflicts(assignments, staff = [], jobs = []) {
   const rows = [];
   for (const assignment of assignments || []) {

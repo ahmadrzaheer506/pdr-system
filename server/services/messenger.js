@@ -20,6 +20,24 @@ async function stopFollowupsFor(customerId, reason = 'customer replied') {
 }
 
 /**
+ * Templates for business-initiated sends; free text only after a template miss,
+ * not after a 24h / token / allow-list failure.
+ */
+async function sendWhatsAppTextOrTemplate(destPhone, body, template, templateParams, meta_) {
+  if (template) {
+    try {
+      const result = await whatsapp.sendTemplate(destPhone, template, templateParams);
+      meta_.template = template;
+      return result;
+    } catch (err) {
+      if (whatsapp.isFatalGraphError(err)) throw err;
+      return whatsapp.sendText(destPhone, body);
+    }
+  }
+  return whatsapp.sendText(destPhone, body);
+}
+
+/**
  * Send an outbound message to a customer on a channel.
  * kind: 'text' | 'document'. Returns the created message row id + simulated flag.
  */
@@ -34,13 +52,20 @@ async function sendToCustomer(customerId, channel, body, { userId = null, docUrl
 
   if (channel === 'whatsapp') {
     if (!destPhone) throw new Error('Customer has no phone number on record');
-    if (docUrl) {
-      result = await whatsapp.sendDocument(destPhone, docUrl, docName || 'document.pdf', body);
-    } else if (template && !(await whatsapp.insideServiceWindow(customerId))) {
-      result = await whatsapp.sendTemplate(destPhone, template, templateParams, body);
-      meta_.template = template;
+    const attachPdf = docUrl && whatsapp.canMetaFetchMedia(docUrl);
+    if (docUrl && !attachPdf) {
+      meta_.pdf_skipped = whatsapp.LOCALHOST_PDF_WARNING;
+    }
+    if (attachPdf) {
+      try {
+        result = await whatsapp.sendDocument(destPhone, docUrl, docName || 'document.pdf', body);
+      } catch (err) {
+        if (err.graphCode !== 131053) throw err;
+        meta_.pdf_skipped = err.message;
+        result = await sendWhatsAppTextOrTemplate(destPhone, body, template, templateParams, meta_);
+      }
     } else {
-      result = await whatsapp.sendText(destPhone, body);
+      result = await sendWhatsAppTextOrTemplate(destPhone, body, template, templateParams, meta_);
     }
   } else if (channel === 'email') {
     if (!destEmail) throw new Error('Customer has no email address on record');
@@ -75,7 +100,12 @@ async function sendToCustomer(customerId, channel, body, { userId = null, docUrl
     user_id: userId,
   });
   await Customer.update({ updated_at: new Date() }, { where: { id: customerId } });
-  return { messageId: created.id, simulated: !!result.simulated, status };
+  return {
+    messageId: created.id,
+    simulated: !!result.simulated,
+    status,
+    warning: meta_.pdf_skipped || null,
+  };
 }
 
 /** Digits-only UK form — alias of phone.normalisePhone (requirement 2.5). */

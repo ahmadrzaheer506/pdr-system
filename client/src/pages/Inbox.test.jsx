@@ -69,7 +69,7 @@ describe('Lead Inbox (requirement 3.1)', () => {
     expect(screen.getByText('Manual')).toBeInTheDocument();
     expect(screen.getByText('SMS Lead')).toBeInTheDocument();
     expect(screen.getByText('SMS')).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /closed/i })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /lost/i })).toBeInTheDocument();
     expect(screen.getByLabelText(/search leads/i)).toBeInTheDocument();
     expect(screen.getByLabelText(/filter by source/i)).toBeInTheDocument();
     expect(screen.queryByText(/demo simulator/i)).toBeNull();
@@ -98,7 +98,7 @@ describe('Lead Inbox (requirement 3.1)', () => {
     api.get.mockResolvedValueOnce(NEW_LIST).mockResolvedValueOnce(CLOSED_LIST);
     render(<MemoryRouter><Inbox /></MemoryRouter>);
     await screen.findByText('Dave Whitfield');
-    await user.click(screen.getByRole('button', { name: /closed/i }));
+    await user.click(screen.getByRole('button', { name: /lost/i }));
     expect(await screen.findByText('Neil Draper')).toBeInTheDocument();
     expect(api.get).toHaveBeenLastCalledWith('/leads?status=CLOSED');
     expect(screen.getByText('Enquiry — did not proceed')).toBeInTheDocument();
@@ -144,7 +144,8 @@ describe('Log enquiry (requirement 3.3)', () => {
     await user.click(screen.getByLabelText(/^came in via$/i));
     expect(screen.getByRole('option', { name: /logged manually/i })).toBeInTheDocument();
     expect(screen.getByRole('option', { name: /^phone$/i })).toBeInTheDocument();
-    expect(screen.getByRole('option', { name: /^lead ad$/i })).toBeInTheDocument();
+    expect(screen.getByRole('option', { name: /^sms$/i })).toBeInTheDocument();
+    expect(screen.queryByRole('option', { name: /^lead ad$/i })).toBeNull();
     expect(screen.getByLabelText(/^phone$/i)).not.toBeRequired();
     await user.click(screen.getByRole('option', { name: /^phone$/i }));
     await user.type(screen.getByLabelText(/^name$/i), 'Dave Whitfield');
@@ -162,6 +163,19 @@ describe('Log enquiry (requirement 3.3)', () => {
       message: 'Called about guttering',
     }));
     expect(api.post.mock.calls[0][1]).not.toHaveProperty('postcode');
+  });
+
+  it('blocks a new-customer enquiry when the email is missing @', async () => {
+    const user = userEvent.setup();
+    render(<MemoryRouter><Inbox /></MemoryRouter>);
+    await user.click(await screen.findByRole('button', { name: /log enquiry/i }));
+    await user.click(screen.getByRole('radio', { name: /new customer/i }));
+    await user.type(screen.getByLabelText(/^name$/i), 'Dave Whitfield');
+    await user.type(screen.getByLabelText(/^email$/i), 'not-an-email');
+    await user.click(screen.getByRole('button', { name: /add to inbox/i }));
+    expect(screen.getByLabelText(/^email$/i)).toHaveAttribute('aria-invalid', 'true');
+    expect(screen.getAllByText(/enter a valid email address/i).length).toBeGreaterThan(0);
+    expect(api.post).not.toHaveBeenCalled();
   });
 });
 

@@ -4,7 +4,7 @@ const { Job, Customer, User, JobMessage, AiProposal, Invoice } = require('../mod
 const { sequelize, todayStr, plain } = require('../db');
 const { requireAuth, requireOffice, asyncHandler } = require('../auth');
 const { setStage, logActivity, resolveLeadForCustomer } = require('../services/pipeline');
-const { JOB_STATUSES, canAdvanceJobStatus } = require('../jobStatus');
+const { JOB_STATUSES, canAdvanceJobStatus, canUnscheduleJob, parseJobPriority } = require('../jobStatus');
 const { normaliseJobSkills } = require('../skills');
 const jobKit = require('../jobKit');
 const jobFiles = require('../jobFiles');
@@ -78,6 +78,8 @@ router.get('/unscheduled', asyncHandler(async (req, res) => {
 router.post('/', asyncHandler(async (req, res) => {
   const { customer_id, title, description, address, priority, required_skills, materials, value, start_date, end_date, start_time, end_time } = req.body || {};
   if (!customer_id || !title) return res.status(400).json({ error: 'customer_id and title required' });
+  const parsedPriority = parseJobPriority(priority, { fallback: 'normal' });
+  if (parsedPriority.error) return res.status(400).json({ error: parsedPriority.error });
   const customer = await Customer.findByPk(customer_id);
   if (!customer) return res.status(404).json({ error: 'Customer not found' });
   let lead = null;
@@ -93,7 +95,7 @@ router.post('/', asyncHandler(async (req, res) => {
     customer_id, lead_id: lead?.id || null, title,
     description: description || null,
     address: address || siteAddress || null,
-    priority: priority || 'normal',
+    priority: parsedPriority.value,
     required_skills: normaliseJobSkills(required_skills),
     needs_driver: !!req.body?.needs_driver,
     materials: materials || null,
@@ -163,15 +165,23 @@ router.get('/:id', asyncHandler(async (req, res) => {
 router.put('/:id', asyncHandler(async (req, res) => {
   const jb = await Job.findByPk(req.params.id);
   if (!jb) return res.status(404).json({ error: 'Job not found' });
-  const fields = ['title', 'description', 'address', 'priority', 'materials', 'value', 'start_date', 'end_date', 'start_time', 'end_time'];
+  const fields = ['title', 'description', 'address', 'materials', 'value', 'start_date', 'end_date', 'start_time', 'end_time'];
   const updates = {};
   for (const f of fields) if (req.body[f] !== undefined) updates[f] = req.body[f];
+  if (req.body.priority !== undefined) {
+    const parsedPriority = parseJobPriority(req.body.priority);
+    if (parsedPriority.error) return res.status(400).json({ error: parsedPriority.error });
+    if (!parsedPriority.value) return res.status(400).json({ error: 'Priority must be low, normal, high, or urgent' });
+    updates.priority = parsedPriority.value;
+  }
   if (updates.start_date !== undefined || updates.end_date !== undefined) {
     const dated = jobDays.validateJobDates(
       updates.start_date !== undefined ? updates.start_date : jb.start_date,
       updates.end_date !== undefined ? updates.end_date : jb.end_date,
     );
     if (dated.error) return res.status(dated.status).json({ error: dated.error });
+    if (updates.start_date !== undefined) updates.start_date = dated.start;
+    if (updates.end_date !== undefined) updates.end_date = dated.end;
   }
   if (req.body.notes !== undefined) updates.notes = jobFiles.normaliseJobNotes(req.body.notes);
   if (req.body.required_skills !== undefined) updates.required_skills = normaliseJobSkills(req.body.required_skills);
@@ -225,6 +235,39 @@ router.put('/:id/status', asyncHandler(async (req, res) => {
     await setStage(jb.customer_id, 'COMPLETED', req.user.id, `Job "${jb.title}" completed`, { leadId: lead?.id || jb.lead_id });
   }
   await logActivity(jb.customer_id, req.user.id, 'job_status', `Job "${jb.title}" → ${status}`, 'job', jb.id);
+  res.json({ ok: true });
+}));
+
+/**
+ * Pull a scheduled / in-progress job off the board: PENDING again, dates
+ * cleared, crew freed, Unscheduled queue. Stepper stays forward-only.
+ */
+router.post('/:id/unschedule', asyncHandler(async (req, res) => {
+  const jb = await Job.findByPk(req.params.id);
+  if (!jb) return res.status(404).json({ error: 'Job not found' });
+  if (!canUnscheduleJob(jb.status)) {
+    return res.status(400).json({ error: 'Only scheduled or in-progress jobs can be unscheduled' });
+  }
+  const crewByDate = await jobDays.listCrewByDate(jb.id);
+  await jobDays.clearAllCrew(jb.id);
+  for (const [workDate, previousIds] of crewByDate) {
+    await crewNotifications.notifyCrewChange({
+      job: jb,
+      workDate,
+      previousIds,
+      nextIds: [],
+    });
+  }
+  await jb.update({ status: 'PENDING', start_date: null, end_date: null });
+  const cust = await Customer.findByPk(jb.customer_id, { attributes: ['stage'] });
+  const lead = await resolveLeadForCustomer(jb.customer_id, jb.lead_id);
+  const stage = lead?.stage || cust?.stage;
+  if (stage === 'SCHEDULED' || stage === 'IN_PROGRESS') {
+    await setStage(jb.customer_id, 'WON', req.user.id, `Job "${jb.title}" unscheduled`, {
+      leadId: lead?.id || jb.lead_id,
+    });
+  }
+  await logActivity(jb.customer_id, req.user.id, 'job_unscheduled', `Job "${jb.title}" unscheduled`, 'job', jb.id);
   res.json({ ok: true });
 }));
 

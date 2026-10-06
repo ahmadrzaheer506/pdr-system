@@ -297,20 +297,28 @@ describe('PUT /api/settings timesheet rules and holiday default (requirement 17.
     __setUser({ id: 1, role: 'ADMIN' });
   });
 
-  test('saves the eight timesheet keys', async () => {
+  test('saves the stored timesheet keys', async () => {
     const timesheets = {
       enabled: true,
       require_location: false,
       site_radius_m: 250,
       require_photo_on_clockout: true,
-      auto_break_minutes: 30,
-      auto_break_after_hours: 6,
       round_to_minutes: 15,
       max_shift_hours: 12,
     };
     const res = await request(app).put('/api/settings').send({ timesheets });
     expect(res.status).toBe(200);
     expect(setSetting).toHaveBeenCalledWith('timesheets', timesheets);
+  });
+
+  test('does not persist retired auto-break timesheet keys', async () => {
+    const res = await request(app).put('/api/settings').send({
+      timesheets: { enabled: true, auto_break_minutes: 30, auto_break_after_hours: 6 },
+    });
+    expect(res.status).toBe(200);
+    const saved = setSetting.mock.calls.find((c) => c[0] === 'timesheets')[1];
+    expect(saved.auto_break_minutes).toBeUndefined();
+    expect(saved.auto_break_after_hours).toBeUndefined();
   });
 
   test('merges a partial timesheets PUT onto stored rules', async () => {
@@ -321,8 +329,6 @@ describe('PUT /api/settings timesheet rules and holiday default (requirement 17.
           require_location: true,
           site_radius_m: 500,
           require_photo_on_clockout: true,
-          auto_break_minutes: 15,
-          auto_break_after_hours: 6,
           round_to_minutes: 5,
           max_shift_hours: 12,
         };

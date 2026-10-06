@@ -7,13 +7,13 @@ const { plain } = require('../db');
 const contacts = require('../customerContacts');
 const { findEnquiryOwner } = require('../customerDuplicates');
 const { resolveCustomerType, typeFields } = require('../customerType');
-const { buildLeadListWhere } = require('../leadFilters');
+const { buildLeadListWhere, inboxTabCounts } = require('../leadFilters');
 
 const router = express.Router();
 router.use(requireAuth, requireOffice);
 
 /** Sources the inbox "Log enquiry" form can pick (requirement 3.3). */
-const QUICK_ADD_SOURCES = Object.freeze(['manual', 'phone', 'email', 'whatsapp', 'facebook', 'facebook_lead']);
+const QUICK_ADD_SOURCES = Object.freeze(['manual', 'phone', 'email', 'sms', 'whatsapp', 'facebook', 'facebook_lead']);
 
 function ingestChannel(source) {
   if (source === 'manual') return 'note';
@@ -52,12 +52,16 @@ router.get('/', asyncHandler(async (req, res) => {
     return o;
   });
   const countRows = await Lead.findAll({
-    attributes: ['status', [Lead.sequelize.fn('COUNT', Lead.sequelize.col('id')), 'c']],
+    attributes: [
+      'status',
+      'stage',
+      [Lead.sequelize.fn('COUNT', Lead.sequelize.col('id')), 'c'],
+    ],
     where: counted.where,
-    group: ['status'],
+    group: ['status', 'stage'],
     raw: true,
   });
-  res.json({ leads, counts: Object.fromEntries(countRows.map((r) => [r.status, Number(r.c)])) });
+  res.json({ leads, counts: inboxTabCounts(countRows) });
 }));
 
 router.post('/', asyncHandler(async (req, res) => {

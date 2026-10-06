@@ -58,7 +58,7 @@ export default function StaffJobDetail() {
       {toast && <Toast {...toast} />}
       <button onClick={() => navigate(-1)} className="flex items-center gap-1.5 text-sm text-slate-500"><ArrowLeft size={15} /> Back</button>
 
-      <ClockWidget jobId={job.id} jobTitle={job.title} onChange={load} />
+      <ClockWidget jobId={job.id} jobTitle={job.title} invoicePaid={!!job.invoice_paid} onChange={load} />
 
       <div className="card p-4">
         <div className="flex items-center gap-2 flex-wrap mb-1">

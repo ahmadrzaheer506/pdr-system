@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { formatSite, primaryOf, soleContactId, contactsFromSingleOptions, PHONE_TYPES, EMAIL_TYPES } from './contacts';
+import { formatSite, primaryOf, soleContactId, contactsFromSingleOptions, PHONE_TYPES, EMAIL_TYPES, emailFormatError } from './contacts';
 
 describe('contact display helpers (requirement 2.2)', () => {
   it('formats a site as address + postcode', () => {
@@ -29,5 +29,12 @@ describe('contact display helpers (requirement 2.2)', () => {
   it('exposes the stored phone and email types', () => {
     expect(PHONE_TYPES.map((t) => t.value)).toEqual(['mobile', 'landline', 'work']);
     expect(EMAIL_TYPES.map((t) => t.value)).toEqual(['personal', 'work']);
+  });
+
+  it('requires @ and a domain when an email is entered', () => {
+    expect(emailFormatError('')).toBe('');
+    expect(emailFormatError('not-an-email')).toBe('Enter a valid email address');
+    expect(emailFormatError('name@')).toBe('Enter a valid email address');
+    expect(emailFormatError('dave@example.com')).toBe('');
   });
 });

@@ -1,5 +1,5 @@
 jest.mock('../models', () => ({
-  Followup: { update: jest.fn(), create: jest.fn(), findAll: jest.fn() },
+  Followup: { update: jest.fn(), create: jest.fn(), findAll: jest.fn(), count: jest.fn(), findByPk: jest.fn(), findOne: jest.fn() },
   Quote: { findAll: jest.fn() },
   Customer: { findByPk: jest.fn() },
   Message: { findOne: jest.fn() },
@@ -32,6 +32,8 @@ const {
   stopFollowupsAfterInbound,
   processDue,
   cancelPendingForQuote,
+  updateFollowupSchedule,
+  cancelFollowup,
 } = require('../services/followups');
 
 describe('quote follow-up engine (requirement 12.1)', () => {
@@ -39,6 +41,7 @@ describe('quote follow-up engine (requirement 12.1)', () => {
     jest.clearAllMocks();
     Followup.update.mockResolvedValue([0]);
     Followup.create.mockResolvedValue({});
+    Followup.count.mockResolvedValue(0);
     Message.findOne.mockResolvedValue(null);
   });
 
@@ -58,10 +61,7 @@ describe('quote follow-up engine (requirement 12.1)', () => {
     });
     const sentAt = new Date('2026-09-20T10:00:00.000Z');
     await scheduleForQuote({ id: 4, customer_id: 9, ref: 'Q-2026-0004', sent_at: sentAt });
-    expect(Followup.update).toHaveBeenCalledWith(
-      { status: 'cancelled', stop_reason: 'rescheduled' },
-      { where: { quote_id: 4, status: 'pending' } }
-    );
+    expect(Followup.update).not.toHaveBeenCalled();
     expect(Followup.create).toHaveBeenNthCalledWith(1, expect.objectContaining({
       quote_id: 4,
       step: 1,
@@ -76,6 +76,16 @@ describe('quote follow-up engine (requirement 12.1)', () => {
       expect.objectContaining({ id: 4, ref: 'Q-2026-0004' }),
       Followup.create.mock.calls[0][0].scheduled_at
     );
+  });
+
+  test('does not cancel and recreate follow-ups when the quote is resent', async () => {
+    Followup.count.mockResolvedValue(3);
+    getSetting.mockResolvedValue({ enabled: true, steps: [{ delay_days: 2, channel: 'email', body: 'Hi' }] });
+    const n = await scheduleForQuote({ id: 4, customer_id: 9, ref: 'Q-1', sent_at: new Date() });
+    expect(n).toBe(0);
+    expect(Followup.update).not.toHaveBeenCalled();
+    expect(Followup.create).not.toHaveBeenCalled();
+    expect(ensureQuoteFollowupTask).not.toHaveBeenCalled();
   });
 
   test('does not schedule when the sequence is disabled', async () => {
@@ -233,5 +243,71 @@ describe('quote follow-up engine (requirement 12.1)', () => {
       { status: 'cancelled', stop_reason: 'cancelled by office' },
       { where: { quote_id: 4, status: 'pending' } }
     );
+  });
+
+  test('moves a pending follow-up and updates the task due date', async () => {
+    const row = {
+      id: 8,
+      quote_id: 4,
+      step: 2,
+      status: 'pending',
+      save: jest.fn(),
+    };
+    Followup.findByPk.mockResolvedValue(row);
+    Followup.findOne.mockResolvedValue({ scheduled_at: new Date('2026-10-12T09:00:00.000Z') });
+    const at = '2026-10-12T09:00:00.000Z';
+    const result = await updateFollowupSchedule({
+      quoteId: 4,
+      followupId: 8,
+      scheduledAt: at,
+      userId: 1,
+      quote: { id: 4, ref: 'Q-4', customer_id: 9 },
+    });
+    expect(result.scheduled_at.toISOString()).toBe(at);
+    expect(row.save).toHaveBeenCalled();
+    expect(ensureQuoteFollowupTask).toHaveBeenCalledWith(
+      expect.objectContaining({ id: 4 }),
+      new Date(at),
+    );
+  });
+
+  test('rejects a date change on a sent follow-up', async () => {
+    Followup.findByPk.mockResolvedValue({ id: 8, quote_id: 4, status: 'sent' });
+    await expect(updateFollowupSchedule({
+      quoteId: 4,
+      followupId: 8,
+      scheduledAt: '2026-10-12T09:00:00.000Z',
+      quote: { id: 4, ref: 'Q-4', customer_id: 9 },
+    })).rejects.toMatchObject({ status: 400 });
+    expect(ensureQuoteFollowupTask).not.toHaveBeenCalled();
+  });
+
+  test('cancels one pending step and keeps later ones', async () => {
+    const row = { id: 8, quote_id: 4, step: 1, status: 'pending', save: jest.fn() };
+    Followup.findByPk.mockResolvedValue(row);
+    Followup.findOne.mockResolvedValue({ scheduled_at: new Date('2026-10-15T09:00:00.000Z') });
+    await cancelFollowup({
+      quoteId: 4,
+      followupId: 8,
+      userId: 1,
+      quote: { id: 4, ref: 'Q-4', customer_id: 9 },
+    });
+    expect(row.status).toBe('cancelled');
+    expect(row.save).toHaveBeenCalled();
+    expect(ensureQuoteFollowupTask).toHaveBeenCalled();
+    expect(resolveQuoteFollowupTask).not.toHaveBeenCalled();
+  });
+
+  test('resolves the follow-up task when the last pending step is cancelled', async () => {
+    const row = { id: 8, quote_id: 4, step: 2, status: 'pending', save: jest.fn() };
+    Followup.findByPk.mockResolvedValue(row);
+    Followup.findOne.mockResolvedValue(null);
+    await cancelFollowup({
+      quoteId: 4,
+      followupId: 8,
+      quote: { id: 4, ref: 'Q-4', customer_id: 9 },
+    });
+    expect(resolveQuoteFollowupTask).toHaveBeenCalledWith(4);
+    expect(ensureQuoteFollowupTask).not.toHaveBeenCalled();
   });
 });

@@ -231,6 +231,30 @@ function sendResult(res, result) {
   return res.json(result);
 }
 
+/**
+ * Crew slots grouped by work date so unscheduling can notify then wipe.
+ * @returns {Promise<Map<string, number[]>>}
+ */
+async function listCrewByDate(jobId, transaction) {
+  const rows = await JobDayAssignment.findAll({
+    where: { job_id: jobId },
+    attributes: ['work_date', 'user_id'],
+    transaction,
+  });
+  const byDate = new Map();
+  for (const row of rows) {
+    const day = toIsoDate(row.work_date);
+    if (!day) continue;
+    if (!byDate.has(day)) byDate.set(day, []);
+    byDate.get(day).push(row.user_id);
+  }
+  return byDate;
+}
+
+async function clearAllCrew(jobId, transaction) {
+  await JobDayAssignment.destroy({ where: { job_id: jobId }, transaction });
+}
+
 module.exports = {
   parseIsoDate,
   toIsoDate,
@@ -246,6 +270,8 @@ module.exports = {
   overlapWhere,
   pruneOutsideRange,
   setDayCrew,
+  listCrewByDate,
+  clearAllCrew,
   userAssignedToJob,
   userAssignedOnDate,
   validateJobDates,

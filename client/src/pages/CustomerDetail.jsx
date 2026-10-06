@@ -1,11 +1,11 @@
-import React, { useEffect, useState, useCallback } from 'react';
+import React, { useEffect, useState, useCallback, useRef } from 'react';
 import { useParams, useSearchParams, Link } from 'react-router-dom';
 import { customerPath, leadBackLink } from '../lib/customerRoutes.js';
 import { leadSourceLabel } from '../lib/leads.js';
 import { enquiryWorkspaceStage, filterByLeadScope, leadWorkspaceScope } from '../lib/leadWorkspace.js';
 import {
   ArrowLeft, Phone, Mail, MapPin, Send, Calendar, FileText, Briefcase, Receipt,
-  Check, X, ChevronDown, Building2, Copy, Download, IdCard, Pencil, Trash2, Loader2,
+  Check, X, ChevronDown, Building2, Copy, Download, IdCard, Pencil, Trash2, Loader2, Users,
 } from 'lucide-react';
 import { api, money, fmtDate, fmtDateTime } from '../lib/api';
 import { PageLoading, LoadError, StageBadge, StatusBadge, Modal, useToast, Toast, HoverTooltip } from '../components/ui.jsx';
@@ -28,6 +28,7 @@ import { canRecordPayment, invoiceOutstanding } from '../lib/invoicePayments';
 import { InvoicePaymentModal } from '../components/InvoicePaymentForm.jsx';
 import SelectMenu from '../components/SelectMenu.jsx';
 import ScrollableLeadList from '../components/ScrollableLeadList.jsx';
+import DatePicker from '../components/DatePicker.jsx';
 
 const STAGE_FLOW = ['ENQUIRY', 'SITE_VISIT_BOOKED', 'QUOTE_PENDING', 'QUOTED', 'FOLLOW_UP', 'WON', 'SCHEDULED', 'IN_PROGRESS', 'COMPLETED', 'INVOICED', 'PAID', 'LOST'];
 
@@ -347,9 +348,35 @@ function StageHistoryCard({ rows, labels = {} }) {
 
 function StageDropdown({ stage, onChange }) {
   const [open, setOpen] = useState(false);
+  const rootRef = useRef(null);
+
+  useEffect(() => {
+    if (!open) return undefined;
+    const onDoc = (e) => {
+      if (rootRef.current?.contains(e.target)) return;
+      setOpen(false);
+    };
+    const onEsc = (e) => {
+      if (e.key === 'Escape') setOpen(false);
+    };
+    document.addEventListener('mousedown', onDoc);
+    document.addEventListener('keydown', onEsc);
+    return () => {
+      document.removeEventListener('mousedown', onDoc);
+      document.removeEventListener('keydown', onEsc);
+    };
+  }, [open]);
+
   return (
-    <div className="relative">
-      <button type="button" onClick={() => setOpen(!open)} className="flex items-center gap-1">
+    <div className="relative" ref={rootRef}>
+      <button
+        type="button"
+        onClick={() => setOpen(!open)}
+        className="flex items-center gap-1"
+        aria-haspopup="listbox"
+        aria-expanded={open}
+        aria-label="Pipeline stage"
+      >
         <StageBadge stage={stage} label={stage.replace(/_/g, ' ')} />
         <ChevronDown size={13} className={`text-slate-400 transition-transform ${open ? 'rotate-180' : ''}`} />
       </button>
@@ -689,6 +716,7 @@ function QuotesCard({ quotes, onEdit, onChanged, show }) {
                 <label key={i} className="flex items-center gap-2 text-sm text-slate-800">
                   <input
                     type="checkbox"
+                    className="h-4 w-4 shrink-0 accent-brand-500"
                     checked={pickedExtras.includes(i)}
                     onChange={() => toggleExtra(i)}
                   />
@@ -726,11 +754,21 @@ function AppointmentsCard({ appts, onReschedule, onCancel, onComplete, completin
               </div>
               <StatusBadge status={a.status} />
             </div>
-            {a.address && <div className="text-xs text-slate-500 mt-0.5">{a.address}</div>}
-            {a.assignee_name && <div className="text-xs text-slate-500 mt-0.5">Assigned to {a.assignee_name}</div>}
+            {a.address && (
+              <div className="mt-1 flex items-center gap-1.5 text-sm text-slate-500">
+                <MapPin size={13} className="shrink-0 text-slate-400" />
+                {a.address}
+              </div>
+            )}
+            {a.assignee_name && (
+              <div className="mt-0.5 flex items-center gap-1.5 text-xs text-slate-500">
+                <Users size={12} className="shrink-0 text-slate-400" />
+                Assigned to {a.assignee_name}
+              </div>
+            )}
             {a.gcal_status === 'synced' && <div className="text-xs text-emerald-600 mt-1">✓ Synced to Google Calendar</div>}
             {a.status === 'done' && (
-              <VisitCompleteRemarks note={a.complete_note} className="text-xs text-slate-600 mt-1.5" />
+              <VisitCompleteRemarks note={a.complete_note} className="mt-2" />
             )}
             {(canChangeVisit(a) || canCompleteVisit(a) || a.status === 'done') && (
               <div className="flex flex-wrap items-center gap-3 mt-2">
@@ -913,9 +951,42 @@ function groupFollowupsByQuote(followups) {
   return [...map.values()];
 }
 
+function pad2(n) {
+  return String(n).padStart(2, '0');
+}
+
+function localDateFromIso(iso) {
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return '';
+  return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
+}
+
+function localTimeFromIso(iso) {
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return '09:00';
+  return `${pad2(d.getHours())}:${pad2(d.getMinutes())}`;
+}
+
+function isoFromLocal(date, time) {
+  if (!date || !time) return null;
+  const d = new Date(`${date}T${time}`);
+  return Number.isNaN(d.getTime()) ? null : d.toISOString();
+}
+
 function FollowupsCard({ followups, onChanged, show }) {
   const [cancelling, setCancelling] = useState(null);
+  const [cancellingStep, setCancellingStep] = useState(null);
+  const [editing, setEditing] = useState(null);
+  const [editDate, setEditDate] = useState('');
+  const [editTime, setEditTime] = useState('09:00');
+  const [savingWhen, setSavingWhen] = useState(false);
   const groups = groupFollowupsByQuote(followups);
+
+  function openSchedule(step) {
+    setEditing(step);
+    setEditDate(localDateFromIso(step.scheduled_at));
+    setEditTime(localTimeFromIso(step.scheduled_at));
+  }
 
   async function cancelRemaining(quoteId) {
     setCancelling(quoteId);
@@ -927,6 +998,41 @@ function FollowupsCard({ followups, onChanged, show }) {
       show(err.message, 'error');
     } finally {
       setCancelling(null);
+    }
+  }
+
+  async function cancelStep(step) {
+    if (!step?.quote_id) return;
+    setCancellingStep(step.id);
+    try {
+      await api.post(`/quotes/${step.quote_id}/followups/${step.id}/cancel`);
+      show('Follow-up cancelled');
+      onChanged();
+    } catch (err) {
+      show(err.message, 'error');
+    } finally {
+      setCancellingStep(null);
+    }
+  }
+
+  async function saveSchedule(e) {
+    e.preventDefault();
+    if (!editing?.quote_id) return;
+    const scheduledAt = isoFromLocal(editDate, editTime);
+    if (!scheduledAt) {
+      show('Enter a valid date and time', 'error');
+      return;
+    }
+    setSavingWhen(true);
+    try {
+      await api.put(`/quotes/${editing.quote_id}/followups/${editing.id}`, { scheduled_at: scheduledAt });
+      show('Follow-up time updated');
+      setEditing(null);
+      onChanged();
+    } catch (err) {
+      show(err.message, 'error');
+    } finally {
+      setSavingWhen(false);
     }
   }
 
@@ -967,13 +1073,75 @@ function FollowupsCard({ followups, onChanged, show }) {
                     Step {f.step} · {f.channel}
                     {f.scheduled_at ? ` · ${fmtDateTime(f.scheduled_at)}` : ''}
                   </span>
-                  <StatusBadge status={f.status} />
+                  <span className="flex items-center gap-1.5 shrink-0">
+                    <StatusBadge status={f.status} />
+                    {f.status === 'pending' && g.quote_id != null && (
+                      <>
+                        <HoverTooltip text="Change date">
+                          <button
+                            type="button"
+                            className="btn-ghost !p-1.5"
+                            aria-label="Change date"
+                            onClick={() => openSchedule(f)}
+                          >
+                            <Pencil size={14} />
+                          </button>
+                        </HoverTooltip>
+                        <HoverTooltip text="Cancel this follow-up">
+                          <button
+                            type="button"
+                            className="btn-ghost !p-1.5 !text-rose-600 hover:!text-rose-700"
+                            aria-label="Cancel this follow-up"
+                            disabled={cancellingStep === f.id}
+                            onClick={() => cancelStep(f)}
+                          >
+                            {cancellingStep === f.id ? <Loader2 size={14} className="animate-spin" /> : <X size={14} />}
+                          </button>
+                        </HoverTooltip>
+                      </>
+                    )}
+                  </span>
                 </div>
               ))}
             </div>
           );
         })}
       </div>
+      <Modal
+        open={!!editing}
+        onClose={() => !savingWhen && setEditing(null)}
+        title="Change follow-up time"
+        subtitle={editing ? `Step ${editing.step} · ${editing.channel}` : null}
+      >
+        {editing && (
+          <form onSubmit={saveSchedule} className="space-y-3">
+            <DatePicker
+              id="followup-edit-date"
+              label="Date"
+              value={editDate}
+              onChange={setEditDate}
+              required
+            />
+            <div>
+              <label className="label" htmlFor="followup-edit-time">Time</label>
+              <input
+                id="followup-edit-time"
+                className="input"
+                type="time"
+                value={editTime}
+                onChange={(e) => setEditTime(e.target.value)}
+                required
+              />
+            </div>
+            <div className="flex justify-end gap-2">
+              <button type="button" className="btn-secondary" disabled={savingWhen} onClick={() => setEditing(null)}>Cancel</button>
+              <button type="submit" className="btn-primary" disabled={savingWhen || !editDate || !editTime}>
+                {savingWhen ? 'Saving…' : 'Save time'}
+              </button>
+            </div>
+          </form>
+        )}
+      </Modal>
     </div>
   );
 }

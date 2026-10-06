@@ -100,8 +100,6 @@ const DEFAULT_SETTINGS = {
     require_location: true,
     site_radius_m: 300,
     require_photo_on_clockout: false,
-    auto_break_minutes: 0,
-    auto_break_after_hours: 6,
     round_to_minutes: 0,
     max_shift_hours: 14,
   },
@@ -173,7 +171,7 @@ async function getSetting(key) {
     return require('./messageTemplates').stripRetiredTemplateKeys({ ...fallback, ...value, custom });
   }
   if (key === 'timesheets') {
-    return { ...fallback, ...(row.value || {}) };
+    return require('./timesheetRules').publicTimesheets({ ...fallback, ...(row.value || {}) });
   }
   if (key === 'branding') {
     return { ...fallback, ...(row.value || {}) };
@@ -182,7 +180,10 @@ async function getSetting(key) {
 }
 
 async function setSetting(key, value) {
-  await Setting.upsert({ key, value });
+  const stored = key === 'timesheets'
+    ? require('./timesheetRules').publicTimesheets(value)
+    : value;
+  await Setting.upsert({ key, value: stored });
 }
 
 async function allSettings() {
@@ -210,7 +211,10 @@ async function allSettings() {
     });
   }
   if (out.timesheets) {
-    out.timesheets = { ...DEFAULT_SETTINGS.timesheets, ...out.timesheets };
+    out.timesheets = require('./timesheetRules').publicTimesheets({
+      ...DEFAULT_SETTINGS.timesheets,
+      ...out.timesheets,
+    });
   }
   if (out.branding) {
     out.branding = { ...DEFAULT_SETTINGS.branding, ...out.branding };

@@ -2,6 +2,7 @@ jest.mock('../models', () => ({
   Timesheet: { findOne: jest.fn(), create: jest.fn(), update: jest.fn(), findByPk: jest.fn() },
   Job: { findByPk: jest.fn() },
   JobDayAssignment: { findOne: jest.fn() },
+  Invoice: { findOne: jest.fn(), findAll: jest.fn() },
   User: { findByPk: jest.fn() },
   Customer: {},
 }));
@@ -15,7 +16,7 @@ jest.mock('../db', () => ({
   plain: (row) => (row && typeof row.toJSON === 'function' ? row.toJSON() : { ...row }),
 }));
 
-const { Timesheet, Job, JobDayAssignment, User } = require('../models');
+const { Timesheet, Job, JobDayAssignment, User, Invoice } = require('../models');
 const geocode = require('../geocode');
 const { clockIn, clockOut, locationCapture } = require('../services/timesheets');
 
@@ -48,6 +49,7 @@ describe('clockIn location flags (requirement 9.2)', () => {
     Timesheet.create.mockImplementation(async (row) => ({ id: 11, ...row }));
     Job.findByPk.mockResolvedValue({ id: 8, address: '2 Priory Court', lat: 51.4543, lng: -0.9781 });
     JobDayAssignment.findOne.mockResolvedValue({ job_id: 8, user_id: 4 });
+    Invoice.findOne.mockResolvedValue(null);
     geocode.ensureJobSitePoint.mockResolvedValue({ lat: 51.4543, lng: -0.9781 });
   });
 

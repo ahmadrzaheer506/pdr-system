@@ -13,6 +13,7 @@ const STAFF_JOB_RESPONSE_KEYS = [
   ...STAFF_JOB_ATTRS,
   'customer_name', 'customer_phone', 'crew', 'work_dates',
   'material_lines', 'checklist_items', 'files',
+  'invoice_paid',
 ];
 
 /** Money / quote / invoice fields that must never appear on operative payloads. */

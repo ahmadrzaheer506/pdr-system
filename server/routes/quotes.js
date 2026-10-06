@@ -7,7 +7,7 @@ const { nextRef, getSetting, money, DATA_DIR, plain } = require('../db');
 const { requireAuth, requireOffice, asyncHandler } = require('../auth');
 const { setStage, logActivity, resolveLeadForCustomer } = require('../services/pipeline');
 const { sendToCustomer } = require('../services/messenger');
-const { scheduleForQuote, render, cancelPendingForQuote } = require('../services/followups');
+const { scheduleForQuote, render, cancelPendingForQuote, updateFollowupSchedule, cancelFollowup } = require('../services/followups');
 const { resolveRule, ensureTask, resolveQuoteFollowupTask } = require('../services/taskEngine');
 const { quotePdf } = require('../services/pdf');
 const contacts = require('../customerContacts');
@@ -77,7 +77,8 @@ function fileToken(filename) {
   return crypto.createHmac('sha256', process.env.JWT_SECRET || 'dev-secret-change-me').update(filename).digest('hex').slice(0, 24);
 }
 function publicPdfUrl(filename) {
-  return `${process.env.APP_URL || 'http://localhost:4000'}/public-files/${fileToken(filename)}/${filename}`;
+  const base = String(process.env.APP_URL || 'http://localhost:4000').replace(/\/$/, '');
+  return `${base}/public-files/${fileToken(filename)}/${filename}`;
 }
 
 /**
@@ -415,7 +416,10 @@ router.post('/:id/send', asyncHandler(async (req, res) => {
   }
 
   if (Object.keys(results).length === 0) {
-    return res.status(400).json({ error: `Could not send on any channel — ${errors.join('; ')}` });
+    const detail = errors.length === 1
+      ? errors[0].replace(/^(whatsapp|email):\s*/i, '')
+      : `Could not send on any channel — ${errors.join('; ')}`;
+    return res.status(400).json({ error: detail });
   }
 
   await quote.update({ status: 'sent', sent_at: new Date(), sent_via: Object.keys(results).join('+') });
@@ -504,6 +508,41 @@ router.post('/:id/followups/cancel', asyncHandler(async (req, res) => {
     await logActivity(quote.customer_id, req.user.id, 'followups_cancelled', `Office cancelled remaining follow-ups for quote ${quote.ref}`, 'quote', quote.id);
   }
   res.json({ ok: true, cancelled });
+}));
+
+router.post('/:id/followups/:followupId/cancel', asyncHandler(async (req, res) => {
+  const quote = await Quote.findByPk(req.params.id);
+  if (!quote) return res.status(404).json({ error: 'Quote not found' });
+  try {
+    const followup = await cancelFollowup({
+      quoteId: quote.id,
+      followupId: req.params.followupId,
+      userId: req.user.id,
+      quote,
+    });
+    res.json({ ok: true, followup: plain(followup) });
+  } catch (err) {
+    if (err.status) return res.status(err.status).json({ error: err.message });
+    throw err;
+  }
+}));
+
+router.put('/:id/followups/:followupId', asyncHandler(async (req, res) => {
+  const quote = await Quote.findByPk(req.params.id);
+  if (!quote) return res.status(404).json({ error: 'Quote not found' });
+  try {
+    const followup = await updateFollowupSchedule({
+      quoteId: quote.id,
+      followupId: req.params.followupId,
+      scheduledAt: req.body?.scheduled_at,
+      userId: req.user.id,
+      quote,
+    });
+    res.json({ ok: true, followup: plain(followup) });
+  } catch (err) {
+    if (err.status) return res.status(err.status).json({ error: err.message });
+    throw err;
+  }
 }));
 
 module.exports = router;

@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { Plus, Trash2, Star, MapPin, Phone, Mail } from 'lucide-react';
 import { api } from '../lib/api';
-import { PHONE_TYPES, EMAIL_TYPES, formatSite, typeLabel } from '../lib/contacts';
+import { PHONE_TYPES, EMAIL_TYPES, formatSite, typeLabel, emailFormatError } from '../lib/contacts';
 import { duplicateFromError } from '../lib/duplicates';
 import DuplicateCustomerNotice from './DuplicateCustomerNotice.jsx';
 import SelectMenu from './SelectMenu.jsx';
@@ -255,6 +255,11 @@ function EmailList({ customer, onChanged, onError }) {
 
   const add = async (e) => {
     e.preventDefault();
+    const emailErr = emailFormatError(form.value);
+    if (emailErr) {
+      onError(emailErr);
+      return;
+    }
     setSaving(true);
     setDuplicate(null);
     try {

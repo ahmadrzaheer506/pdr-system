@@ -58,6 +58,8 @@ jest.mock('../services/followups', () => ({
   scheduleForQuote: jest.fn(),
   render: jest.fn(),
   cancelPendingForQuote: jest.fn(async () => 1),
+  updateFollowupSchedule: jest.fn(),
+  cancelFollowup: jest.fn(),
 }));
 jest.mock('../services/taskEngine', () => ({
   resolveRule: jest.fn(),
@@ -515,6 +517,29 @@ describe('POST /api/quotes/:id/send (requirement 6.7)', () => {
     }));
   });
 
+  test('does not mark the quote sent when WhatsApp keys are missing', async () => {
+    const { NOT_CONNECTED_ERROR } = require('../integrations/whatsapp');
+    sendToCustomer.mockRejectedValue(new Error(NOT_CONNECTED_ERROR));
+    const quoteRow = {
+      id: 7,
+      customer_id: 9,
+      ref: 'Q-2026-0017',
+      title: 'Test',
+      total: 158,
+      status: 'draft',
+      valid_until: '2026-10-01',
+      toJSON() { return { ...this }; },
+      update: jest.fn(async function patch(fields) { Object.assign(this, fields); }),
+    };
+    Quote.findByPk.mockResolvedValue(quoteRow);
+    contacts.loadCustomerWithContacts.mockResolvedValue({ id: 9, name: 'Sahil' });
+
+    const res = await request(app).post('/api/quotes/7/send').send({ channels: ['whatsapp'] });
+    expect(res.status).toBe(400);
+    expect(res.body.error).toBe(NOT_CONNECTED_ERROR);
+    expect(quoteRow.update).not.toHaveBeenCalledWith(expect.objectContaining({ status: 'sent' }));
+  });
+
   test('allows resend on an already sent quote', async () => {
     const quoteRow = {
       id: 8,
@@ -575,5 +600,54 @@ describe('POST /api/quotes/:id/followups/cancel (requirement 12.1)', () => {
     const res = await request(app).post('/api/quotes/99/followups/cancel');
     expect(res.status).toBe(404);
     expect(cancelPendingForQuote).not.toHaveBeenCalled();
+  });
+});
+
+describe('PUT /api/quotes/:id/followups/:followupId', () => {
+  const { updateFollowupSchedule } = require('../services/followups');
+
+  beforeEach(() => jest.clearAllMocks());
+
+  test('saves a new scheduled time for that step', async () => {
+    Quote.findByPk.mockResolvedValue({ id: 20, customer_id: 9, ref: 'Q-2026-0020' });
+    updateFollowupSchedule.mockResolvedValue({
+      id: 8, quote_id: 20, step: 1, status: 'pending', scheduled_at: '2026-10-12T09:00:00.000Z',
+    });
+    const res = await request(app).put('/api/quotes/20/followups/8').send({
+      scheduled_at: '2026-10-12T09:00:00.000Z',
+    });
+    expect(res.status).toBe(200);
+    expect(updateFollowupSchedule).toHaveBeenCalledWith(expect.objectContaining({
+      quoteId: 20,
+      followupId: '8',
+      scheduledAt: '2026-10-12T09:00:00.000Z',
+      userId: 1,
+    }));
+  });
+
+  test('returns the service error status', async () => {
+    Quote.findByPk.mockResolvedValue({ id: 20, customer_id: 9, ref: 'Q-20' });
+    updateFollowupSchedule.mockRejectedValue(Object.assign(new Error('Only a pending follow-up can have its date changed'), { status: 400 }));
+    const res = await request(app).put('/api/quotes/20/followups/8').send({ scheduled_at: '2026-10-12T09:00:00.000Z' });
+    expect(res.status).toBe(400);
+    expect(res.body.error).toMatch(/pending/i);
+  });
+});
+
+describe('POST /api/quotes/:id/followups/:followupId/cancel', () => {
+  const { cancelFollowup } = require('../services/followups');
+
+  beforeEach(() => jest.clearAllMocks());
+
+  test('cancels that step only', async () => {
+    Quote.findByPk.mockResolvedValue({ id: 20, customer_id: 9, ref: 'Q-2026-0020' });
+    cancelFollowup.mockResolvedValue({ id: 8, quote_id: 20, status: 'cancelled' });
+    const res = await request(app).post('/api/quotes/20/followups/8/cancel');
+    expect(res.status).toBe(200);
+    expect(cancelFollowup).toHaveBeenCalledWith(expect.objectContaining({
+      quoteId: 20,
+      followupId: '8',
+      userId: 1,
+    }));
   });
 });

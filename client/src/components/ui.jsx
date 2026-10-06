@@ -21,7 +21,9 @@ export function StageBadge({ stage, label }) {
 
 export function PriorityBadge({ priority }) {
   const colors = { urgent: 'bg-red-100 text-red-700', high: 'bg-orange-100 text-orange-700', normal: 'bg-slate-100 text-slate-600', low: 'bg-slate-100 text-slate-500' };
-  return <span className={`badge ${colors[priority] || colors.normal}`}>{priority}</span>;
+  const label = String(priority || '')
+    .replace(/\S+/g, (word) => `${word.charAt(0).toUpperCase()}${word.slice(1).toLowerCase()}`);
+  return <span className={`badge ${colors[priority] || colors.normal}`}>{label}</span>;
 }
 
 export function StatusBadge({ status, className = '' }) {
@@ -38,6 +40,7 @@ export function StatusBadge({ status, className = '' }) {
     active: 'bg-emerald-100 text-emerald-700', PENDING: 'bg-slate-100 text-slate-600', SCHEDULED: 'bg-cyan-100 text-cyan-700',
     IN_PROGRESS: 'bg-blue-100 text-blue-700', COMPLETED: 'bg-teal-100 text-teal-700', NEW: 'bg-amber-100 text-amber-700',
     ACTIONED: 'bg-sky-100 text-sky-700', CONVERTED: 'bg-emerald-100 text-emerald-700', CLOSED: 'bg-slate-100 text-slate-500',
+    WON: 'bg-emerald-100 text-emerald-700', LOST: 'bg-rose-100 text-rose-700',
   };
   const label = String(status || '')
     .replace(/_/g, ' ')
@@ -198,7 +201,7 @@ export function LoadError({ message }) {
  * Hover/focus tooltip. Wrap a disabled control so the hint still appears
  * (disabled buttons do not receive pointer events).
  */
-export function HoverTooltip({ text, children }) {
+export function HoverTooltip({ text, children, className = 'inline-flex' }) {
   const [open, setOpen] = React.useState(false);
   const wrapRef = React.useRef(null);
   const [coords, setCoords] = React.useState(null);
@@ -222,7 +225,7 @@ export function HoverTooltip({ text, children }) {
     <>
       <span
         ref={wrapRef}
-        className="inline-flex"
+        className={className}
         onMouseEnter={show}
         onMouseOver={show}
         onMouseLeave={hide}
@@ -234,7 +237,7 @@ export function HoverTooltip({ text, children }) {
       {open && coords && createPortal(
         <span
           role="tooltip"
-          className="pointer-events-none z-[80] max-w-[16rem] rounded-lg bg-slate-900 px-2.5 py-1.5 text-left text-[11px] leading-snug text-white shadow-lg"
+          className="pointer-events-none z-[110] max-w-[18rem] whitespace-pre-line rounded-lg bg-slate-900 px-2.5 py-1.5 text-left text-[11px] leading-snug text-white shadow-lg"
           style={{
             position: 'fixed',
             top: coords.top,

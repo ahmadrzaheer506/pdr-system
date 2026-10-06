@@ -2,7 +2,7 @@ import React from 'react';
 import { Mail, MapPin, Phone, User } from 'lucide-react';
 import CustomerTypeFields from './CustomerTypeFields.jsx';
 import SelectMenu from './SelectMenu.jsx';
-import { PHONE_TYPES, EMAIL_TYPES } from '../lib/contacts';
+import { PHONE_TYPES, EMAIL_TYPES, emailFormatError } from '../lib/contacts';
 
 export const EMPTY_CUSTOMER_FORM = {
   name: '',
@@ -48,6 +48,7 @@ function TypeField({ label, htmlFor, children }) {
 export default function CustomerCreateFields({ form, onChange, idPrefix }) {
   const set = (key) => (e) => onChange({ ...form, [key]: e.target.value });
   const nameLabel = form.customer_type === 'commercial' ? 'Contact name' : 'Name';
+  const emailError = emailFormatError(form.email);
   return (
     <div className="space-y-3 rounded-2xl bg-slate-50/80 p-3.5 ring-1 ring-slate-200/80">
       <CustomerTypeFields form={form} onChange={onChange} idPrefix={idPrefix} />
@@ -70,7 +71,18 @@ export default function CustomerCreateFields({ form, onChange, idPrefix }) {
       </div>
       <div className="grid grid-cols-2 gap-3">
         <Field icon={Mail} label="Email" htmlFor={`${idPrefix}-email`}>
-          <input id={`${idPrefix}-email`} className="input bg-white" type="email" value={form.email} onChange={set('email')} />
+          <input
+            id={`${idPrefix}-email`}
+            className={`input bg-white ${emailError ? '!border-rose-400' : ''}`}
+            type="email"
+            value={form.email}
+            onChange={set('email')}
+            aria-invalid={emailError ? 'true' : undefined}
+            aria-describedby={emailError ? `${idPrefix}-email-error` : undefined}
+          />
+          {emailError ? (
+            <p id={`${idPrefix}-email-error`} className="mt-1 text-xs text-rose-600" role="alert">{emailError}</p>
+          ) : null}
         </Field>
         <TypeField label="Email type" htmlFor={`${idPrefix}-email-type`}>
           <SelectMenu

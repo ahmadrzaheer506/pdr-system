@@ -1,19 +1,20 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import {
-  ArrowUpRight, CalendarDays, Check, Loader2, MapPin, MessageSquare, Receipt, Send, Users, Wrench,
+  ArrowUpRight, CalendarDays, CalendarOff, Check, Loader2, MapPin, MessageSquare, Pencil, Receipt, Send, Users, Wrench, X,
 } from 'lucide-react';
 import { api, fmtDate } from '../lib/api';
 import { leadPath } from '../lib/customerRoutes.js';
-import { Modal, StatusBadge, PriorityBadge } from './ui.jsx';
+import { Modal, StatusBadge, PriorityBadge, HoverTooltip } from './ui.jsx';
 import ContactPickers from './ContactPickers.jsx';
 import JobKit from './JobKit.jsx';
 import JobFiles from './JobFiles.jsx';
 import JobVariations from './JobVariations.jsx';
-import { JOB_STATUSES, canAdvanceJobStatus } from '../lib/jobStatus';
+import { JOB_STATUSES, canAdvanceJobStatus, canUnscheduleJob, JOB_PRIORITY_OPTIONS } from '../lib/jobStatus';
 import { SKILL_OPTIONS, skillLabel, missingRequiredSkills, crewHasDriver } from '../lib/skills';
 import { datesInRange, localIsoDate, crewIdsForDate, crewSaveConflicts, bookingsFromJobs, mergeCrewBookings, jobDatesForCrewDay } from '../lib/schedule';
 import DatePicker from './DatePicker.jsx';
+import SelectMenu from './SelectMenu.jsx';
 import CrewChips, { CrewFitNotes, CrewConflictNotes } from './CrewChips.jsx';
 import CrewConflictModal from './CrewConflictModal.jsx';
 
@@ -71,6 +72,51 @@ function statusTitle(status) {
   return statusButtonName(status)
     .toLowerCase()
     .replace(/\b\w/g, (letter) => letter.toUpperCase());
+}
+
+function JobPriorityControl({ priority, saving, editing, onEdit, onCancel, onChange }) {
+  const value = priority || 'normal';
+  if (!editing) {
+    return (
+      <span className="inline-flex items-center gap-0.5">
+        <PriorityBadge priority={value} />
+        <HoverTooltip text="Change priority">
+          <button
+            type="button"
+            onClick={onEdit}
+            disabled={saving}
+            aria-label="Change priority"
+            className="btn-ghost !p-1 text-slate-400 hover:text-slate-700"
+          >
+            <Pencil size={12} />
+          </button>
+        </HoverTooltip>
+      </span>
+    );
+  }
+  return (
+    <span className="inline-flex items-center gap-1">
+      <span className="w-[8.25rem]">
+        <SelectMenu
+          label="Priority"
+          size="sm"
+          value={value}
+          disabled={saving}
+          onChange={onChange}
+          options={JOB_PRIORITY_OPTIONS}
+        />
+      </span>
+      <button
+        type="button"
+        onClick={onCancel}
+        disabled={saving}
+        aria-label="Cancel priority edit"
+        className="btn-ghost !p-1 text-slate-400 hover:text-slate-700"
+      >
+        {saving ? <Loader2 size={13} className="animate-spin" /> : <X size={13} />}
+      </button>
+    </span>
+  );
 }
 
 function JobStatusSteps({ current, saving, onSelect }) {
@@ -222,8 +268,12 @@ export default function JobModal({ jobId, onClose, onChanged, staff = [], jobs =
   const [savingInvoice, setSavingInvoice] = useState(false);
   const [invoiceNote, setInvoiceNote] = useState('');
   const [crewConflicts, setCrewConflicts] = useState([]);
+  const [savingDates, setSavingDates] = useState(false);
   const [savingCrew, setSavingCrew] = useState(false);
   const [savingStatus, setSavingStatus] = useState('');
+  const [savingPriority, setSavingPriority] = useState(false);
+  const [editingPriority, setEditingPriority] = useState(false);
+  const crewPanelRef = useRef(null);
 
   const load = () => api.get(`/jobs/${jobId}`).then((d) => {
     setJob(d.job);
@@ -241,7 +291,7 @@ export default function JobModal({ jobId, onClose, onChanged, staff = [], jobs =
       email_id: d.job.email_id || '',
     });
   }).catch((err) => setError(err.message));
-  useEffect(() => { if (jobId) { setCrewWarnings([]); setInvoiceNote(''); load(); } }, [jobId]);
+  useEffect(() => { if (jobId) { setCrewWarnings([]); setInvoiceNote(''); setEditingPriority(false); load(); } }, [jobId]);
   useEffect(() => {
     if (!jobId || !crewDay) {
       setAvail({ holidays: [], bookings: [] });
@@ -270,6 +320,19 @@ export default function JobModal({ jobId, onClose, onChanged, staff = [], jobs =
   ));
   const toggleSkill = (skill) => {
     setSkills((cur) => (cur.includes(skill) ? cur.filter((s) => s !== skill) : [...cur, skill]));
+  };
+  const saveDates = async (patch) => {
+    setError('');
+    setSavingDates(true);
+    try {
+      await api.put(`/jobs/${jobId}`, patch);
+      onChanged();
+      await load();
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setSavingDates(false);
+    }
   };
   const writeCrew = async (confirmConflicts = false) => {
     setError('');
@@ -368,6 +431,40 @@ export default function JobModal({ jobId, onClose, onChanged, staff = [], jobs =
     } catch (err) { setError(err.message); }
     finally { setSavingStatus(''); }
   };
+  const unschedule = async () => {
+    if (!job || !canUnscheduleJob(job.status) || savingStatus) return;
+    setError('');
+    setSavingStatus('UNSCHEDULE');
+    try {
+      await api.post(`/jobs/${jobId}/unschedule`);
+      onChanged();
+      load();
+    } catch (err) { setError(err.message); }
+    finally { setSavingStatus(''); }
+  };
+  const savePriority = async (priority) => {
+    const current = job?.priority || 'normal';
+    if (!job || savingPriority) return;
+    if (priority === current) {
+      setEditingPriority(false);
+      return;
+    }
+    const prev = job.priority;
+    setError('');
+    setSavingPriority(true);
+    setJob({ ...job, priority });
+    try {
+      await api.put(`/jobs/${jobId}`, { priority });
+      setEditingPriority(false);
+      onChanged();
+      load();
+    } catch (err) {
+      setJob((cur) => (cur ? { ...cur, priority: prev } : cur));
+      setError(err.message);
+    } finally {
+      setSavingPriority(false);
+    }
+  };
   const sendMsg = async () => {
     if (!msg.trim()) return;
     try {
@@ -393,7 +490,9 @@ export default function JobModal({ jobId, onClose, onChanged, staff = [], jobs =
   };
 
   const when = job?.start_date
-    ? `${fmtDate(job.start_date)}${job.end_date && job.end_date !== job.start_date ? ` – ${fmtDate(job.end_date)}` : ''} · ${job.start_time}–${job.end_time}`
+    ? `${fmtDate(job.start_date)}${job.end_date && job.end_date !== job.start_date ? ` – ${fmtDate(job.end_date)}` : ''}${
+      job.start_time && job.end_time ? ` · ${job.start_time}–${job.end_time}` : ''
+    }`
     : '';
   const subtitle = job
     ? [job.customer_name, job.address].filter(Boolean).join(' · ')
@@ -437,14 +536,48 @@ export default function JobModal({ jobId, onClose, onChanged, staff = [], jobs =
             </Alert>
           )}
 
-          <div className="flex flex-wrap items-center gap-2">
-            <StatusBadge status={job.status} />
-            <PriorityBadge priority={job.priority} />
-            {when ? (
-              <span className="inline-flex items-center gap-1.5 rounded-full bg-white px-2.5 py-1 text-xs font-medium text-slate-600 ring-1 ring-slate-200/80">
-                <CalendarDays size={12} className="text-slate-400" />
-                {when}
-              </span>
+          <div className="flex items-center gap-2">
+            <div className="flex min-w-0 flex-1 flex-wrap items-center gap-2">
+              <StatusBadge status={job.status} />
+              <JobPriorityControl
+                priority={job.priority}
+                saving={savingPriority}
+                editing={editingPriority}
+                onEdit={() => setEditingPriority(true)}
+                onCancel={() => { if (!savingPriority) setEditingPriority(false); }}
+                onChange={savePriority}
+              />
+              {when ? (
+                <button
+                  type="button"
+                  className="inline-flex shrink-0 items-center gap-1.5 rounded-full bg-white px-2.5 py-1 text-xs font-medium text-slate-600 ring-1 ring-slate-200/80 hover:bg-slate-50"
+                  aria-label="Show crew dates"
+                  onClick={() => crewPanelRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })}
+                >
+                  <CalendarDays size={12} className="text-slate-400" />
+                  {when}
+                </button>
+              ) : null}
+            </div>
+            {canUnscheduleJob(job.status) ? (
+              <HoverTooltip text="Unschedule this job">
+                <button
+                  type="button"
+                  onClick={unschedule}
+                  disabled={!!savingStatus}
+                  aria-label="Unschedule this job"
+                  className="btn-secondary !py-1.5 !px-3 text-xs shrink-0"
+                >
+                  {savingStatus === 'UNSCHEDULE' ? (
+                    'Unscheduling…'
+                  ) : (
+                    <span className="inline-flex items-center gap-1">
+                      <CalendarOff size={12} />
+                      Unschedule
+                    </span>
+                  )}
+                </button>
+              </HoverTooltip>
             ) : null}
           </div>
           {job.description && <p className="text-sm leading-relaxed text-slate-600">{job.description}</p>}
@@ -513,7 +646,7 @@ export default function JobModal({ jobId, onClose, onChanged, staff = [], jobs =
             <label className="mt-4 flex cursor-pointer items-center gap-3 rounded-xl bg-slate-50 px-3.5 py-3 text-sm text-slate-700 ring-1 ring-slate-200/70">
               <input
                 type="checkbox"
-                className="h-4 w-4 rounded border-slate-300 text-brand-600 focus:ring-brand-500"
+                className="h-4 w-4 rounded border-slate-300 accent-brand-500"
                 checked={needsDriver}
                 disabled={savingDriver}
                 onChange={(e) => saveDriver(e.target.checked)}
@@ -522,47 +655,65 @@ export default function JobModal({ jobId, onClose, onChanged, staff = [], jobs =
             </label>
           </Panel>
 
+          <div ref={crewPanelRef} id="job-crew-assigned">
           <Panel icon={Users} title="Crew assigned">
+            <div className="mb-3 flex flex-wrap items-end gap-2">
+              <div className="w-[11.75rem] shrink-0">
+                <label className="label" htmlFor="job-start-date">Start date</label>
+                <DatePicker
+                  id="job-start-date"
+                  label="Start date"
+                  value={job.start_date || ''}
+                  max={job.end_date || undefined}
+                  onChange={(iso) => {
+                    if (savingDates) return;
+                    if ((iso || '') === (job.start_date || '')) return;
+                    saveDates({ start_date: iso || null });
+                  }}
+                  disabled={savingDates}
+                  allowClear
+                  placeholder="Not set"
+                  size="sm"
+                />
+              </div>
+              <div className="w-[11.75rem] shrink-0">
+                <label className="label" htmlFor="job-end-date">End date</label>
+                <DatePicker
+                  id="job-end-date"
+                  label="End date"
+                  value={job.end_date || ''}
+                  min={job.start_date || undefined}
+                  onChange={(iso) => {
+                    if (savingDates) return;
+                    if ((iso || '') === (job.end_date || '')) return;
+                    saveDates({ end_date: iso || null });
+                  }}
+                  disabled={savingDates}
+                  allowClear
+                  placeholder="Not set"
+                  size="sm"
+                />
+              </div>
+              {job.start_date
+                ? datesInRange(job.start_date, job.end_date || job.start_date).map((iso) => (
+                  <button
+                    type="button"
+                    key={iso}
+                    onClick={() => { setCrewDay(iso); setCrew(crewIdsForDate(job, iso)); }}
+                    className={`mb-px rounded-full px-3 py-1.5 text-xs font-medium transition ${
+                      crewDay === iso ? 'bg-navy-900 text-white shadow-sm' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                    }`}
+                    aria-label={`Crew for ${iso}`}
+                  >
+                    {fmtDate(iso)}
+                  </button>
+                ))
+                : null}
+            </div>
             {!(job.start_date) ? (
-              <p className="text-xs text-slate-400">Place this job on the schedule before assigning crew.</p>
+              <p className="text-xs text-slate-400">Set a start date before assigning crew.</p>
             ) : (
               <>
-                <div className="mb-3 flex flex-wrap items-end gap-2">
-                  <div className="w-[13.5rem]">
-                    <DatePicker
-                      id="job-crew-date"
-                      label="Crew date"
-                      value={crewDay}
-                      min={(() => {
-                        const today = localIsoDate();
-                        return crewDay && crewDay < today ? crewDay : today;
-                      })()}
-                      onChange={(iso) => {
-                        if (!iso || savingCrew) return;
-                        setCrewDay(iso);
-                        setCrew(crewIdsForDate(job, iso));
-                      }}
-                      disabled={savingCrew}
-                      required
-                      size="sm"
-                    />
-                  </div>
-                  {datesInRange(job.start_date, job.end_date || job.start_date).length > 1
-                    ? datesInRange(job.start_date, job.end_date || job.start_date).map((iso) => (
-                      <button
-                        type="button"
-                        key={iso}
-                        onClick={() => { setCrewDay(iso); setCrew(crewIdsForDate(job, iso)); }}
-                        className={`rounded-full px-3 py-1.5 text-xs font-medium transition ${
-                          crewDay === iso ? 'bg-navy-900 text-white shadow-sm' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
-                        }`}
-                        aria-label={`Crew for ${iso}`}
-                      >
-                        {fmtDate(iso)}
-                      </button>
-                    ))
-                    : null}
-                </div>
                 <p className="mb-3 text-xs text-slate-400">
                   Crew for {crewDay ? fmtDate(crewDay) : 'this day'} only. Holiday and booked chips still save.
                   {jobDatesForCrewDay(job, crewDay)
@@ -607,6 +758,7 @@ export default function JobModal({ jobId, onClose, onChanged, staff = [], jobs =
               </>
             )}
           </Panel>
+          </div>
 
           <Panel>
             <JobKit

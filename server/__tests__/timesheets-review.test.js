@@ -2,6 +2,7 @@ jest.mock('../models', () => ({
   Timesheet: { findByPk: jest.fn(), update: jest.fn() },
   Job: {},
   JobDayAssignment: {},
+  Invoice: { findOne: jest.fn(), findAll: jest.fn() },
   User: { findByPk: jest.fn() },
   Customer: {},
 }));

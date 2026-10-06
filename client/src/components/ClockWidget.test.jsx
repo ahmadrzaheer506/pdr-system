@@ -89,4 +89,12 @@ describe('ClockWidget (requirement 9.1)', () => {
     expect(img).toHaveClass('h-full', 'object-contain');
     expect(img.parentElement).toHaveClass('h-40', 'overflow-hidden');
   });
+
+  it('disables clock-in and explains when the job invoice is paid in full', async () => {
+    render(<ClockWidget jobId={8} jobTitle="Full re-roof" invoicePaid />);
+    const button = await screen.findByRole('button', { name: /^clock in$/i });
+    expect(button).toBeDisabled();
+    expect(screen.getByText(/this job is paid in full, so you cannot clock in/i)).toBeInTheDocument();
+    expect(screen.queryByText(/location is recorded/i)).toBeNull();
+  });
 });

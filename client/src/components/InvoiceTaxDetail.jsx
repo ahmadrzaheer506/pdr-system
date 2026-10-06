@@ -160,7 +160,7 @@ export default function InvoiceTaxDetail({ invoice, onClose, onSaved, onError, o
               />
             </div>
             <label className="flex items-center gap-2 text-sm text-slate-700">
-              <input type="checkbox" checked={cisApplies} onChange={(e) => setCisApplies(e.target.checked)} />
+              <input type="checkbox" className="h-4 w-4 shrink-0 accent-brand-500" checked={cisApplies} onChange={(e) => setCisApplies(e.target.checked)} />
               Apply CIS deduction
             </label>
             {cisApplies && (
