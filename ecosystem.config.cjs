@@ -19,8 +19,10 @@ const common = {
 };
 
 /**
- * Two PM2 apps: API (cron + Express) and frontend (static + /api proxy).
- * Nginx can keep proxying to 127.0.0.1:4000 (frontend). API is internal on 4001.
+ * Two PM2 apps, both loopback-only. Nginx (scripts/nginx/frontend) is the
+ * public listener on :80 and proxies to pdr-web. pdr-web proxies /api and
+ * /public-files to pdr-api. Do not bind HOST to 0.0.0.0 — that would expose
+ * Node around nginx.
  */
 module.exports = {
   apps: [

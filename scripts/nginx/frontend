@@ -1,0 +1,28 @@
+# Copy to /etc/nginx/sites-available/frontend and enable:
+#   sudo ln -sfn /etc/nginx/sites-available/frontend /etc/nginx/sites-enabled/frontend
+#   sudo rm -f /etc/nginx/sites-enabled/default
+#   sudo nginx -t && sudo systemctl reload nginx
+#
+# Proxies public :80 to pdr-web on 127.0.0.1:4000. The API stays on
+# 127.0.0.1:4001 and is reached only via /api from pdr-web.
+
+server {
+    listen 80 default_server;
+    listen [::]:80 default_server;
+
+    # Replace this IP with the domain when you have one, e.g.:
+    # server_name crm.example.com;
+    server_name 178.62.26.168;
+
+    client_max_body_size 12m;
+
+    location / {
+        proxy_pass http://127.0.0.1:4000;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_read_timeout 60s;
+    }
+}
