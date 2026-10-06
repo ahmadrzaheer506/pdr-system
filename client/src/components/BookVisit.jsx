@@ -42,7 +42,7 @@ function durationMinutes(start, end) {
  * Pass `customer` when already loaded, or `customerId` to fetch contacts first.
  * Pass `existing` to update a booked visit that has not ended.
  */
-export default function BookVisit({ open, onClose, customer, customerId, leadId, existing, onSaved }) {
+export default function BookVisit({ open, onClose, customer, customerId, leadId, lead, existing, onSaved }) {
   const [record, setRecord] = useState(customer || null);
   const [visitType, setVisitType] = useState(existing?.visit_type || 'site_visit');
   const [date, setDate] = useState(defaultDate);
@@ -105,11 +105,11 @@ export default function BookVisit({ open, onClose, customer, customerId, leadId,
   React.useEffect(() => {
     if (!open) return;
     setContacts({
-      site_id: existing?.site_id || primaryOf(record?.sites)?.id || '',
-      phone_id: existing?.phone_id || primaryOf(record?.phones)?.id || '',
-      email_id: existing?.email_id || primaryOf(record?.emails)?.id || '',
+      site_id: existing?.site_id || lead?.site_id || lead?.meta?.site_id || primaryOf(record?.sites)?.id || '',
+      phone_id: existing?.phone_id || lead?.phone_id || lead?.meta?.phone_id || primaryOf(record?.phones)?.id || '',
+      email_id: existing?.email_id || lead?.email_id || lead?.meta?.email_id || primaryOf(record?.emails)?.id || '',
     });
-  }, [open, record, existing]);
+  }, [open, record, existing, lead]);
 
   React.useEffect(() => {
     if (!open) return undefined;

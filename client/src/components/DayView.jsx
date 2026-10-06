@@ -81,7 +81,7 @@ function DayJobCard({ job, dateIso, staff, holidays, bookings, onJobClick, onCre
       >
         <button
           type="button"
-          onClick={() => onJobClick(job.id)}
+          onClick={() => onJobClick?.(job.id, dateIso)}
           className="block w-full text-left hover:bg-slate-200 rounded px-1 py-1 -mx-1"
         >
           <div className="text-sm font-medium text-slate-800 truncate">{job.title}</div>

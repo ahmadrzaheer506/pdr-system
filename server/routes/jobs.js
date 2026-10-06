@@ -396,8 +396,13 @@ router.delete('/:id/variations/:lineId', asyncHandler(async (req, res) => {
 router.put('/:id/assignments', asyncHandler(async (req, res) => {
   const jb = await Job.findByPk(req.params.id);
   if (!jb) return res.status(404).json({ error: 'Job not found' });
+  const days = jobDays.parseAssignmentDays(req.body);
   if (jobDays.parseIsoDate(jb.start_date)) {
-    const conflicts = await crewAvailability.assignmentConflicts(jb, req.body?.work_date, req.body?.user_ids);
+    const conflicts = [];
+    for (const day of days) {
+      const rows = await crewAvailability.assignmentConflicts(jb, day, req.body?.user_ids);
+      conflicts.push(...rows);
+    }
     if (conflicts.length && !req.body?.confirm_conflicts) {
       return res.status(409).json({
         error: 'Some of this crew are on holiday or already booked',
@@ -406,17 +411,23 @@ router.put('/:id/assignments', asyncHandler(async (req, res) => {
       });
     }
   }
-  const result = await jobDays.setDayCrew(jb, req.body?.work_date, req.body?.user_ids);
-  if (!result.error) {
-    result.warnings = await crewAvailability.assignmentWarnings(jb, result.work_date, result.user_ids);
+  if (!days.length) {
+    return jobDays.sendResult(res, await jobDays.setDayCrew(jb, req.body?.work_date, req.body?.user_ids));
+  }
+  let result = null;
+  for (const day of days) {
+    result = await jobDays.setDayCrew(jb, day, req.body?.user_ids);
+    if (result.error) return jobDays.sendResult(res, result);
     await crewNotifications.notifyCrewChange({
       job: jb,
       workDate: result.work_date,
       previousIds: result.previous_user_ids,
       nextIds: result.user_ids,
     });
-    await logActivity(jb.customer_id, req.user.id, 'job_assigned', `Crew updated for "${jb.title}" on ${result.work_date} (${result.user_ids.length} assigned)`, 'job', jb.id);
   }
+  result.work_dates = days;
+  result.warnings = await crewAvailability.assignmentWarnings(jb, result.work_date, result.user_ids);
+  await logActivity(jb.customer_id, req.user.id, 'job_assigned', `Crew updated for "${jb.title}" on ${days.join(', ')} (${result.user_ids.length} assigned)`, 'job', jb.id);
   return jobDays.sendResult(res, result);
 }));
 

@@ -19,7 +19,7 @@ export function JobChip({ job, dateIso, onJobClick, holidays = [], bookings = []
   const conflictNote = jobConflictCaption(crew, { holidays, bookings, iso: dateIso, excludeJobId: job.id });
   return (
     <HoverTooltip text={jobCardHoverText(job)} className="block w-full min-w-0">
-      <button type="button" onClick={() => onJobClick(job.id)} className="block w-full text-left bg-slate-100 hover:bg-slate-200 rounded-md px-2 py-1.5 transition-colors">
+      <button type="button" onClick={() => onJobClick?.(job.id, dateIso)} className="block w-full text-left bg-slate-100 hover:bg-slate-200 rounded-md px-2 py-1.5 transition-colors">
       <div className="text-xs font-medium text-slate-800 truncate">{job.title}</div>
       <div className="text-[10px] text-slate-500 truncate">{job.customer_name}</div>
       {job.priority !== 'normal' ? (

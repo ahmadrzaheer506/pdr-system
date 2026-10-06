@@ -79,6 +79,22 @@ function parseUserIds(raw) {
   return ids;
 }
 
+/** Unique ISO days from work_date and/or work_dates (multi-day Place / save). */
+function parseAssignmentDays(body) {
+  const values = [];
+  if (Array.isArray(body?.work_dates)) values.push(...body.work_dates);
+  if (body?.work_date != null) values.push(body.work_date);
+  const days = [];
+  const seen = new Set();
+  for (const raw of values) {
+    const day = parseIsoDate(raw);
+    if (!day || seen.has(day)) continue;
+    seen.add(day);
+    days.push(day);
+  }
+  return days.sort();
+}
+
 function mapSlot(row) {
   const o = plain(row);
   const user = o.User || {};
@@ -262,6 +278,7 @@ module.exports = {
   datesInRange,
   dateOnJob,
   parseUserIds,
+  parseAssignmentDays,
   listDayAssignments,
   attachDayAssignments,
   attachDayAssignmentsMany,

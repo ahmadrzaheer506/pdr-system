@@ -309,13 +309,21 @@ async function saveContactLists(customerId, lists) {
   }
 }
 
+function asRows(rows) {
+  return Array.isArray(rows) ? rows : [];
+}
+
 async function listContacts(customerId) {
   const [sites, phones, emails] = await Promise.all([
     CustomerSite.findAll({ where: { customer_id: customerId }, order: [['is_primary', 'DESC'], ['id', 'ASC']] }),
     CustomerPhone.findAll({ where: { customer_id: customerId }, order: [['is_primary', 'DESC'], ['id', 'ASC']] }),
     CustomerEmail.findAll({ where: { customer_id: customerId }, order: [['is_primary', 'DESC'], ['id', 'ASC']] }),
   ]);
-  return { sites: plain(sites), phones: phones.map(publicPhone), emails: plain(emails) };
+  return {
+    sites: asRows(plain(sites)),
+    phones: asRows(phones).map(publicPhone),
+    emails: asRows(plain(emails)),
+  };
 }
 
 async function loadCustomerWithContacts(id) {
@@ -378,6 +386,57 @@ async function resolveCustomerContactSelection(customerId, body = {}, { fallback
     phone: phone.row,
     email: email.row,
   };
+}
+
+function hasOwnContactId(body, key) {
+  return body && Object.prototype.hasOwnProperty.call(body, key);
+}
+
+/**
+ * Stored enquiry contacts. Columns win; older rows may only have meta ids.
+ */
+function leadContactSelection(lead = {}) {
+  const meta = lead.meta && typeof lead.meta === 'object' && !Array.isArray(lead.meta) ? lead.meta : {};
+  const pick = (column, key) => {
+    if (column !== undefined && column !== null && column !== '') return Number(column) || null;
+    if (meta[key] !== undefined && meta[key] !== null && meta[key] !== '') return Number(meta[key]) || null;
+    return null;
+  };
+  return {
+    site_id: pick(lead.site_id, 'site_id'),
+    phone_id: pick(lead.phone_id, 'phone_id'),
+    email_id: pick(lead.email_id, 'email_id'),
+  };
+}
+
+/**
+ * Overlay this enquiry's chosen contacts. Unselected kinds stay empty — do not
+ * fall back to every number/site on the customer (lead workspace).
+ */
+function applyLeadContacts(customer, lead) {
+  const selection = leadContactSelection(lead);
+  const site = (customer?.sites || []).find((s) => s.id === selection.site_id) || null;
+  const phone = (customer?.phones || []).find((p) => p.id === selection.phone_id) || null;
+  const email = (customer?.emails || []).find((e) => e.id === selection.email_id) || null;
+  return {
+    ...selection,
+    phone: phone ? phone.value : null,
+    email: email ? email.value : null,
+    address: site ? site.address : null,
+    postcode: site ? site.postcode : null,
+    site,
+  };
+}
+
+/**
+ * Create-time ids: explicit body/meta keys are stored as-is (including null).
+ * Webhooks with no keys fall back to the customer's primary contacts.
+ */
+async function resolveLeadContactsForCreate(customerId, body = {}) {
+  const explicit = hasOwnContactId(body, 'site_id')
+    || hasOwnContactId(body, 'phone_id')
+    || hasOwnContactId(body, 'email_id');
+  return resolveCustomerContactSelection(customerId, body, { fallbackPrimary: !explicit });
 }
 
 async function syncSiteSnapshots(site) {
@@ -582,6 +641,9 @@ module.exports = {
   loadCustomerWithContacts,
   hydrateCustomers,
   resolveCustomerContactSelection,
+  leadContactSelection,
+  applyLeadContacts,
+  resolveLeadContactsForCreate,
   createMissingContacts,
   addSite,
   updateSite,

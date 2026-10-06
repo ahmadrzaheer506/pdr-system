@@ -37,19 +37,22 @@ export function CrewConflictNotes({
   holidays = [],
   bookings = [],
   workDate,
+  workDates,
   excludeJobId,
 }) {
+  const dates = Array.isArray(workDates) && workDates.length ? workDates : undefined;
   const rows = crewSaveConflicts({
-    staff, selectedIds, holidays, bookings, iso: workDate, excludeJobId,
+    staff, selectedIds, holidays, bookings, iso: workDate, dates, excludeJobId,
   });
   if (!rows.length) return null;
   const booked = rows.some((row) => row.type !== 'holiday');
   const onHoliday = rows.some((row) => row.type === 'holiday');
+  const multi = (dates && dates.length > 1) || rows.some((row) => row.work_date);
   const heading = booked && onHoliday
-    ? 'These people are not free this day'
+    ? (multi ? 'These people are not free on some days of this job' : 'These people are not free this day')
     : onHoliday
-      ? 'These people are on holiday this day'
-      : 'These people are already booked';
+      ? (multi ? 'These people are on holiday on some days of this job' : 'These people are on holiday this day')
+      : (multi ? 'These people are already booked on some days of this job' : 'These people are already booked');
   return (
     <div
       role="status"
@@ -60,7 +63,7 @@ export function CrewConflictNotes({
       </p>
       <ul className="mt-1.5 space-y-1 text-xs leading-snug text-amber-900">
         {rows.map((row) => (
-          <li key={`${row.type}-${row.user_id}-${row.job_id || row.detail}`}>
+          <li key={`${row.type}-${row.user_id}-${row.job_id || row.detail}-${row.work_date || ''}`}>
             {crewConflictSummaryLine(row)}
           </li>
         ))}
@@ -80,20 +83,28 @@ export default function CrewChips({
   holidays = [],
   bookings = [],
   workDate,
+  workDates,
   excludeJobId,
   requiredSkills = [],
   disabled = false,
 }) {
+  const days = Array.isArray(workDates) && workDates.length ? workDates : [workDate];
   return (
     <div className="flex flex-wrap gap-2">
       {staff.map((s) => {
         const selected = selectedIds.some((id) => Number(id) === Number(s.id));
         const matches = staffMatchesRequiredSkills(s.skills, requiredSkills);
-        const { onHoliday, busyOn } = staffDayFlags({
-          holidays, bookings, userId: s.id, iso: workDate, excludeJobId,
-        });
+        const flags = days.map((iso) => ({
+          iso,
+          ...staffDayFlags({ holidays, bookings, userId: s.id, iso, excludeJobId }),
+        }));
+        const onHoliday = flags.some((row) => row.onHoliday);
+        const holidayDate = flags.find((row) => row.onHoliday)?.iso;
+        const busyOn = flags.flatMap((row) => row.busyOn);
         const conflict = crewConflictLabel({ onHoliday, busyOn });
-        const hint = crewChipHoverHint({ name: s.name, onHoliday, busyOn });
+        const hint = crewChipHoverHint({
+          name: s.name, onHoliday, busyOn, workDate, holidayDate,
+        });
         let label = s.name;
         if (matches) label += ' matches required skills';
         if (s.is_driver) label += ' driver';

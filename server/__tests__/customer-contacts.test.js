@@ -21,6 +21,8 @@ const {
   enforceOnePrimary,
   applyPrimaryContacts,
   applySelectedContacts,
+  applyLeadContacts,
+  leadContactSelection,
   formatSite,
 } = require('../customerContacts');
 
@@ -120,5 +122,33 @@ describe('contact helpers (requirement 2.2)', () => {
     expect(selected.postcode).toBe('RG2');
     expect(selected.phone).toBe('0118');
     expect(selected.email).toBe('work@example.com');
+  });
+
+  test('applyLeadContacts uses only the enquiry ids, not every customer contact', () => {
+    const customer = {
+      phones: [
+        { id: 1, value: '07700', is_primary: true },
+        { id: 2, value: '0118', is_primary: false },
+      ],
+      emails: [
+        { id: 3, value: 'home@example.com', is_primary: true },
+        { id: 4, value: 'work@example.com', is_primary: false },
+      ],
+      sites: [
+        { id: 5, address: 'Home', postcode: 'RG1', is_primary: true },
+        { id: 6, address: 'Garage', postcode: 'RG2', is_primary: false },
+      ],
+    };
+    const chosen = applyLeadContacts(customer, { site_id: 6, phone_id: 2, email_id: 4 });
+    expect(chosen).toEqual(expect.objectContaining({
+      site_id: 6,
+      phone_id: 2,
+      email_id: 4,
+      address: 'Garage',
+      phone: '0118',
+      email: 'work@example.com',
+    }));
+    expect(applyLeadContacts(customer, { meta: {} }).phone).toBeNull();
+    expect(leadContactSelection({ meta: { site_id: 6 } }).site_id).toBe(6);
   });
 });

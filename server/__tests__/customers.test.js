@@ -42,6 +42,7 @@ jest.mock('../services/messenger', () => ({
 }));
 jest.mock('../db', () => ({
   plain: (row) => (row && typeof row.toJSON === 'function' ? row.toJSON() : row),
+  nextRef: jest.fn(async () => 'L-0001'),
 }));
 jest.mock('../auth', () => {
   const actual = jest.requireActual('../auth');
@@ -119,6 +120,7 @@ describe('POST /api/customers (requirement 2.1)', () => {
     expect(logActivity).toHaveBeenCalled();
     expect(Lead.create).toHaveBeenCalledWith(expect.objectContaining({
       customer_id: 42,
+      ref: 'L-0001',
       stage: 'ENQUIRY',
       status: 'NEW',
     }));

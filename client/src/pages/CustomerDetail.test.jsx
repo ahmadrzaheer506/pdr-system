@@ -175,6 +175,49 @@ describe('CustomerDetail type (requirement 2.1)', () => {
     expect(screen.queryByText('Sites, phones & emails')).not.toBeInTheDocument();
   });
 
+  it('shows only the enquiry site, phone and email, and lets office change them', async () => {
+    const user = userEvent.setup();
+    api.get.mockResolvedValue({
+      ...DETAIL,
+      customer: {
+        ...DETAIL.customer,
+        phones: [
+          { id: 1, value: '07700 900100', type: 'mobile', is_primary: true },
+          { id: 8, value: '0118 555 0100', type: 'landline', is_primary: false },
+        ],
+        emails: [
+          { id: 2, value: 'dave@example.com', type: 'personal', is_primary: true },
+          { id: 9, value: 'works@example.com', type: 'work', is_primary: false },
+        ],
+        sites: [
+          { id: 3, address: '1 Test Road', postcode: 'S1 1AA', is_primary: true },
+          { id: 7, address: 'Garage roof, 1 Test Road', postcode: 'S1 1AA', is_primary: false },
+        ],
+      },
+      leads: [{
+        id: 40, ref: 'L-0001', source: 'whatsapp', status: 'NEW', stage: 'ENQUIRY',
+        site_id: 7, phone_id: 8, email_id: 9, next_action: 'Review & respond',
+        created_at: '2026-01-01T08:00:00Z',
+      }],
+    });
+    renderDetail('/leads/9?lead=40');
+    expect(await screen.findByText('0118 555 0100')).toBeInTheDocument();
+    expect(screen.getByText('works@example.com')).toBeInTheDocument();
+    expect(screen.getByText('Garage roof, 1 Test Road, S1 1AA')).toBeInTheDocument();
+    expect(screen.queryByText('07700 900100')).not.toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: /change/i }));
+    expect(await screen.findByRole('heading', { name: /lead site, phone and email/i })).toBeInTheDocument();
+    await pickSelectOption(user, /^site$/i, '3');
+    await user.click(screen.getByRole('button', { name: /^save$/i }));
+    await waitFor(() => {
+      expect(api.put).toHaveBeenCalledWith('/leads/40', expect.objectContaining({
+        site_id: 3,
+        phone_id: 8,
+        email_id: 9,
+      }));
+    });
+  });
+
   it('renders the unified activity timeline (requirement 2.3)', async () => {
     renderDetail();
     expect(await screen.findByText('Activity timeline')).toBeInTheDocument();
@@ -228,11 +271,11 @@ describe('CustomerDetail type (requirement 2.1)', () => {
         customer: { ...DETAIL.customer, stage: 'WON' },
         leads: [
           {
-            id: 40, source: 'phone', status: 'NEW', message: 'Called again about a porch leak',
+            id: 40, ref: 'L-0040', source: 'phone', status: 'NEW', message: 'Called again about a porch leak',
             next_action: 'Review & respond', created_at: '2026-10-02T22:00:00Z', stage: 'ENQUIRY',
           },
           {
-            id: 30, source: 'facebook_lead', status: 'NEW',
+            id: 30, ref: 'L-0030', source: 'facebook_lead', status: 'NEW',
             message: 'sahil1122@yopmail.com working on it please',
             created_at: '2026-10-02T21:00:00Z', stage: 'WON',
           },
@@ -254,8 +297,10 @@ describe('CustomerDetail type (requirement 2.1)', () => {
     });
     renderDetail('/leads/9?from=inbox&lead=40');
     expect(await screen.findByText('Called again about a porch leak')).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'L-0040 - Dave Whitfield' })).toBeInTheDocument();
     expect(screen.getByText('Phone')).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /enquiry/i })).toBeInTheDocument();
+    expect(screen.getByLabelText(/pipeline stage/i)).toBeInTheDocument();
+    expect(screen.getByText('ENQUIRY')).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /^won$/i })).not.toBeInTheDocument();
     expect(screen.queryByText('Q-2026-0001')).not.toBeInTheDocument();
     expect(screen.queryByText('sahil1122@yopmail.com working on it please')).not.toBeInTheDocument();
@@ -316,7 +361,7 @@ describe('CustomerDetail type (requirement 2.1)', () => {
   it('requires a pick-list reason before moving to Lost (requirement 2.6)', async () => {
     const user = userEvent.setup({ delay: null });
     renderDetail();
-    await user.click(await screen.findByRole('button', { name: /enquiry/i }));
+    await user.click(await screen.findByLabelText(/pipeline stage/i));
     await user.click(screen.getByRole('button', { name: /^lost$/i }));
     expect(screen.getByText(/why was this lost/i)).toBeInTheDocument();
     expect(api.put).not.toHaveBeenCalled();
@@ -349,7 +394,7 @@ describe('CustomerDetail type (requirement 2.1)', () => {
       });
     });
     renderDetail('/leads/9?from=inbox&lead=40');
-    await user.click(await screen.findByRole('button', { name: /enquiry/i }));
+    await user.click(await screen.findByLabelText(/pipeline stage/i));
     await user.click(screen.getByRole('button', { name: /^lost$/i }));
     await user.click(screen.getByRole('button', { name: /mark lost/i }));
     expect(api.put).toHaveBeenCalledWith('/customers/9/stage', expect.objectContaining({

@@ -119,6 +119,7 @@ const CustomerFile = sequelize.define('CustomerFile', {
 const Lead = sequelize.define('Lead', {
   id: { type: DataTypes.INTEGER, primaryKey: true, autoIncrement: true },
   customer_id: { type: DataTypes.INTEGER },
+  ref: { type: DataTypes.TEXT, allowNull: false, unique: true },
   source: { type: DataTypes.TEXT, allowNull: false },
   subject: { type: DataTypes.TEXT },
   message: { type: DataTypes.TEXT },
@@ -129,6 +130,10 @@ const Lead = sequelize.define('Lead', {
   stage: { type: DataTypes.TEXT, allowNull: false, defaultValue: 'ENQUIRY' },
   board_order: { type: DataTypes.INTEGER, allowNull: false, defaultValue: 0 },
   lost_reason: { type: DataTypes.TEXT },
+  /** One site / phone / email for this enquiry — not the full customer contact list. */
+  site_id: { type: DataTypes.INTEGER },
+  phone_id: { type: DataTypes.INTEGER },
+  email_id: { type: DataTypes.INTEGER },
 }, { tableName: 'leads', timestamps: true, createdAt: 'created_at', updatedAt: 'updated_at' });
 
 const Message = sequelize.define('Message', {
@@ -540,6 +545,9 @@ Appointment.belongsTo(Lead, { foreignKey: 'lead_id' });
 Lead.hasMany(Appointment, { foreignKey: 'lead_id' });
 Job.belongsTo(Lead, { foreignKey: 'lead_id' });
 Lead.hasMany(Job, { foreignKey: 'lead_id' });
+Lead.belongsTo(CustomerSite, { foreignKey: 'site_id', as: 'site' });
+Lead.belongsTo(CustomerPhone, { foreignKey: 'phone_id', as: 'selectedPhone' });
+Lead.belongsTo(CustomerEmail, { foreignKey: 'email_id', as: 'selectedEmail' });
 
 CustomerNote.belongsTo(Customer, { foreignKey: 'customer_id' });
 CustomerNote.belongsTo(User, { foreignKey: 'user_id' });

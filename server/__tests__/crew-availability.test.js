@@ -89,7 +89,9 @@ describe('crewAvailability (requirement 8.2)', () => {
     expect(blocked).toEqual([{
       user_id: 3,
       type: 'holiday',
+      name: 'Jamie Fisher',
       message: 'Jamie Fisher is on approved holiday that day',
+      work_date: '2026-09-22',
     }]);
   });
 

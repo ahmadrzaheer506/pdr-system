@@ -25,6 +25,20 @@ jest.mock('../customerContacts', () => ({
   createMissingContacts: jest.fn(async (_id, _customer, body = {}) => ({
     value: { site_id: body.site_id, phone_id: body.phone_id, email_id: body.email_id },
   })),
+  resolveLeadContactsForCreate: jest.fn(),
+  applyLeadContacts: (customer, lead) => ({
+    phone: customer.phones?.[0]?.value || null,
+    email: customer.emails?.[0]?.value || null,
+    address: customer.sites?.[0]?.address || null,
+    site_id: lead?.site_id ?? null,
+    phone_id: lead?.phone_id ?? null,
+    email_id: lead?.email_id ?? null,
+  }),
+  leadContactSelection: (lead = {}) => ({
+    site_id: lead.site_id ?? null,
+    phone_id: lead.phone_id ?? null,
+    email_id: lead.email_id ?? null,
+  }),
 }));
 jest.mock('../auth', () => {
   const actual = jest.requireActual('../auth');
@@ -124,6 +138,34 @@ describe('GET /api/leads (requirement 3.1)', () => {
     expect(res.status).toBe(200);
     expect(Lead.findAll.mock.calls[0][0].where.status).toBeUndefined();
     expect(res.body.leads.map((l) => l.status)).toEqual(['NEW', 'CLOSED']);
+  });
+
+  test('returns stored lead refs for office titles', async () => {
+    Lead.findAll.mockReset();
+    Lead.findAll
+      .mockResolvedValueOnce([
+        {
+          toJSON: () => ({
+            id: 2, customer_id: 9, ref: 'L-0002', source: 'email', status: 'ACTIONED',
+            created_at: '2026-10-06T18:00:00Z', meta: {},
+            Customer: { name: 'sah', stage: 'ENQUIRY', phones: [], emails: [], sites: [] },
+          }),
+        },
+        {
+          toJSON: () => ({
+            id: 1, customer_id: 9, ref: 'L-0001', source: 'manual', status: 'ACTIONED',
+            created_at: '2026-10-05T10:00:00Z', meta: {},
+            Customer: { name: 'sah', stage: 'ENQUIRY', phones: [], emails: [], sites: [] },
+          }),
+        },
+      ])
+      .mockResolvedValueOnce([{ status: 'ACTIONED', c: 2 }]);
+    const res = await request(app).get('/api/leads?status=ALL');
+    expect(res.status).toBe(200);
+    expect(res.body.leads.map((l) => ({ id: l.id, ref: l.ref, customer_name: l.customer_name }))).toEqual([
+      { id: 2, ref: 'L-0002', customer_name: 'sah' },
+      { id: 1, ref: 'L-0001', customer_name: 'sah' },
+    ]);
   });
 
   test('STAFF receives 403', async () => {
@@ -253,7 +295,7 @@ describe('POST /api/leads (requirement 3.3)', () => {
 
   test('attaches to an existing customer without creating or merging contacts', async () => {
     contacts.loadCustomerWithContacts.mockResolvedValue({ id: 9, name: 'Dave Whitfield' });
-    contacts.resolveCustomerContactSelection.mockResolvedValue({
+    contacts.resolveLeadContactsForCreate.mockResolvedValue({
       site_id: 1,
       phone_id: 3,
       email_id: 4,
@@ -274,10 +316,9 @@ describe('POST /api/leads (requirement 3.3)', () => {
     expect(res.status).toBe(200);
     expect(res.body.customerId).toBe(9);
     expect(findEnquiryOwner).not.toHaveBeenCalled();
-    expect(contacts.resolveCustomerContactSelection).toHaveBeenCalledWith(
+    expect(contacts.resolveLeadContactsForCreate).toHaveBeenCalledWith(
       9,
       expect.objectContaining({ customer_id: 9, site_id: 1 }),
-      { fallbackPrimary: false },
     );
     expect(ingestInbound).toHaveBeenCalledWith(expect.objectContaining({
       customerId: 9,
@@ -293,7 +334,7 @@ describe('POST /api/leads (requirement 3.3)', () => {
     contacts.createMissingContacts.mockResolvedValue({
       value: { site_id: 11, phone_id: 21, email_id: 31 },
     });
-    contacts.resolveCustomerContactSelection.mockResolvedValue({
+    contacts.resolveLeadContactsForCreate.mockResolvedValue({
       site_id: 11,
       phone_id: 21,
       email_id: 31,
@@ -329,7 +370,7 @@ describe('POST /api/leads (requirement 3.3)', () => {
 
   test('leaves omitted existing-customer contacts unselected', async () => {
     contacts.loadCustomerWithContacts.mockResolvedValue({ id: 9, name: 'Dave Whitfield' });
-    contacts.resolveCustomerContactSelection.mockResolvedValue({
+    contacts.resolveLeadContactsForCreate.mockResolvedValue({
       site_id: null,
       phone_id: null,
       email_id: null,
@@ -376,10 +417,30 @@ describe('PUT /api/leads/:id (requirement 3.4)', () => {
   test('Mark actioned does not require next_action', async () => {
     const update = jest.fn();
     Lead.findByPk.mockResolvedValue({
-      id: 1, status: 'NEW', next_action: 'Review & respond', update,
+      id: 1, status: 'NEW', next_action: 'Review & respond', customer_id: 9, meta: {}, update,
     });
     const res = await request(app).put('/api/leads/1').send({ status: 'ACTIONED' });
     expect(res.status).toBe(200);
     expect(update).toHaveBeenCalledWith({ status: 'ACTIONED' });
+  });
+
+  test('updates the enquiry site, phone and email', async () => {
+    const update = jest.fn();
+    Lead.findByPk.mockResolvedValue({
+      id: 1, customer_id: 9, site_id: 1, phone_id: 3, email_id: 4, meta: {}, update,
+    });
+    contacts.resolveCustomerContactSelection.mockResolvedValue({
+      site_id: 12, phone_id: 3, email_id: 4,
+    });
+    const res = await request(app).put('/api/leads/1').send({ site_id: 12, phone_id: 3, email_id: 4 });
+    expect(res.status).toBe(200);
+    expect(contacts.resolveCustomerContactSelection).toHaveBeenCalledWith(
+      9,
+      { site_id: 12, phone_id: 3, email_id: 4 },
+      { fallbackPrimary: false },
+    );
+    expect(update).toHaveBeenCalledWith(expect.objectContaining({
+      site_id: 12, phone_id: 3, email_id: 4,
+    }));
   });
 });

@@ -25,7 +25,7 @@ const KIND_OPTIONS = [
   { kind: 'materials', label: 'Materials' },
 ];
 
-export default function QuoteBuilder({ open, onClose, customerId, customer, leadId, existingQuote, onSaved }) {
+export default function QuoteBuilder({ open, onClose, customerId, customer, leadId, lead, existingQuote, onSaved }) {
   const [form, setForm] = useState(null);
   const [calc, setCalc] = useState(null);
   const [saving, setSaving] = useState(false);
@@ -70,13 +70,13 @@ export default function QuoteBuilder({ open, onClose, customerId, customer, lead
       optional_extras: existingQuote?.optional_extras
         ? (typeof existingQuote.optional_extras === 'string' ? JSON.parse(existingQuote.optional_extras) : existingQuote.optional_extras)
         : [],
-      site_id: existingQuote?.site_id || primaryOf(customer?.sites)?.id || '',
-      phone_id: existingQuote?.phone_id || primaryOf(customer?.phones)?.id || '',
-      email_id: existingQuote?.email_id || primaryOf(customer?.emails)?.id || '',
+      site_id: existingQuote?.site_id || lead?.site_id || lead?.meta?.site_id || primaryOf(customer?.sites)?.id || '',
+      phone_id: existingQuote?.phone_id || lead?.phone_id || lead?.meta?.phone_id || primaryOf(customer?.phones)?.id || '',
+      email_id: existingQuote?.email_id || lead?.email_id || lead?.meta?.email_id || primaryOf(customer?.emails)?.id || '',
     });
     setError('');
     setNotice('');
-  }, [open, existingQuote, options, customer]);
+  }, [open, existingQuote, options, customer, lead]);
 
   // Live totals from the server so the preview uses the exact same engine
   // that will produce the PDF — no second implementation to drift.

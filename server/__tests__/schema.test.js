@@ -138,6 +138,27 @@ describe('customer contacts migration (requirement 2.2)', () => {
   });
 });
 
+describe('lead contacts migration', () => {
+  test('adds one site/phone/email on leads and backfills from meta then primary', async () => {
+    const added = [];
+    const constraints = [];
+    const rawSql = [];
+    const queryInterface = {
+      describeTable: async () => ({}),
+      addColumn: async (table, name) => { added.push({ table, name }); },
+      addConstraint: async (table, opts) => { constraints.push({ table, ...opts }); },
+      sequelize: { query: async (sql) => { rawSql.push(sql); } },
+    };
+    const migration = require('../migrations/20261006200000-lead-contacts');
+    await migration.up(queryInterface, Sequelize);
+    expect(added.map((c) => c.name).sort()).toEqual(['email_id', 'phone_id', 'site_id']);
+    expect(added.every((c) => c.table === 'leads')).toBe(true);
+    expect(rawSql.some((s) => /meta->>'site_id'/.test(s))).toBe(true);
+    expect(rawSql.some((s) => /customer_sites/.test(s) && /is_primary/.test(s))).toBe(true);
+    expect(constraints.map((c) => c.fields[0]).sort()).toEqual(['email_id', 'phone_id', 'site_id']);
+  });
+});
+
 describe('customer notes and files migration (requirement 2.4)', () => {
   test('creates customer_notes and customer_files with mime check', async () => {
     const tables = {};

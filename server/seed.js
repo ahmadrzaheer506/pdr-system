@@ -4,8 +4,8 @@
 // Run after migrations:  npm run seed
 // Reset and reseed:      npm run seed:clean
 // Pipeline cards are per enquiry (Lead.stage / board_order). Every
-// customer gets a primary lead; quotes, visits, jobs and stage history
-// always carry that lead_id.
+// customer gets a primary lead with one site/phone/email. Quotes, visits,
+// jobs and stage history always carry that lead_id (and inherit those contacts).
 // ============================================================
 require('dotenv').config({ path: require('path').join(__dirname, '..', '.env') });
 const { initDb, nextRef, setSetting, getSetting, sequelize, DEFAULT_SETTINGS, money } = require('./db');
@@ -185,19 +185,22 @@ async function addCustomer({
       created_at: createdAt,
     });
   }
+  const ids = await primaryContactIds(row.id);
   await Lead.create({
     customer_id: row.id,
+    ref: await nextRef('lead'),
     source,
     subject,
     message,
     status: leadStatus || leadStatusForStage(stage),
     next_action: nextAction,
-    meta,
+    meta: { ...meta, ...ids },
     stage,
     lost_reason: lostReason || null,
     board_order: order,
     created_at: createdAt,
     updated_at: updatedAt || createdAt,
+    ...ids,
   });
   return row;
 }
@@ -238,24 +241,49 @@ async function latestLeadId(customerId) {
   return lead?.id || null;
 }
 
+/** Quotes, visits and jobs inherit this enquiry's one site / phone / email. */
+async function contactIdsFor(customerId, leadId = null) {
+  if (leadId) {
+    const lead = await Lead.findByPk(leadId, { attributes: ['site_id', 'phone_id', 'email_id'] });
+    if (lead) {
+      return { site_id: lead.site_id, phone_id: lead.phone_id, email_id: lead.email_id };
+    }
+  }
+  return primaryContactIds(customerId);
+}
+
+function enquiryNotifyMessage(name, source, body) {
+  const snippet = String(body || '').replace(/\s+/g, ' ').trim().slice(0, 120);
+  return snippet ? `${name} (${source}): ${snippet}` : `${name} — new ${source} enquiry`;
+}
+
 async function addLead(customerId, {
   source, subject = null, message = null, status, createdAt, updatedAt,
   nextAction = null, stage, lostReason = null, meta = {},
+  siteId, phoneId, emailId,
 }) {
   const order = nextBoard(stage);
+  const defaults = await primaryContactIds(customerId);
+  const ids = {
+    site_id: siteId !== undefined ? siteId : defaults.site_id,
+    phone_id: phoneId !== undefined ? phoneId : defaults.phone_id,
+    email_id: emailId !== undefined ? emailId : defaults.email_id,
+  };
   const row = await Lead.create({
     customer_id: customerId,
+    ref: await nextRef('lead'),
     source,
     subject,
     message,
     status,
     next_action: nextAction,
-    meta,
+    meta: { ...meta, ...ids },
     stage,
     lost_reason: lostReason,
     board_order: order,
     created_at: createdAt,
     updated_at: updatedAt || createdAt,
+    ...ids,
   });
   return row;
 }
@@ -267,7 +295,7 @@ async function addMessage(customerId, direction, channel, body, status, createdA
 }
 
 async function addAppointment(customerId, title, start, end, address, status, gcalStatus, createdBy, createdAt, stageAdvanced = false, visitType = 'site_visit', assigneeIds = [], completeNote = null, notes = null, leadId = null) {
-  const ids = await primaryContactIds(customerId);
+  const ids = await contactIdsFor(customerId, leadId || await latestLeadId(customerId));
   const row = await Appointment.create({
     customer_id: customerId,
     lead_id: leadId || await latestLeadId(customerId),
@@ -298,7 +326,7 @@ async function addQuote({
     provisional_sums_in_total: false,
   }, customer, ukSettings);
   const ref = await nextRef('quote');
-  const ids = await primaryContactIds(customer.id);
+  const ids = await contactIdsFor(customer.id, leadId || await latestLeadId(customer.id));
   const isDomestic = (customer.customer_type || 'domestic') === 'domestic';
   const row = await Quote.create({
     customer_id: customer.id,
@@ -360,10 +388,11 @@ async function addQuote({
 async function addJob({
   customerId, quoteId, title, description, address, status, priority = 'normal',
   requiredSkills = [], needsDriver = false, materials, value, startDate, endDate,
-  startTime = '08:00', endTime = '16:30', createdAt, crew = [], completedAt, notes, checklistId,
+  startTime = '08:00', endTime = '16:30', createdAt, crew = [], crewByDate = null,
+  completedAt, notes, checklistId,
   lat = null, lng = null, leadId = null,
 }) {
-  const ids = await primaryContactIds(customerId);
+  const ids = await contactIdsFor(customerId, leadId || await latestLeadId(customerId));
   const row = await Job.create({
     customer_id: customerId,
     lead_id: leadId || await latestLeadId(customerId),
@@ -390,8 +419,10 @@ async function addJob({
     updated_at: completedAt || createdAt,
     ...ids,
   });
-  for (const uid of crew) {
-    for (const workDate of datesInRange(startDate, endDate || startDate)) {
+  const days = datesInRange(startDate, endDate || startDate);
+  for (const workDate of days) {
+    const uids = crewByDate && crewByDate[workDate] != null ? crewByDate[workDate] : crew;
+    for (const uid of uids || []) {
       await JobDayAssignment.create({ job_id: row.id, work_date: workDate, user_id: uid });
     }
   }
@@ -641,10 +672,11 @@ async function main() {
   console.log('Creating customers across the full pipeline...');
 
   {
+    const daveLeakMsg = 'Hiya, got a leak coming through the bedroom ceiling after last night\'s rain. Can someone come take a look this week?';
     const customer = await addCustomer({
       name: 'Dave Whitfield', phone: '+447911223344', email: null, address: '14 Elm Grove, Reading',
       postcode: 'RG1 5AB', stage: 'ENQUIRY', source: 'whatsapp', createdAt: at(0, 8, 12), ownerId: paul,
-      message: 'Hiya, got a leak coming through the bedroom ceiling after last night\'s rain. Can someone come take a look this week?',
+      message: daveLeakMsg,
       nextAction: 'Review & respond',
     });
     const id = customer.id;
@@ -656,28 +688,49 @@ async function main() {
       customer_id: id, address: 'Garage roof, 14 Elm Grove, Reading', postcode: 'RG1 5AB',
       is_primary: false, created_at: at(0, 8, 12),
     });
-    await addMessage(id, 'in', 'whatsapp', 'Hiya, got a leak coming through the bedroom ceiling after last night\'s rain. Can someone come take a look this week?', 'received', at(0, 8, 12));
+    await addMessage(id, 'in', 'whatsapp', daveLeakMsg, 'received', at(0, 8, 12));
     await addActivity(id, null, 'customer_created', 'New customer created from whatsapp enquiry', at(0, 8, 12));
     await addActivity(id, null, 'inbound', 'Inbound whatsapp message', at(0, 8, 12));
     await CustomerNote.create({ customer_id: id, user_id: paul, body: 'Urgent leak — bedroom ceiling. Check loft hatch access.', created_at: at(0, 8, 20) });
+    const daveLeakLead = await latestLeadId(id);
     await Notification.create({
-      user_id: lisa, kind: 'new_enquiry', message: 'New WhatsApp enquiry from Dave Whitfield',
-      entity_type: 'lead', entity_id: await latestLeadId(id), created_at: at(0, 8, 12),
+      user_id: lisa, kind: 'new_enquiry', message: enquiryNotifyMessage('Dave Whitfield', 'whatsapp', daveLeakMsg),
+      entity_type: 'lead', entity_id: daveLeakLead, created_at: at(0, 8, 12),
+    });
+    const garageSite = await CustomerSite.findOne({ where: { customer_id: id, is_primary: false } });
+    const garagePhone = await CustomerPhone.findOne({ where: { customer_id: id, is_primary: false } });
+    const daveGarageMsg = 'Called back — the garage felt is leaking as well. Can you look at that as a separate job?';
+    const daveGarageLead = await addLead(id, {
+      source: 'phone',
+      message: daveGarageMsg,
+      status: 'NEW',
+      createdAt: at(0, 11, 20),
+      nextAction: 'Review & respond',
+      stage: 'ENQUIRY',
+      siteId: garageSite?.id || null,
+      phoneId: garagePhone?.id || null,
+    });
+    await addMessage(id, 'in', 'phone', daveGarageMsg, 'logged', at(0, 11, 20));
+    await addActivity(id, null, 'inbound', 'Inbound phone message', at(0, 11, 20));
+    await Notification.create({
+      user_id: lisa, kind: 'new_enquiry', message: enquiryNotifyMessage('Dave Whitfield', 'phone', daveGarageMsg),
+      entity_type: 'lead', entity_id: daveGarageLead.id, created_at: at(0, 11, 20),
     });
   }
 
   {
+    const priyaMsg = 'Hi! Saw your page — need a quote for a full re-roof on a 1930s semi. Can you help?';
     const customer = await addCustomer({
       name: 'Priya Nair', phone: null, email: 'priya.nair@example.co.uk', address: '8 Oakfield Road, Reading',
       postcode: 'RG2 7EH', stage: 'ENQUIRY', source: 'facebook', createdAt: at(0, 10, 40), ownerId: lisa,
-      message: 'Hi! Saw your page — need a quote for a full re-roof on a 1930s semi. Can you help?',
+      message: priyaMsg,
       nextAction: 'Review & respond',
     });
     const id = customer.id;
-    await addMessage(id, 'in', 'facebook', 'Hi! Saw your page — need a quote for a full re-roof on a 1930s semi. Can you help?', 'received', at(0, 10, 40));
+    await addMessage(id, 'in', 'facebook', priyaMsg, 'received', at(0, 10, 40));
     await addActivity(id, null, 'customer_created', 'New customer created from facebook enquiry', at(0, 10, 40));
     await Notification.create({
-      user_id: paul, kind: 'new_enquiry', message: 'New Facebook enquiry from Priya Nair',
+      user_id: paul, kind: 'new_enquiry', message: enquiryNotifyMessage('Priya Nair', 'facebook', priyaMsg),
       entity_type: 'lead', entity_id: await latestLeadId(id), created_at: at(0, 10, 40),
     });
   }
@@ -693,14 +746,20 @@ async function main() {
     await addMessage(id, 'in', 'phone', 'Called about guttering pulling away from the fascia on the back of the house.', 'logged', at(-2, 9, 0));
     await addActivity(id, null, 'customer_created', 'New customer created from phone enquiry', at(-2, 9, 0));
     await addStageHistory(id, 'ENQUIRY', 'SITE_VISIT_BOOKED', paul, at(-1, 14, 0));
-    await addActivity(id, paul, 'appointment_booked', `Site visit booked for ${at(1, 10, 0).toISOString()} (in Google Calendar)`, at(-1, 14, 0));
     const sandraVisit = await addAppointment(id, 'Site visit — Sandra Cole', at(1, 10, 0), at(1, 11, 0), '22 Birch Close, Caversham', 'booked', 'simulated', paul, at(-1, 14, 0), false, 'site_visit', [callum]);
+    await addActivity(
+      id, paul, 'appointment_booked',
+      `Site visit booked for ${at(1, 10, 0).toLocaleString('en-GB', { timeZone: 'Europe/London' })} (in Google Calendar)`,
+      at(-1, 14, 0), 'appointment', sandraVisit,
+    );
     await Notification.create({
-      user_id: lisa, kind: 'visit_booked', message: 'Site visit booked for Sandra Cole',
+      user_id: lisa, kind: 'visit_booked',
+      message: `Sandra Cole — Site visit — Sandra Cole on ${at(1, 10, 0).toLocaleString('en-GB', { timeZone: 'Europe/London' })}`,
       entity_type: 'customer', entity_id: id, created_at: at(-1, 14, 0),
     });
     await Notification.create({
-      user_id: callum, kind: 'visit_booked', message: 'You were assigned to a site visit for Sandra Cole',
+      user_id: callum, kind: 'visit_booked',
+      message: `You're assigned to Site visit — Sandra Cole on ${at(1, 10, 0).toLocaleString('en-GB', { timeZone: 'Europe/London' })}`,
       entity_type: 'appointment', entity_id: sandraVisit, created_at: at(-1, 14, 0),
     });
   }
@@ -814,35 +873,38 @@ async function main() {
     const q = await addQuote({
       customer, title: 'Chimney repointing & new lead flashing',
       items: [catLine('chimney_repoint', 1), catLine('lead_flashing', 6), catLine('chimney_cowl', 2)],
-      status: 'sent', createdAt: at(-6, 9, 0), sentAt: at(-5, 9, 0), sentVia: 'whatsapp', validUntil: dateOnly(25),
+      status: 'sent', createdAt: at(-6, 9, 0), sentAt: at(-4, 9, 0), sentVia: 'whatsapp', validUntil: dateOnly(25),
     });
-    await addStageHistory(id, 'QUOTE_PENDING', 'QUOTED', lisa, at(-5, 9, 0));
-    await addActivity(id, lisa, 'quote_sent', `Quote ${q.ref} (${money(q.total)}) sent via whatsapp`, at(-5, 9, 0), 'quote', q.id);
+    await addStageHistory(id, 'QUOTE_PENDING', 'QUOTED', lisa, at(-4, 9, 0));
+    await addActivity(id, lisa, 'quote_sent', `Quote ${q.ref} (${money(q.total)}) sent via whatsapp`, at(-4, 9, 0), 'quote', q.id);
     await addStageHistory(id, 'QUOTED', 'FOLLOW_UP', null, at(-2, 9, 0));
     const step1 = stepBody(followupCfg.steps[0]);
+    const step2 = followupCfg.steps[1] ? stepBody(followupCfg.steps[1]) : '';
     await addMessage(id, 'out', 'whatsapp', step1.replace('{name}', firstName(customer.name)).replace('{ref}', q.ref).replace('{title}', 'Chimney repointing & new lead flashing').replace('{total}', money(q.total)), 'simulated', at(-2, 9, 0), null);
     await addActivity(id, null, 'followup_sent', `Automatic follow-up step 1 sent for quote ${q.ref} via whatsapp`, at(-2, 9, 0));
     await Followup.create({
       quote_id: q.id, customer_id: id, step: 1, channel: 'whatsapp',
       scheduled_at: at(-2, 9, 0), status: 'sent', sent_at: at(-2, 9, 0),
-      body_template: step1, message: 'Follow-up 1 sent', created_at: at(-5, 9, 0),
+      body_template: step1, message: 'Follow-up 1 sent', created_at: at(-4, 9, 0),
     });
-    await Followup.create({
-      quote_id: q.id, customer_id: id, step: 2, channel: 'email',
-      scheduled_at: at(1, 9, 0), status: 'pending', body_template: stepBody(followupCfg.steps[1]),
-      created_at: at(-5, 9, 0),
-    });
+    if (step2) {
+      await Followup.create({
+        quote_id: q.id, customer_id: id, step: 2, channel: 'email',
+        scheduled_at: at(1, 9, 0), status: 'pending', body_template: step2,
+        created_at: at(-4, 9, 0),
+      });
+    }
     await addTask({
       type: 'system',
       rule_key: `quote_followup:quote:${q.id}`,
       title: `Follow up quote ${q.ref}`,
-      detail: `Automatic follow-up sequence is running. First step due ${dateOnly(-2)}.`,
-      due_date: dateOnly(-2),
+      detail: `Automatic follow-up sequence is running. First step due ${dateOnly(1)}.`,
+      due_date: dateOnly(1),
       priority: 'normal',
       status: 'open',
       entity_type: 'quote',
       entity_id: q.id,
-      created_at: at(-5, 9, 0),
+      created_at: at(-4, 9, 0),
     });
   }
 
@@ -875,14 +937,27 @@ async function main() {
     });
     await addStageHistory(id, 'QUOTE_PENDING', 'QUOTED', lisa, at(-8, 9, 0));
     await addStageHistory(id, 'QUOTED', 'WON', paul, at(-1, 11, 0));
-    await addActivity(id, paul, 'quote_accepted', `Quote ${q.ref} accepted — job created`, at(-1, 11, 0), 'quote', q.id);
-    await addJob({
+    const porchValue = jobValueFromQuote(q, [porchExtra]);
+    const porchJob = await addJob({
       customerId: id, quoteId: q.id, title: 'Porch roof rebuild', address: '2 Priory Court, Reading',
-      status: 'PENDING', value: jobValueFromQuote(q, [porchExtra]), createdAt: at(-1, 11, 0), checklistId: 'felt',
+      status: 'PENDING', requiredSkills: ['flat_roof', 'felt'], needsDriver: true,
+      value: porchValue, createdAt: at(-1, 11, 0), checklistId: 'felt',
       lat: SITE.reading.lat, lng: SITE.reading.lng,
     });
+    await addActivity(id, paul, 'quote_accepted', `Quote ${q.ref} accepted — job created`, at(-1, 11, 0), 'job', porchJob);
+    await addTask({
+      type: 'system',
+      rule_key: `schedule_job:job:${porchJob}`,
+      title: 'Schedule job — Porch roof rebuild',
+      detail: `Helen Ackroyd accepted quote ${q.ref} (${money(porchValue)}). Job needs lads and dates.`,
+      priority: 'high',
+      status: 'open',
+      entity_type: 'job',
+      entity_id: porchJob,
+      created_at: at(-1, 11, 0),
+    });
     await Notification.create({
-      user_id: lisa, kind: 'quote_accepted', message: `Quote ${q.ref} accepted — Helen Ackroyd`,
+      user_id: lisa, kind: 'quote_accepted', message: `Helen Ackroyd accepted quote ${q.ref}.`,
       entity_type: 'customer', entity_id: id, created_at: at(-1, 11, 0),
     });
   }
@@ -915,7 +990,7 @@ async function main() {
   {
     const customer = await addCustomer({
       name: 'Alan & Denise Fitch', phone: '+447988990011', email: 'fitch.family@example.co.uk',
-      address: '44 Sherwood Rise, Woodley', postcode: 'RG5 3JA', stage: 'SCHEDULED',
+      address: '44 Sherwood Rise, Woodley', postcode: 'RG5 3JA', stage: 'IN_PROGRESS',
       source: 'whatsapp', createdAt: at(-18, 9, 0), updatedAt: at(-3, 10, 0),
       message: 'Guttering coming away on the front and rear — can you replace the lot?',
     });
@@ -938,12 +1013,19 @@ async function main() {
     });
     await addStageHistory(id, 'QUOTE_PENDING', 'QUOTED', lisa, at(-14, 9, 0));
     await addStageHistory(id, 'QUOTED', 'WON', paul, at(-6, 14, 0));
+    const fitchStart = dateOnly(0);
+    const fitchEnd = dateOnly(1);
     const jobId = await addJob({
       customerId: id, quoteId: q.id, title: 'Guttering & fascia replacement',
       description: 'Full run — front & rear, UPVC', address: '44 Sherwood Rise, Woodley',
-      status: 'SCHEDULED', priority: 'normal', requiredSkills: ['guttering'], needsDriver: true,
-      value: jobValueFromQuote(q, []), startDate: dateOnly(1), endDate: dateOnly(1),
-      createdAt: at(-6, 14, 0), crew: [liam, nathan], checklistId: 'guttering',
+      status: 'IN_PROGRESS', priority: 'low', requiredSkills: ['guttering'], needsDriver: true,
+      value: jobValueFromQuote(q, []), startDate: fitchStart, endDate: fitchEnd,
+      createdAt: at(-6, 14, 0),
+      crewByDate: {
+        [fitchStart]: [liam, nathan, callum],
+        [fitchEnd]: [liam, nathan],
+      },
+      checklistId: 'guttering',
       lat: SITE.woodley.lat, lng: SITE.woodley.lng,
     });
     await addMaterials(jobId, [
@@ -952,27 +1034,25 @@ async function main() {
       { description: 'Brackets and silicone', qty: 1, unit: 'lot', status: 'needed' },
     ]);
     await addStageHistory(id, 'WON', 'SCHEDULED', paul, at(-3, 10, 0));
-    await addActivity(id, paul, 'job_scheduled', 'Guttering & fascia replacement scheduled for tomorrow', at(-3, 10, 0), 'job', jobId);
-    await addTask({
-      type: 'system',
-      rule_key: `job_tomorrow:job:${jobId}`,
-      title: 'Job starts tomorrow — Guttering & fascia replacement',
-      detail: 'Alan & Denise Fitch · 44 Sherwood Rise, Woodley. Confirm materials and team.',
-      due_date: dateOnly(0),
-      priority: 'high',
-      status: 'open',
-      entity_type: 'job',
-      entity_id: jobId,
-      created_at: at(0, 7, 0),
-    });
-    await Notification.create({
-      user_id: liam, kind: 'crew_added', message: 'You were added to Guttering & fascia replacement',
-      job_id: jobId, work_date: dateOnly(1), created_at: at(-3, 10, 0),
-    });
-    await Notification.create({
-      user_id: nathan, kind: 'crew_added', message: 'You were added to Guttering & fascia replacement',
-      job_id: jobId, work_date: dateOnly(1), created_at: at(-3, 10, 0),
-    });
+    await addStageHistory(id, 'SCHEDULED', 'IN_PROGRESS', null, at(0, 8, 0));
+    await addActivity(id, paul, 'job_scheduled', 'Guttering & fascia replacement scheduled for today and tomorrow', at(-3, 10, 0), 'job', jobId);
+    await addActivity(id, null, 'job_status', 'Job "Guttering & fascia replacement" → IN_PROGRESS', at(0, 8, 0), 'job', jobId);
+    const fitchTitle = 'Guttering & fascia replacement';
+    for (const [uid, day] of [
+      [liam, fitchStart], [nathan, fitchStart], [callum, fitchStart],
+      [liam, fitchEnd], [nathan, fitchEnd],
+    ]) {
+      await Notification.create({
+        user_id: uid,
+        kind: 'crew_added',
+        message: `You've been assigned to "${fitchTitle}" on ${day}`,
+        job_id: jobId,
+        work_date: day,
+        entity_type: 'job',
+        entity_id: jobId,
+        created_at: at(-3, 10, 0),
+      });
+    }
   }
 
   {
@@ -999,13 +1079,20 @@ async function main() {
     });
     await addStageHistory(id, 'QUOTE_PENDING', 'QUOTED', lisa, at(-16, 9, 0));
     await addStageHistory(id, 'QUOTED', 'WON', paul, at(-9, 14, 0));
+    const hallStart = dateOnly(1);
+    const hallEnd = dateOnly(2);
     const jobId = await addJob({
       customerId: id, quoteId: q.id, title: 'Flat roof overlay — hall extension',
       description: 'GRP fibreglass overlay, full extension roof', address: 'Reading Community Hall, Northfield Rd',
       status: 'SCHEDULED', priority: 'high', requiredSkills: ['flat_roof'], needsDriver: true,
-      value: jobValueFromQuote(q, []), startDate: dateOnly(2), endDate: dateOnly(3),
+      value: jobValueFromQuote(q, []), startDate: hallStart, endDate: hallEnd,
       startTime: '09:30',
-      createdAt: at(-9, 14, 0), crew: [connor, callum, jamie], checklistId: 'felt',
+      createdAt: at(-9, 14, 0),
+      crewByDate: {
+        [hallStart]: [connor, callum, jamie],
+        [hallEnd]: [connor, jamie],
+      },
+      checklistId: 'felt',
       lat: SITE.reading.lat, lng: SITE.reading.lng,
     });
     await addMaterials(jobId, [
@@ -1015,9 +1102,40 @@ async function main() {
     ]);
     await addStageHistory(id, 'WON', 'SCHEDULED', paul, at(-5, 10, 0));
     await addActivity(id, paul, 'job_scheduled', 'Flat roof overlay scheduled — 2 day job', at(-5, 10, 0), 'job', jobId);
+    await addTask({
+      type: 'system',
+      rule_key: `job_tomorrow:job:${jobId}`,
+      title: 'Job starts tomorrow — Flat roof overlay — hall extension',
+      detail: 'Community Hall Trust · Reading Community Hall, Northfield Rd. Confirm materials and team.',
+      due_date: dateOnly(0),
+      priority: 'high',
+      status: 'open',
+      entity_type: 'job',
+      entity_id: jobId,
+      created_at: at(0, 7, 0),
+    });
+    const hallTitle = 'Flat roof overlay — hall extension';
+    for (const [uid, day] of [
+      [connor, hallStart], [callum, hallStart], [jamie, hallStart],
+      [connor, hallEnd], [jamie, hallEnd],
+    ]) {
+      await Notification.create({
+        user_id: uid,
+        kind: 'crew_added',
+        message: `You've been assigned to "${hallTitle}" on ${day}`,
+        job_id: jobId,
+        work_date: day,
+        entity_type: 'job',
+        entity_id: jobId,
+        created_at: at(-5, 10, 0),
+      });
+    }
   }
 
   let jobReroof = null;
+  let jobMoss = null;
+  let jobMaya = null;
+  let jobNora = null;
   let owenId = null;
   {
     const customer = await addCustomer({
@@ -1055,7 +1173,13 @@ async function main() {
       description: 'Strip & re-roof, concrete interlocking tiles', address: '6 Foxglove Way, Lower Earley',
       status: 'IN_PROGRESS', priority: 'high', requiredSkills: ['roofer'], needsDriver: true,
       value: jobValueFromQuote(q, []), startDate: dateOnly(-1), endDate: dateOnly(1),
-      createdAt: at(-6, 10, 0), crew: [ryan, jamie, connor], checklistId: 're_roof',
+      createdAt: at(-6, 10, 0),
+      crewByDate: {
+        [dateOnly(-1)]: [ryan, jamie, connor],
+        [dateOnly(0)]: [ryan, jamie],
+        [dateOnly(1)]: [ryan],
+      },
+      checklistId: 're_roof',
       notes: 'Access via side gate. Skip arriving 8am.',
       lat: SITE.earley.lat, lng: SITE.earley.lng,
     });
@@ -1070,7 +1194,6 @@ async function main() {
     await addActivity(id, null, 'job_status', 'Job "Full re-roof — semi-detached" → IN_PROGRESS', at(0, 8, 0), 'job', jobReroof);
   }
 
-  let jobMoss = null;
   {
     const customer = await addCustomer({
       name: 'Fiona Whitmore', phone: '+447900223344', email: 'fiona.whitmore@example.co.uk',
@@ -1095,7 +1218,8 @@ async function main() {
     await addStageHistory(id, 'QUOTED', 'WON', paul, at(-14, 14, 0));
     jobMoss = await addJob({
       customerId: id, quoteId: q.id, title: 'Moss removal & roof treatment', address: '3 Chestnut Ave, Caversham',
-      status: 'COMPLETED', value: jobValueFromQuote(q, []), startDate: dateOnly(-1), endDate: dateOnly(-1),
+      status: 'COMPLETED', requiredSkills: ['roofer'],
+      value: jobValueFromQuote(q, []), startDate: dateOnly(-1), endDate: dateOnly(-1),
       createdAt: at(-7, 10, 0), crew: [nathan, callum], completedAt: at(-1, 15, 30), checklistId: 'generic',
       lat: SITE.caversham.lat, lng: SITE.caversham.lng,
     });
@@ -1120,32 +1244,42 @@ async function main() {
       created_at: at(-1, 16, 0),
     });
 
+    const garageSite = await CustomerSite.create({
+      customer_id: id,
+      address: 'Garage, 3 Chestnut Ave, Caversham',
+      postcode: 'RG4 6HG',
+      is_primary: false,
+      created_at: at(0, 11, 10),
+    });
+    const garageMsg = 'The garage felt is leaking now as well — can you come back and look at that separately?';
     const garageLead = await addLead(id, {
       source: 'whatsapp',
-      message: 'The garage felt is leaking now as well — can you come back and look at that separately?',
+      message: garageMsg,
       status: 'ACTIONED',
       createdAt: at(0, 11, 10),
       nextAction: 'Site visit booked',
       stage: 'SITE_VISIT_BOOKED',
+      siteId: garageSite.id,
     });
-    await Customer.update({
-      stage: 'SITE_VISIT_BOOKED',
-      board_order: garageLead.board_order,
-      updated_at: at(0, 11, 10),
-    }, { where: { id } });
     await addStageHistory(id, 'ENQUIRY', 'SITE_VISIT_BOOKED', lisa, at(0, 11, 10), garageLead.id);
     const garageVisit = await addAppointment(
       id, 'Site visit — Fiona Whitmore (garage)', at(3, 9, 30), at(3, 10, 30), 'Garage, 3 Chestnut Ave, Caversham',
       'booked', 'not_synced', lisa, at(0, 11, 10), false, 'site_visit', [nathan],
       null, null, garageLead.id,
     );
-    await addActivity(id, lisa, 'appointment_booked', 'Second enquiry — garage felt leak, site visit booked', at(0, 11, 10));
+    await addActivity(id, lisa, 'appointment_booked', 'Second enquiry — garage felt leak, site visit booked', at(0, 11, 10), 'appointment', garageVisit);
     await Notification.create({
-      user_id: lisa, kind: 'new_enquiry', message: 'New WhatsApp enquiry from Fiona Whitmore (garage)',
+      user_id: paul, kind: 'new_enquiry', message: enquiryNotifyMessage('Fiona Whitmore', 'whatsapp', garageMsg),
       entity_type: 'lead', entity_id: garageLead.id, created_at: at(0, 11, 10),
     });
     await Notification.create({
-      user_id: nathan, kind: 'visit_booked', message: 'You were assigned to a site visit for Fiona Whitmore (garage)',
+      user_id: paul, kind: 'visit_booked',
+      message: `Fiona Whitmore — Site visit — Fiona Whitmore (garage) on ${at(3, 9, 30).toLocaleString('en-GB', { timeZone: 'Europe/London' })}`,
+      entity_type: 'customer', entity_id: id, created_at: at(0, 11, 10),
+    });
+    await Notification.create({
+      user_id: nathan, kind: 'visit_booked',
+      message: `You're assigned to Site visit — Fiona Whitmore (garage) on ${at(3, 9, 30).toLocaleString('en-GB', { timeZone: 'Europe/London' })}`,
       entity_type: 'appointment', entity_id: garageVisit, created_at: at(0, 11, 10),
     });
   }
@@ -1181,7 +1315,8 @@ async function main() {
     await addStageHistory(id, 'QUOTED', 'WON', paul, at(-30, 14, 0));
     jobCommercial = await addJob({
       customerId: id, quoteId: q.id, title: 'Commercial flat roof repair', address: 'Unit 12, Bracknell Retail Park',
-      status: 'INVOICED', value: jobValueFromQuote(q, []), startDate: dateOnly(-22), endDate: dateOnly(-21),
+      status: 'INVOICED', requiredSkills: ['flat_roof'], needsDriver: true,
+      value: jobValueFromQuote(q, []), startDate: dateOnly(-22), endDate: dateOnly(-21),
       createdAt: at(-25, 10, 0), crew: [ryan, connor], completedAt: at(-21, 16, 0), checklistId: 'felt',
       lat: SITE.bracknell.lat, lng: SITE.bracknell.lng,
     });
@@ -1246,7 +1381,8 @@ async function main() {
     await addStageHistory(id, 'QUOTED', 'WON', paul, at(-42, 14, 0));
     const jobId = await addJob({
       customerId: id, quoteId: q.id, title: 'Velux window replacement', address: '19 Hawthorn Drive, Earley',
-      status: 'PAID', value: jobValueFromQuote(q, []), startDate: dateOnly(-35), endDate: dateOnly(-35),
+      status: 'PAID', requiredSkills: ['roofer'], needsDriver: true,
+      value: jobValueFromQuote(q, []), startDate: dateOnly(-35), endDate: dateOnly(-35),
       createdAt: at(-40, 10, 0), crew: [jamie], completedAt: at(-35, 15, 0), checklistId: 'generic',
       lat: SITE.earley.lat, lng: SITE.earley.lng,
     });
@@ -1288,7 +1424,8 @@ async function main() {
     await addStageHistory(id, 'QUOTED', 'WON', paul, at(-50, 14, 0));
     const jobId = await addJob({
       customerId: id, quoteId: q.id, title: 'Classroom block flat roof recover', address: 'Church Road, Reading',
-      status: 'PAID', value: jobValueFromQuote(q, []), startDate: dateOnly(-44), endDate: dateOnly(-40),
+      status: 'PAID', requiredSkills: ['flat_roof', 'felt'],
+      value: jobValueFromQuote(q, []), startDate: dateOnly(-44), endDate: dateOnly(-40),
       createdAt: at(-48, 10, 0), crew: [connor, callum, nathan], completedAt: at(-40, 16, 0), checklistId: 'felt',
       lat: SITE.reading.lat, lng: SITE.reading.lng,
     });
@@ -1327,9 +1464,10 @@ async function main() {
     });
     await addStageHistory(id, 'QUOTE_PENDING', 'QUOTED', lisa, at(-12, 9, 0));
     await addStageHistory(id, 'QUOTED', 'WON', paul, at(-8, 14, 0));
-    const jobId = await addJob({
+    jobNora = await addJob({
       customerId: id, quoteId: q.id, title: 'Downpipe & fascia repair', address: '11 Star Road, Caversham',
-      status: 'INVOICED', value: jobValueFromQuote(q, []), startDate: dateOnly(-2), endDate: dateOnly(-2),
+      status: 'INVOICED', requiredSkills: ['guttering'], needsDriver: true,
+      value: jobValueFromQuote(q, []), startDate: dateOnly(-2), endDate: dateOnly(-2),
       createdAt: at(-7, 10, 0), crew: [liam], completedAt: at(-2, 15, 0), checklistId: 'guttering',
       lat: SITE.caversham.lat, lng: SITE.caversham.lng,
     });
@@ -1337,7 +1475,7 @@ async function main() {
     await addStageHistory(id, 'SCHEDULED', 'IN_PROGRESS', null, at(-2, 8, 0));
     await addStageHistory(id, 'IN_PROGRESS', 'COMPLETED', liam, at(-2, 16, 0));
     const noraInv = await addInvoice({
-      customer, jobId, items: q.items, status: 'draft',
+      customer, jobId: jobNora, items: q.items, status: 'draft',
       issueDate: dateOnly(-1), dueDate: dateOnly(13), createdAt: at(-1, 10, 0),
       notes: 'Draft from completed job — Lisa to check and send.',
     });
@@ -1369,13 +1507,14 @@ async function main() {
     await addStageHistory(id, 'QUOTED', 'WON', paul, at(-10, 11, 0));
     const jobId = await addJob({
       customerId: id, quoteId: q.id, title: 'Replace cracked tiles', address: '27 Peppard Road, Reading',
-      status: 'INVOICED', value: jobValueFromQuote(q, []), startDate: dateOnly(-4), endDate: dateOnly(-4),
-      createdAt: at(-9, 10, 0), crew: [callum], completedAt: at(-4, 15, 0), checklistId: 'generic',
+      status: 'INVOICED', requiredSkills: ['roofer'],
+      value: jobValueFromQuote(q, []), startDate: dateOnly(-4), endDate: dateOnly(-4),
+      createdAt: at(-9, 10, 0), crew: [nathan], completedAt: at(-4, 15, 0), checklistId: 'generic',
       lat: SITE.reading.lat, lng: SITE.reading.lng,
     });
     await addStageHistory(id, 'WON', 'SCHEDULED', paul, at(-9, 10, 0));
     await addStageHistory(id, 'SCHEDULED', 'IN_PROGRESS', null, at(-4, 8, 0));
-    await addStageHistory(id, 'IN_PROGRESS', 'COMPLETED', callum, at(-4, 15, 0));
+    await addStageHistory(id, 'IN_PROGRESS', 'COMPLETED', nathan, at(-4, 15, 0));
     const inv = await addInvoice({
       customer, jobId, items: q.items, status: 'sent',
       issueDate: dateOnly(-3), dueDate: dateOnly(11), sentAt: at(-3, 10, 0), createdAt: at(-3, 10, 0),
@@ -1384,7 +1523,6 @@ async function main() {
     await addActivity(id, lisa, 'invoice_sent', `Invoice ${inv.ref} sent`, at(-3, 10, 0), 'invoice', inv.id);
   }
 
-  let jobMaya = null;
   {
     const customer = await addCustomer({
       name: 'Maya Chen', phone: '+447900667788', email: 'maya.chen@example.co.uk',
@@ -1409,7 +1547,8 @@ async function main() {
     await addStageHistory(id, 'QUOTED', 'WON', paul, at(-12, 14, 0));
     jobMaya = await addJob({
       customerId: id, quoteId: q.id, title: 'Gutter joint repair', address: '4 Meadow Walk, Woodley',
-      status: 'INVOICED', value: jobValueFromQuote(q, []), startDate: dateOnly(-5), endDate: dateOnly(-5),
+      status: 'INVOICED', requiredSkills: ['guttering'], needsDriver: true,
+      value: jobValueFromQuote(q, []), startDate: dateOnly(-5), endDate: dateOnly(-5),
       createdAt: at(-11, 10, 0), crew: [liam], completedAt: at(-5, 15, 0), checklistId: 'guttering',
       lat: SITE.woodley.lat, lng: SITE.woodley.lng,
     });
@@ -1487,22 +1626,24 @@ async function main() {
     created_at: at(-26, 9, 0),
   });
   await Notification.create({
-    user_id: paul, kind: 'holiday_submitted', message: 'Connor Blake requested holiday',
+    user_id: paul, kind: 'holiday_submitted',
+    message: `Connor Blake requested ${dateOnly(35)} to ${dateOnly(39)} (5 days)`,
     entity_type: 'holiday', entity_id: holConnor.id, created_at: at(-1, 16, 0),
   });
   await Notification.create({
-    user_id: callum, kind: 'holiday_approved', message: 'Your holiday request was approved',
+    user_id: callum, kind: 'holiday_approved',
+    message: `Your holiday ${dateOnly(10)} to ${dateOnly(12)} was approved`,
     created_at: at(-10, 10, 0),
   });
   await Notification.create({
     user_id: nathan, kind: 'holiday_declined',
-    message: 'Your holiday request was declined — Less than 4 weeks notice given at the time — please rebook further out',
+    message: `Your holiday ${dateOnly(-20)} to ${dateOnly(-18)} was declined — Less than 4 weeks notice given at the time — please rebook further out`,
     created_at: at(-25, 10, 0),
   });
 
   console.log('Adding team chat & tasks...');
   const chat = [
-    [paul, 'Morning all — forecast says rain from Thursday so let\'s try and get the Fitch guttering job done tomorrow while it\'s dry.', -1],
+    [paul, 'Morning all — forecast says rain from Thursday so let\'s try and get the Fitch guttering job done today and tomorrow while it\'s dry.', -1],
     [liam, 'Sounds good, I\'ll bring the extra ladder.', -1],
     [lisa, 'Community Hall job — client asked if we can start slightly later, 9:30 instead of 8. Fine to confirm?', 0],
     [paul, 'Yep that\'s fine, confirmed.', 0],
@@ -1602,7 +1743,7 @@ async function main() {
   });
 
   await addShift({
-    userId: liam, jobId: jobMoss, dayOffset: -2, inH: 9, inM: 20, outH: 16, breakMin: 45,
+    userId: liam, jobId: jobNora, dayOffset: -2, inH: 9, inM: 20, outH: 16, breakMin: 45,
     notes: 'Started late, went to the wrong address first.', flag: 'far_from_site', distance: 2400, status: 'completed',
     inLat: SITE.reading.lat, inLng: SITE.reading.lng,
     outLat: SITE.reading.lat, outLng: SITE.reading.lng,

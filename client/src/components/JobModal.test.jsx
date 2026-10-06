@@ -4,6 +4,7 @@ import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router-dom';
 import JobModal from './JobModal.jsx';
 import { api } from '../lib/api';
+import { localIsoDate } from '../lib/schedule';
 import { pickDate } from '../test/datePicker';
 
 vi.mock('../lib/api', () => ({
@@ -339,6 +340,57 @@ describe('JobModal (requirement 7.2)', () => {
     expect(screen.getByText('These people are already booked. You can still assign them.')).toBeInTheDocument();
   });
 
+  it('checks every day of a multi-day job for booked crew', async () => {
+    const user = userEvent.setup();
+    api.get.mockImplementation(async (path) => {
+      if (path === '/jobs/checklist-templates') {
+        return { templates: [{ id: 'generic', label: 'Generic', items: ['PPE on'] }] };
+      }
+      if (String(path).startsWith('/jobs/availability')) {
+        return {
+          holidays: [],
+          bookings: [{ user_id: 4, name: 'Liam Ozturk', job_id: 9, job_title: 'Guttering', work_date: '2026-10-09' }],
+        };
+      }
+      return {
+        job: {
+          ...JOB,
+          start_date: '2026-10-07',
+          end_date: '2026-10-10',
+          day_assignments: [],
+          material_lines: [],
+          checklist_items: [],
+          files: [],
+          notes: '',
+          variations: [],
+        },
+        messages: [],
+      };
+    });
+    renderJob(
+      <JobModal
+        jobId={8}
+        onClose={() => {}}
+        onChanged={() => {}}
+        staff={STAFF}
+        jobs={[{
+          id: 9,
+          title: 'Guttering',
+          start_date: '2026-10-09',
+          end_date: '2026-10-09',
+          day_assignments: [{ work_date: '2026-10-09', user_id: 4, name: 'Liam Ozturk' }],
+        }]}
+      />,
+    );
+    expect(await screen.findByLabelText(/liam ozturk already on guttering/i)).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: /liam ozturk already on guttering/i }));
+    expect(screen.getAllByText(/Liam Ozturk is already booked on “Guttering” on 9 Oct 2026/i).length).toBeGreaterThan(0);
+    expect(screen.getByText(/already booked on some days of this job/i)).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: /save crew/i }));
+    expect(await screen.findByRole('heading', { name: /assign with conflicts/i })).toBeInTheDocument();
+    expect(screen.getAllByText('9 Oct 2026').length).toBeGreaterThan(0);
+  });
+
   it('toggles needs a driver and warns when skills or a driver are missing (requirement 8.3)', async () => {
     const user = userEvent.setup();
     api.get.mockImplementation(async (path) => {
@@ -447,5 +499,40 @@ describe('JobModal (requirement 7.2)', () => {
     renderJob(<JobModal jobId={8} onClose={() => {}} onChanged={() => {}} staff={STAFF} />);
     expect(await screen.findByText(/Invoice INV-2026-0001 already exists for this job/i)).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /create invoice/i })).toBeNull();
+  });
+
+  it('does not allow picking a start date before today', async () => {
+    renderJob(<JobModal jobId={8} onClose={() => {}} onChanged={() => {}} staff={STAFF} />);
+    expect(await screen.findByLabelText(/^start date$/i)).toHaveAttribute('min', localIsoDate());
+  });
+
+  it('selects the crew-day chip that matches the calendar card that opened the modal', async () => {
+    api.get.mockImplementation(async (path) => {
+      if (path === '/jobs/checklist-templates') {
+        return { templates: [{ id: 'generic', label: 'Generic', items: ['PPE on'] }] };
+      }
+      if (String(path).startsWith('/jobs/availability')) {
+        return { holidays: [], bookings: [] };
+      }
+      return {
+        job: {
+          ...JOB,
+          start_date: '2026-10-06',
+          end_date: '2026-10-08',
+          material_lines: [],
+          checklist_items: [],
+          files: [],
+          notes: '',
+          variations: [],
+        },
+        messages: [],
+      };
+    });
+    renderJob(
+      <JobModal jobId={8} crewDate="2026-10-08" onClose={() => {}} onChanged={() => {}} staff={STAFF} />,
+    );
+    expect(await screen.findByRole('button', { name: /crew for 2026-10-08/i })).toHaveClass('bg-navy-900');
+    expect(screen.getByRole('button', { name: /crew for 2026-10-06/i })).not.toHaveClass('bg-navy-900');
+    expect(screen.getByRole('button', { name: /crew for 2026-10-07/i })).not.toHaveClass('bg-navy-900');
   });
 });

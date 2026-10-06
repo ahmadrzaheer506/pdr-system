@@ -19,6 +19,32 @@ export function primaryOf(list) {
   return list.find((row) => row.is_primary) || list[0];
 }
 
+/** Ids of the customer's primary site, phone and email (empty string when missing). */
+export function primaryContactIds(customer) {
+  return {
+    site_id: primaryOf(customer?.sites)?.id || '',
+    phone_id: primaryOf(customer?.phones)?.id || '',
+    email_id: primaryOf(customer?.emails)?.id || '',
+  };
+}
+
+export function findContact(list, id) {
+  if (id == null || id === '' || !Array.isArray(list)) return null;
+  const n = Number(id);
+  return list.find((row) => row.id === id || row.id === n) || null;
+}
+
+/** One site/phone/email stored on the enquiry. */
+export function contactIdsFromLead(lead) {
+  const meta = lead?.meta && typeof lead.meta === 'object' ? lead.meta : {};
+  const pick = (column, key) => column || meta[key] || '';
+  return {
+    site_id: pick(lead?.site_id, 'site_id'),
+    phone_id: pick(lead?.phone_id, 'phone_id'),
+    email_id: pick(lead?.email_id, 'email_id'),
+  };
+}
+
 /** Auto-pick a contact only when the customer has exactly one of that type. */
 export function soleContactId(list) {
   if (!Array.isArray(list) || list.length !== 1) return '';

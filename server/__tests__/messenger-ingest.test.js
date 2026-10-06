@@ -14,10 +14,16 @@ jest.mock('../customerContacts', () => ({
   addPhone: jest.fn(),
   addEmail: jest.fn(),
   addSite: jest.fn(),
+  resolveLeadContactsForCreate: jest.fn(async () => ({
+    site_id: null, phone_id: null, email_id: null, site: null, phone: null, email: null,
+  })),
 }));
 jest.mock('../notifications', () => ({
   safeNotify: jest.fn(async (fn) => fn()),
   notifyOffice: jest.fn(),
+}));
+jest.mock('../db', () => ({
+  nextRef: jest.fn(async () => 'L-0041'),
 }));
 
 const { Customer, Lead, Message } = require('../models');
@@ -57,11 +63,15 @@ describe('ingestInbound leads (requirement 3.3)', () => {
     expect(Lead.findOne).not.toHaveBeenCalled();
     expect(Lead.create).toHaveBeenCalledWith(expect.objectContaining({
       customer_id: 9,
+      ref: 'L-0041',
       source: 'phone',
       message: 'Called about guttering',
       status: 'NEW',
       next_action: 'Review & respond',
       stage: 'ENQUIRY',
+      site_id: null,
+      phone_id: null,
+      email_id: null,
     }));
     expect(result.leadId).toBe(41);
   });

@@ -15,22 +15,22 @@ vi.mock('../lib/api', () => ({
 const NEW_LIST = {
   leads: [
     {
-      id: 1, customer_id: 9, customer_name: 'Dave Whitfield', source: 'whatsapp',
+      id: 1, customer_id: 9, ref: 'L-0001', customer_name: 'Dave Whitfield', source: 'whatsapp',
       status: 'NEW', message: 'Leak in the bedroom', phone: '07700 900100', email: null,
       next_action: 'Review & respond', created_at: '2026-09-22T10:00:00Z',
     },
     {
-      id: 2, customer_id: 10, customer_name: 'Priya Nair', source: 'phone',
+      id: 2, customer_id: 10, ref: 'L-0002', customer_name: 'Priya Nair', source: 'phone',
       status: 'NEW', message: 'Called about guttering', phone: '0118 111', email: null,
       created_at: '2026-09-22T09:00:00Z',
     },
     {
-      id: 3, customer_id: 11, customer_name: 'Amy Considine', source: 'manual',
+      id: 3, customer_id: 11, ref: 'L-0003', customer_name: 'Amy Considine', source: 'manual',
       status: 'NEW', message: 'Walk-in', phone: null, email: 'amy@example.co.uk',
       created_at: '2026-09-22T08:00:00Z',
     },
     {
-      id: 4, customer_id: 12, customer_name: 'SMS Lead', source: 'sms',
+      id: 4, customer_id: 12, ref: 'L-0004', customer_name: 'SMS Lead', source: 'sms',
       status: 'NEW', message: 'Text about tiles', phone: '07700 900200', email: null,
       created_at: '2026-09-22T07:00:00Z',
     },
@@ -60,14 +60,14 @@ describe('Lead Inbox (requirement 3.1)', () => {
     render(<MemoryRouter><Inbox /></MemoryRouter>);
     expect(await screen.findByRole('heading', { name: 'Lead Inbox' })).toBeInTheDocument();
     expect(api.get).toHaveBeenCalledWith('/leads?status=NEW');
-    expect(screen.getByText('Dave Whitfield')).toBeInTheDocument();
-    expect(screen.getAllByRole('link', { name: 'Dave Whitfield' })[0]).toHaveAttribute('href', '/leads/9?from=inbox&lead=1');
+    expect(screen.getByText('L-0001 - Dave Whitfield')).toBeInTheDocument();
+    expect(screen.getAllByRole('link', { name: 'L-0001 - Dave Whitfield' })[0]).toHaveAttribute('href', '/leads/9?from=inbox&lead=1');
     expect(screen.getByText('WhatsApp')).toBeInTheDocument();
-    expect(screen.getByText('Priya Nair')).toBeInTheDocument();
+    expect(screen.getByText('L-0002 - Priya Nair')).toBeInTheDocument();
     expect(screen.getByText('Phone')).toBeInTheDocument();
-    expect(screen.getByText('Amy Considine')).toBeInTheDocument();
+    expect(screen.getByText('L-0003 - Amy Considine')).toBeInTheDocument();
     expect(screen.getByText('Manual')).toBeInTheDocument();
-    expect(screen.getByText('SMS Lead')).toBeInTheDocument();
+    expect(screen.getByText('L-0004 - SMS Lead')).toBeInTheDocument();
     expect(screen.getByText('SMS')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /lost/i })).toBeInTheDocument();
     expect(screen.getByLabelText(/search leads/i)).toBeInTheDocument();
@@ -77,7 +77,7 @@ describe('Lead Inbox (requirement 3.1)', () => {
 
   it('does not show the demo simulator', async () => {
     render(<MemoryRouter><Inbox /></MemoryRouter>);
-    await screen.findByText('Dave Whitfield');
+    await screen.findByText(/Dave Whitfield/);
     expect(screen.queryByText(/inject a test enquiry/i)).toBeNull();
     expect(screen.queryByRole('button', { name: /^lead ad$/i })).toBeNull();
     expect(screen.queryByRole('button', { name: /^whatsapp$/i })).toBeNull();
@@ -97,7 +97,7 @@ describe('Lead Inbox (requirement 3.1)', () => {
     const user = userEvent.setup();
     api.get.mockResolvedValueOnce(NEW_LIST).mockResolvedValueOnce(CLOSED_LIST);
     render(<MemoryRouter><Inbox /></MemoryRouter>);
-    await screen.findByText('Dave Whitfield');
+    await screen.findByText(/Dave Whitfield/);
     await user.click(screen.getByRole('button', { name: /lost/i }));
     expect(await screen.findByText('Neil Draper')).toBeInTheDocument();
     expect(api.get).toHaveBeenLastCalledWith('/leads?status=CLOSED');
@@ -107,7 +107,7 @@ describe('Lead Inbox (requirement 3.1)', () => {
   it('sends search, source, and created-date filters', async () => {
     const user = userEvent.setup();
     render(<MemoryRouter><Inbox /></MemoryRouter>);
-    await screen.findByText('Dave Whitfield');
+    await screen.findByText(/Dave Whitfield/);
     await user.type(screen.getByLabelText(/search leads/i), 'Dave');
     await pickSelectOption(user, /filter by source/i, 'whatsapp');
     await pickDate(user, /created from/i, '2026-09-01');
@@ -333,30 +333,30 @@ describe('Log enquiry existing customer (requirement 3.3)', () => {
     expect(await screen.findByText('Enquiry added')).toBeInTheDocument();
   });
 
-  it('does not auto-select when the customer has multiple sites, phones or emails', async () => {
+  it('auto-selects the primary site, phone and email even when the customer has several', async () => {
     const user = await openExisting();
     await pickCustomer(user, 10);
     await waitFor(() => expect(api.get).toHaveBeenCalledWith('/customers/10'));
-    expect(await screen.findByLabelText(/^site$/i)).toHaveAttribute('data-value', '');
-    expect(screen.getByLabelText(/^phone$/i)).toHaveAttribute('data-value', '');
-    expect(screen.getByLabelText(/^email$/i)).toHaveAttribute('data-value', '');
+    expect(await screen.findByLabelText(/^site$/i)).toHaveAttribute('data-value', '11');
+    expect(screen.getByLabelText(/^phone$/i)).toHaveAttribute('data-value', '21');
+    expect(screen.getByLabelText(/^email$/i)).toHaveAttribute('data-value', '31');
     await user.click(screen.getByRole('button', { name: /add to inbox/i }));
     expect(api.post).toHaveBeenCalledWith('/leads', {
       source: 'manual',
       customer_id: 10,
-      site_id: null,
-      phone_id: null,
-      email_id: null,
+      site_id: 11,
+      phone_id: 21,
+      email_id: 31,
       message: '',
     });
   });
 
-  it('auto-selects only the contact types that have a single option', async () => {
+  it('auto-selects the primary of each type when some lists have extra rows', async () => {
     mockEnquiryCustomers({ 10: PRIYA_MIXED });
     const user = await openExisting();
     await pickCustomer(user, 10);
     expect(await screen.findByLabelText(/^site$/i)).toHaveAttribute('data-value', '11');
-    expect(screen.getByLabelText(/^phone$/i)).toHaveAttribute('data-value', '');
+    expect(screen.getByLabelText(/^phone$/i)).toHaveAttribute('data-value', '21');
     expect(screen.getByLabelText(/^email$/i)).toHaveAttribute('data-value', '31');
   });
 
@@ -425,7 +425,7 @@ describe('Inbox book visit (requirement 5.1)', () => {
   it('opens Book visit on a lead customer and posts the appointment', async () => {
     const user = userEvent.setup();
     render(<MemoryRouter><Inbox /></MemoryRouter>);
-    await screen.findByText('Dave Whitfield');
+    await screen.findByText(/Dave Whitfield/);
     await user.click(screen.getAllByRole('button', { name: /book visit/i })[0]);
     expect(await screen.findByRole('heading', { name: /book a site visit/i })).toBeInTheDocument();
     expect(api.get).toHaveBeenCalledWith('/customers/9');

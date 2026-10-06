@@ -116,7 +116,9 @@ async function holidayBlockers(workDate, userIds) {
   return blockedIds.map((uid) => ({
     user_id: uid,
     type: 'holiday',
+    name: displayName({ name: nameById.get(uid) }, uid),
     message: `${displayName({ name: nameById.get(uid) }, uid)} is on approved holiday that day`,
+    work_date: day,
   }));
 }
 
@@ -179,7 +181,10 @@ async function assignmentWarnings(job, workDate, userIds) {
         user_id: uid,
         type: 'double_book',
         job_id: slot.job_id,
+        job_title: title === 'another job' ? null : title,
+        name,
         message: `${name} is already booked on "${title}"`,
+        work_date: day,
       });
     }
   }

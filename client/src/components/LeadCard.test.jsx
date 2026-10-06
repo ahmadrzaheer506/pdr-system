@@ -11,11 +11,13 @@ vi.mock('../lib/api', () => ({
 const lead = {
   id: 1,
   customer_id: 9,
+  ref: 'L-0001',
   customer_name: 'Dave Whitfield',
   source: 'whatsapp',
   status: 'NEW',
   message: 'Leak in the bedroom',
   phone: '07700 900100',
+  email: 'dave@example.com',
   next_action: 'Review & respond',
   created_at: '2026-09-22T10:00:00Z',
 };
@@ -31,10 +33,11 @@ function renderCard(props = {}) {
 describe('LeadCard', () => {
   it('shows the enquiry like a task row with source, time and contact chips', () => {
     renderCard();
-    expect(screen.getByRole('link', { name: 'Dave Whitfield' })).toHaveAttribute('href', '/leads/9?from=inbox&lead=1');
+    expect(screen.getByRole('link', { name: 'L-0001 - Dave Whitfield' })).toHaveAttribute('href', '/leads/9?from=inbox&lead=1');
     expect(screen.getByText('WhatsApp')).toBeInTheDocument();
     expect(screen.getByText('1h ago')).toBeInTheDocument();
     expect(screen.getByText('07700 900100')).toBeInTheDocument();
+    expect(screen.getByText('dave@example.com')).toBeInTheDocument();
     expect(screen.getByText('Next: Review & respond')).toBeInTheDocument();
     expect(screen.getByRole('link', { name: /open/i })).toHaveAttribute('href', '/leads/9?from=inbox&lead=1');
   });
@@ -48,6 +51,15 @@ describe('LeadCard', () => {
     expect(onBookVisit).toHaveBeenCalledWith(lead);
     await user.click(screen.getByRole('button', { name: /mark actioned/i }));
     expect(onMarkActioned).toHaveBeenCalledWith(lead);
+  });
+
+  it('prefixes every enquiry with its lead ref', () => {
+    render(
+      <MemoryRouter>
+        <LeadCard lead={{ ...lead, ref: 'L-0002' }} />
+      </MemoryRouter>,
+    );
+    expect(screen.getByRole('link', { name: 'L-0002 - Dave Whitfield' })).toBeInTheDocument();
   });
 
   it('shows Won and Lost instead of Converted and Closed', () => {

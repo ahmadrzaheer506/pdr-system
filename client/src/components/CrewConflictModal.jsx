@@ -1,6 +1,7 @@
 import React, { useEffect } from 'react';
 import { AlertTriangle, Briefcase, CalendarDays, CalendarOff, Loader2 } from 'lucide-react';
 import { Avatar, Modal } from './ui.jsx';
+import { shortUkDate } from '../lib/schedule';
 
 function conflictKind(row) {
   return row?.type === 'holiday' ? 'Holiday' : 'Already booked';
@@ -95,9 +96,10 @@ export default function CrewConflictModal({
             const holiday = row.type === 'holiday';
             const jobTitle = bookedJobTitle(row);
             const name = row.name || `User ${row.user_id}`;
+            const when = shortUkDate(row.work_date);
             return (
               <li
-                key={`${row.type}-${row.user_id}-${i}`}
+                key={`${row.type}-${row.user_id}-${row.work_date || ''}-${i}`}
                 className={`flex items-start gap-3 rounded-2xl px-3.5 py-3 ring-1 ${
                   holiday
                     ? 'bg-amber-50/80 ring-amber-200/90'
@@ -113,11 +115,17 @@ export default function CrewConflictModal({
                     }`}>
                       {conflictKind(row)}
                     </span>
+                    {when ? (
+                      <span className="inline-flex items-center gap-1 rounded-full bg-white/80 px-2 py-0.5 text-[11px] font-medium text-slate-600 ring-1 ring-slate-200/80">
+                        <CalendarDays size={11} className="text-slate-400" />
+                        {when}
+                      </span>
+                    ) : null}
                   </div>
                   {holiday ? (
                     <p className="mt-1.5 flex items-start gap-1.5 text-sm leading-snug text-slate-600">
                       <CalendarOff size={14} className="mt-0.5 shrink-0 text-amber-600" />
-                      <span>{conflictText(row) || 'On approved holiday'}</span>
+                      <span>{conflictText(row) || 'On approved holiday'}{when ? ` on ${when}` : ''}</span>
                     </p>
                   ) : jobTitle ? (
                     <p className="mt-1.5 flex items-start gap-1.5 text-sm leading-snug text-slate-600">
@@ -125,10 +133,13 @@ export default function CrewConflictModal({
                       <span>
                         Already booked on{' '}
                         <span className="font-medium text-slate-800">“{jobTitle}”</span>
+                        {when ? ` on ${when}` : ''}
                       </span>
                     </p>
                   ) : (
-                    <p className="mt-1.5 text-sm leading-snug text-slate-600">{conflictText(row)}</p>
+                    <p className="mt-1.5 text-sm leading-snug text-slate-600">
+                      {conflictText(row)}{when && !String(conflictText(row)).includes(when) ? ` on ${when}` : ''}
+                    </p>
                   )}
                 </div>
               </li>

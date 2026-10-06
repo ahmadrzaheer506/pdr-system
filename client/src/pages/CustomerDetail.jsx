@@ -1,10 +1,10 @@
 import React, { useEffect, useState, useCallback, useRef } from 'react';
 import { useParams, useSearchParams, Link } from 'react-router-dom';
 import { customerPath, leadBackLink } from '../lib/customerRoutes.js';
-import { leadSourceLabel } from '../lib/leads.js';
+import { leadDisplayName, leadSourceLabel } from '../lib/leads.js';
 import { enquiryWorkspaceStage, filterByLeadScope, leadWorkspaceScope } from '../lib/leadWorkspace.js';
 import {
-  ArrowLeft, Phone, Mail, MapPin, Send, Calendar, FileText, Briefcase, Receipt,
+  ArrowLeft, MapPin, Send, Calendar, FileText, Briefcase, Receipt,
   Check, X, ChevronDown, Building2, Copy, Download, IdCard, Pencil, Trash2, Loader2, Users,
 } from 'lucide-react';
 import { api, money, fmtDate, fmtDateTime } from '../lib/api';
@@ -18,7 +18,7 @@ import CustomerAttachments from '../components/CustomerAttachments.jsx';
 import InvoiceTaxDetail from '../components/InvoiceTaxDetail.jsx';
 import InvoiceTaxSummary from '../components/InvoiceTaxSummary.jsx';
 import LostReasonModal from '../components/LostReasonModal.jsx';
-import { formatSite, PHONE_TYPES, EMAIL_TYPES, typeLabel } from '../lib/contacts';
+import LeadContacts from '../components/LeadContacts.jsx';
 import { taskHref } from '../lib/taskList.js';
 import { ROLES } from '../lib/roles';
 import { canChangeVisit, canCompleteVisit, visitTypeLabel } from '../lib/visitTypes';
@@ -61,7 +61,8 @@ export default function CustomerDetail() {
   if (!data) return <PageLoading />;
   if (!data.customer) return <LoadError message={data.error || 'Customer not found'} />;
   const { customer } = data;
-  const scope = leadWorkspaceScope(data.leads, params.get('lead'));
+  const leads = data.leads || [];
+  const scope = leadWorkspaceScope(leads, params.get('lead'));
   const quotes = filterByLeadScope(data.quotes, scope);
   const jobs = filterByLeadScope(data.jobs, scope);
   const invoices = filterByLeadScope(data.invoices, scope);
@@ -136,7 +137,9 @@ export default function CustomerDetail() {
         <div className="flex flex-wrap items-start gap-3">
           <div className="max-w-full">
             <div className="flex items-center gap-2 flex-wrap">
-              <h1 className="text-xl font-bold text-slate-900">{customer.name}</h1>
+              <h1 className="text-xl font-bold text-slate-900">
+                {leadDisplayName({ ...activeLead, customer_name: customer.name, name: customer.name })}
+              </h1>
               <span className={`badge ${customer.customer_type === 'commercial' ? 'bg-indigo-100 text-indigo-700' : 'bg-slate-100 text-slate-700'}`}>
                 {customer.customer_type === 'commercial' ? 'Commercial' : 'Domestic'}
               </span>
@@ -151,24 +154,12 @@ export default function CustomerDetail() {
               <span className="flex items-center gap-1.5">
                 Owner {customer.owner_name || 'Unassigned'}
               </span>
-              {(customer.phones || []).map((p) => (
-                <span key={`p${p.id}`} className="flex items-center gap-1.5">
-                  <Phone size={13} /> {p.value}
-                  <span className="text-slate-400">({typeLabel(PHONE_TYPES, p.type)}{p.is_primary ? ', primary' : ''})</span>
-                </span>
-              ))}
-              {(customer.emails || []).map((em) => (
-                <span key={`e${em.id}`} className="flex items-center gap-1.5">
-                  <Mail size={13} /> {em.value}
-                  <span className="text-slate-400">({typeLabel(EMAIL_TYPES, em.type)}{em.is_primary ? ', primary' : ''})</span>
-                </span>
-              ))}
-              {(customer.sites || []).map((s) => (
-                <span key={`s${s.id}`} className="flex items-center gap-1.5">
-                  <MapPin size={13} /> {formatSite(s)}
-                  {s.is_primary && <span className="text-slate-400">(primary)</span>}
-                </span>
-              ))}
+              <LeadContacts
+                customer={customer}
+                lead={activeLead}
+                onSaved={() => { load(); show('Lead contacts updated'); }}
+                onError={(msg) => show(msg, 'error')}
+              />
               {customer.customer_type === 'commercial' && customer.vat_number && (
                 <span>VAT {customer.vat_number}</span>
               )}
@@ -256,6 +247,7 @@ export default function CustomerDetail() {
         customerId={id}
         customer={customer}
         leadId={activeLead?.id || null}
+        lead={activeLead}
         existingQuote={quoteModal && quoteModal !== true ? quoteModal : null}
         onSaved={() => { setQuoteModal(null); load(); show('Quote saved'); }}
       />
@@ -264,6 +256,7 @@ export default function CustomerDetail() {
         onClose={() => setVisitModal(null)}
         customer={customer}
         leadId={activeLead?.id || null}
+        lead={activeLead}
         existing={visitModal && visitModal !== 'new' ? visitModal : null}
         onSaved={() => {
           const edited = visitModal && visitModal !== 'new';

@@ -8,7 +8,7 @@ import UnscheduledQueue from '../components/UnscheduledQueue.jsx';
 import JobModal from '../components/JobModal.jsx';
 import AiAssistant from '../components/AiAssistant.jsx';
 import TeamAvailability from '../components/TeamAvailability.jsx';
-import { addIsoDays, localIsoDate } from '../lib/schedule';
+import { addIsoDays, localIsoDate, parseIsoDate } from '../lib/schedule';
 
 export default function Schedule() {
   const [anchorDate, setAnchorDate] = useState(() => new Date());
@@ -19,7 +19,17 @@ export default function Schedule() {
   const [staff, setStaff] = useState([]);
   const [holidays, setHolidays] = useState([]);
   const [openJob, setOpenJob] = useState(null);
+  const [openCrewDate, setOpenCrewDate] = useState(null);
   const { toast, show } = useToast();
+
+  const openJobAt = (id, dateIso) => {
+    setOpenJob(id);
+    setOpenCrewDate(parseIsoDate(dateIso) || null);
+  };
+  const closeJob = () => {
+    setOpenJob(null);
+    setOpenCrewDate(null);
+  };
 
   const loadWeek = () => {
     const from = addIsoDays(localIsoDate(anchorDate), -7);
@@ -58,7 +68,7 @@ export default function Schedule() {
                 anchorDate={anchorDate}
                 jobs={weekJobs}
                 holidays={holidays}
-                onJobClick={setOpenJob}
+                onJobClick={openJobAt}
                 onDayClick={(iso) => {
                   const [y, m, d] = iso.split('-').map(Number);
                   setAnchorDate(new Date(y, m - 1, d));
@@ -72,7 +82,7 @@ export default function Schedule() {
               jobs={weekJobs}
               holidays={holidays}
               staff={staff}
-              onJobClick={setOpenJob}
+              onJobClick={openJobAt}
               onDateChange={(iso) => {
                 const [y, m, d] = iso.split('-').map(Number);
                 setAnchorDate(new Date(y, m - 1, d));
@@ -90,9 +100,12 @@ export default function Schedule() {
         <div className="h-full lg:col-start-2 lg:row-span-2">
           <UnscheduledQueue
             jobs={unscheduled}
+            staff={staff}
+            holidays={holidays}
+            weekJobs={weekJobs}
             onPlaced={() => { loadWeek(); show('Job placed on the schedule'); }}
             onError={(msg) => show(msg, 'error')}
-            onOpen={setOpenJob}
+            onOpen={(id) => openJobAt(id)}
           />
         </div>
         <TeamAvailability staff={staff} holidays={holidays} jobs={weekJobs} />
@@ -100,7 +113,8 @@ export default function Schedule() {
 
       <JobModal
         jobId={openJob}
-        onClose={() => setOpenJob(null)}
+        crewDate={openCrewDate}
+        onClose={closeJob}
         onChanged={loadWeek}
         staff={staff}
         jobs={weekJobs}

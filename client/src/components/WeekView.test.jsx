@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import WeekView from './WeekView.jsx';
 
@@ -169,6 +169,31 @@ describe('WeekView (requirement 8.1)', () => {
     expect(list.className).toMatch(/max-h-\[28rem\]/);
     expect(list.parentElement.className).not.toMatch(/h-\[32rem\]/);
     expect(screen.getByText('Busy job 10')).toBeInTheDocument();
+  });
+
+  it('opens a multi-day job on the calendar day that was clicked', async () => {
+    const user = userEvent.setup();
+    const onJobClick = vi.fn();
+    render(
+      <WeekView
+        anchorDate={new Date(2026, 9, 6)}
+        jobs={[{
+          id: 12,
+          title: 'Flat roof overlay',
+          customer_name: 'Community Hall',
+          start_date: '2026-10-06',
+          end_date: '2026-10-08',
+          priority: 'high',
+          day_assignments: [],
+        }]}
+        holidays={[]}
+        onJobClick={onJobClick}
+        onDayClick={() => {}}
+      />,
+    );
+    const thursday = screen.getByRole('region', { name: /jobs on thu 8/i });
+    await user.click(within(thursday).getByRole('button'));
+    expect(onJobClick).toHaveBeenCalledWith(12, '2026-10-08');
   });
 
   it('keeps an empty day column short', () => {

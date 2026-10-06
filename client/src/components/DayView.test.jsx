@@ -136,4 +136,30 @@ describe('DayView (requirement 8.1)', () => {
       expect(api.put).toHaveBeenCalledWith('/jobs/1/assignments', { work_date: '2026-09-22', user_ids: [3] });
     });
   });
+
+  it('opens a job with the day being viewed', async () => {
+    const user = userEvent.setup();
+    const onJobClick = vi.fn();
+    render(
+      <DayView
+        dateIso="2026-10-08"
+        jobs={[{
+          id: 12,
+          title: 'Flat roof overlay',
+          customer_name: 'Community Hall',
+          start_date: '2026-10-06',
+          end_date: '2026-10-08',
+          priority: 'high',
+          day_assignments: [],
+        }]}
+        holidays={[]}
+        staff={STAFF}
+        onJobClick={onJobClick}
+        onDateChange={() => {}}
+        onBackToWeek={() => {}}
+      />,
+    );
+    await user.click(screen.getByRole('button', { name: /flat roof overlay/i }));
+    expect(onJobClick).toHaveBeenCalledWith(12, '2026-10-08');
+  });
 });

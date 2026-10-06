@@ -11,7 +11,7 @@ import SearchSelect from '../components/SearchSelect.jsx';
 import DatePicker from '../components/DatePicker.jsx';
 import ContactPickers from '../components/ContactPickers.jsx';
 import CustomerCreateFields, { EMPTY_CUSTOMER_FORM } from '../components/CustomerCreateFields.jsx';
-import { contactsFromSingleOptions, emailFormatError } from '../lib/contacts';
+import { emailFormatError, primaryContactIds } from '../lib/contacts';
 
 const INBOX_TABS = [
   {
@@ -371,7 +371,7 @@ function AddLeadModal({ open, onClose, onSaved, onError }) {
         if (cancelled) return;
         const customer = d.customer || null;
         setRecord(customer);
-        setPicks(contactsFromSingleOptions(customer));
+        setPicks(primaryContactIds(customer));
       })
       .catch((err) => {
         if (cancelled) return;

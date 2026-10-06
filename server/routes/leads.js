@@ -42,11 +42,16 @@ router.get('/', asyncHandler(async (req, res) => {
   const leads = rows.map((r) => {
     const o = plain(r);
     const customer = contacts.applyPrimaryContacts(o.Customer || {});
+    const chosen = contacts.applyLeadContacts(customer, o);
     o.customer_name = customer.name;
-    o.phone = customer.phone;
-    o.email = customer.email;
+    o.phone = chosen.phone;
+    o.email = chosen.email;
     o.stage = o.stage || customer.stage;
-    o.address = customer.address;
+    o.address = chosen.address;
+    o.postcode = chosen.postcode;
+    o.site_id = chosen.site_id;
+    o.phone_id = chosen.phone_id;
+    o.email_id = chosen.email_id;
     o.meta = o.meta || {};
     delete o.Customer;
     return o;
@@ -85,10 +90,9 @@ router.post('/', asyncHandler(async (req, res) => {
       }
       return res.status(created.status || 400).json(body);
     }
-    const picked = await contacts.resolveCustomerContactSelection(
+    const picked = await contacts.resolveLeadContactsForCreate(
       existingId,
       { ...req.body, ...created.value },
-      { fallbackPrimary: false },
     );
     if (picked.error) return res.status(400).json({ error: picked.error });
     const result = await ingestInbound({
@@ -153,6 +157,21 @@ router.put('/:id', asyncHandler(async (req, res) => {
   const patch = {};
   if (status) patch.status = status;
   if (next_action !== undefined) patch.next_action = next_action;
+  const contactKeys = ['site_id', 'phone_id', 'email_id'];
+  const changingContacts = contactKeys.some((key) => Object.prototype.hasOwnProperty.call(req.body || {}, key));
+  if (changingContacts) {
+    const picked = await contacts.resolveCustomerContactSelection(lead.customer_id, {
+      site_id: Object.prototype.hasOwnProperty.call(req.body, 'site_id') ? req.body.site_id : lead.site_id,
+      phone_id: Object.prototype.hasOwnProperty.call(req.body, 'phone_id') ? req.body.phone_id : lead.phone_id,
+      email_id: Object.prototype.hasOwnProperty.call(req.body, 'email_id') ? req.body.email_id : lead.email_id,
+    }, { fallbackPrimary: false });
+    if (picked.error) return res.status(400).json({ error: picked.error });
+    patch.site_id = picked.site_id;
+    patch.phone_id = picked.phone_id;
+    patch.email_id = picked.email_id;
+    const meta = lead.meta && typeof lead.meta === 'object' && !Array.isArray(lead.meta) ? { ...lead.meta } : {};
+    patch.meta = { ...meta, site_id: picked.site_id, phone_id: picked.phone_id, email_id: picked.email_id };
+  }
   if (Object.keys(patch).length) await lead.update(patch);
   res.json({ ok: true });
 }));

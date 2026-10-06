@@ -6,6 +6,7 @@ import { EmptyState, PageLoading, Toast, useToast } from '../components/ui.jsx';
 import LostReasonModal from '../components/LostReasonModal.jsx';
 import { stallLevel, sumPipelineTotals } from '../lib/pipelineBoard.js';
 import { leadPath } from '../lib/customerRoutes.js';
+import { leadDisplayName } from '../lib/leads.js';
 import SelectMenu from '../components/SelectMenu.jsx';
 import DatePicker from '../components/DatePicker.jsx';
 
@@ -459,7 +460,7 @@ function PipelineCard({ customer, accent, onDragStart, onDragOverCard, onDropOnC
         <div className="h-1" style={{ background: accent }} />
         <div className="p-3 pb-2">
           <div className="flex items-start justify-between gap-2">
-            <div className="font-semibold text-sm text-slate-900 leading-snug group-hover:text-brand-600 line-clamp-2">{customer.name}</div>
+            <div className="font-semibold text-sm text-slate-900 leading-snug group-hover:text-brand-600 line-clamp-2">{leadDisplayName(customer)}</div>
             {Number(customer.pipeline_value || 0) > 0 ? (
               <div className="text-sm font-bold tabular-nums text-slate-900 flex-shrink-0">{money(customer.pipeline_value)}</div>
             ) : null}

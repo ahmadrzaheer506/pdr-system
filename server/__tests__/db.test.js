@@ -7,9 +7,10 @@ jest.mock('../models', () => ({
   },
   Quote: { findAll: jest.fn() },
   Invoice: { findAll: jest.fn() },
+  Lead: { findAll: jest.fn() },
 }));
 
-const { Setting, Quote, Invoice } = require('../models');
+const { Setting, Quote, Invoice, Lead } = require('../models');
 const { getSetting, setSetting, allSettings, nextRef, pj, plain, DEFAULT_SETTINGS } = require('../db');
 
 describe('db helpers', () => {
@@ -171,5 +172,15 @@ describe('db helpers', () => {
     const year = new Date().getFullYear();
     Invoice.findAll.mockResolvedValue([{ ref: `INV-${year}-0004` }]);
     await expect(nextRef('invoice')).resolves.toBe(`INV-${year}-0005`);
+  });
+
+  test('nextRef issues sequential L- refs for leads', async () => {
+    Lead.findAll.mockResolvedValue([{ ref: 'L-0001' }, { ref: 'L-0012' }]);
+    await expect(nextRef('lead')).resolves.toBe('L-0013');
+  });
+
+  test('nextRef starts leads at L-0001', async () => {
+    Lead.findAll.mockResolvedValue([]);
+    await expect(nextRef('lead')).resolves.toBe('L-0001');
   });
 });

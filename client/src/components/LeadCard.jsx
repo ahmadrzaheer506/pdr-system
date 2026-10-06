@@ -5,7 +5,7 @@ import {
 } from 'lucide-react';
 import { fmtTimeAgo } from '../lib/api';
 import { leadPath } from '../lib/customerRoutes.js';
-import { leadSourceLabel } from '../lib/leads.js';
+import { leadDisplayName, leadSourceLabel } from '../lib/leads.js';
 import { StatusBadge } from './ui.jsx';
 
 const SOURCE_ICON = {
@@ -79,7 +79,6 @@ export default function LeadCard({
   const style = SOURCE_STYLE[lead.source] || FALLBACK_STYLE;
   const Icon = SOURCE_ICON[lead.source] || Edit3;
   const href = lead.customer_id ? leadPath(lead.customer_id, from, lead.id) : null;
-  const contact = lead.phone || lead.email || '';
   const isNew = lead.status === 'NEW';
   const showActions = href || onBookVisit || (isNew && onMarkActioned);
   const preview = lead.message || lead.subject || '';
@@ -98,10 +97,10 @@ export default function LeadCard({
                 to={href}
                 className="text-[15px] font-semibold tracking-tight text-slate-900 hover:text-brand-700"
               >
-                {lead.customer_name}
+                {leadDisplayName(lead)}
               </Link>
             ) : (
-              <span className="text-[15px] font-semibold tracking-tight text-slate-900">{lead.customer_name}</span>
+              <span className="text-[15px] font-semibold tracking-tight text-slate-900">{leadDisplayName(lead)}</span>
             )}
             <StatusBadge
               status={lead.stage === 'WON' || lead.stage === 'LOST' ? lead.stage : lead.status}
@@ -123,12 +122,14 @@ export default function LeadCard({
                 {fmtTimeAgo(lead.created_at)}
               </Chip>
             ) : null}
-            {contact ? (
-              <Chip
-                icon={lead.phone ? Phone : Mail}
-                className="bg-slate-50 text-slate-600 ring-slate-200/80"
-              >
-                {contact}
+            {lead.phone ? (
+              <Chip icon={Phone} className="bg-slate-50 text-slate-600 ring-slate-200/80">
+                {lead.phone}
+              </Chip>
+            ) : null}
+            {lead.email ? (
+              <Chip icon={Mail} className="bg-slate-50 text-slate-600 ring-slate-200/80">
+                {lead.email}
               </Chip>
             ) : null}
           </div>

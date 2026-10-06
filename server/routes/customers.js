@@ -4,7 +4,7 @@ const { Customer, Quote, Task, Message, Activity, Job, User, Invoice, InvoicePay
 const { requireAuth, requireOffice, asyncHandler } = require('../auth');
 const { STAGES, STAGE_LABELS, setStage, logActivity, sumPipelineBoardTotals, resolveLeadForCustomer } = require('../services/pipeline');
 const { sendToCustomer } = require('../services/messenger');
-const { plain } = require('../db');
+const { plain, nextRef } = require('../db');
 const { resolveCustomerType, typeFields } = require('../customerType');
 const contacts = require('../customerContacts');
 const { buildCustomerTimeline, conversationMessages } = require('../customerTimeline');
@@ -140,13 +140,20 @@ router.post('/', asyncHandler(async (req, res) => {
     vat_number: typed.vat_number,
   });
   await contacts.saveContactLists(created.id, lists);
+  const picked = await contacts.resolveLeadContactsForCreate(created.id, {});
+  const contactIds = picked.error
+    ? { site_id: null, phone_id: null, email_id: null }
+    : { site_id: picked.site_id, phone_id: picked.phone_id, email_id: picked.email_id };
   await Lead.create({
     customer_id: created.id,
+    ref: await nextRef('lead'),
     source,
     message: notes ? String(notes).slice(0, 2000) : null,
     status: 'NEW',
     next_action: 'Review & respond',
     stage: 'ENQUIRY',
+    meta: contactIds,
+    ...contactIds,
   });
   await logActivity(created.id, req.user.id, 'customer_created', 'Customer created');
   res.json({ id: created.id });
@@ -237,7 +244,7 @@ router.get('/:id', asyncHandler(async (req, res) => {
     }],
     order: [['start', 'DESC']],
   })).map((a) => ({ ...a, ...visitAssignees.decorateAssignees(a) }));
-  const leads = plain(await Lead.findAll({ where: { customer_id: id }, order: [['id', 'DESC']] }));
+  const leadRows = plain(await Lead.findAll({ where: { customer_id: id }, order: [['id', 'DESC']] }));
 
   const followupRows = await Followup.findAll({
     where: { customer_id: id },
@@ -284,10 +291,23 @@ router.get('/:id', asyncHandler(async (req, res) => {
   const raw = plain(c);
   const ownerName = raw.owner?.name || null;
   delete raw.owner;
+  const listed = await contacts.listContacts(c.id);
   const customer = contacts.applyPrimaryContacts({
     ...raw,
-    ...(await contacts.listContacts(c.id)),
+    ...listed,
     owner_name: ownerName,
+  });
+  const leads = leadRows.map((lead) => {
+    const chosen = contacts.applyLeadContacts(listed, lead);
+    return {
+      ...lead,
+      phone: chosen.phone,
+      email: chosen.email,
+      address: chosen.address,
+      site_id: chosen.site_id,
+      phone_id: chosen.phone_id,
+      email_id: chosen.email_id,
+    };
   });
   res.json({
     customer, messages, activity, timeline, internal_notes, files: customer_files,

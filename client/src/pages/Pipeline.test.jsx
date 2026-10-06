@@ -34,30 +34,30 @@ const FULL_BOARD = {
 };
 FULL_BOARD.board.ENQUIRY = [{
   id: 9, name: 'Dave Whitfield', address: '14 Elm Grove, Reading', source: 'whatsapp',
-  latest_quote_total: 2400, pipeline_value: 2400, stage: 'ENQUIRY',
+  ref: 'L-0009', latest_quote_total: 2400, pipeline_value: 2400, stage: 'ENQUIRY',
   updated_at: daysAgoIso(2), open_tasks: 2,
 }, {
   id: 10, name: 'Priya Nair', address: '8 Oakfield Road, Reading', source: 'email',
-  latest_quote_total: null, pipeline_value: 0, stage: 'ENQUIRY',
+  ref: 'L-0010', latest_quote_total: null, pipeline_value: 0, stage: 'ENQUIRY',
   updated_at: daysAgoIso(2), open_tasks: 0,
 }, {
   id: 11, name: 'Marcus Reid', address: '5 The Sidings', source: 'email',
-  latest_quote_total: 500, pipeline_value: 500, stage: 'ENQUIRY',
+  ref: 'L-0011', latest_quote_total: 500, pipeline_value: 500, stage: 'ENQUIRY',
   updated_at: daysAgoIso(8), open_tasks: 0,
 }];
 FULL_BOARD.board.FOLLOW_UP = [{
   id: 12, name: 'Tom Ellery', address: '9 Mill Lane', source: 'facebook_lead',
-  latest_quote_total: 876, pipeline_value: 876, stage: 'FOLLOW_UP',
+  ref: 'L-0012', latest_quote_total: 876, pipeline_value: 876, stage: 'FOLLOW_UP',
   updated_at: daysAgoIso(15), open_tasks: 0,
 }];
 FULL_BOARD.board.LOST = [{
   id: 13, name: 'Kevin Postlethwaite', address: '17 Wensley Road', source: 'phone',
-  latest_quote_total: 1740, pipeline_value: 1740, stage: 'LOST',
+  ref: 'L-0013', latest_quote_total: 1740, pipeline_value: 1740, stage: 'LOST',
   updated_at: daysAgoIso(20), open_tasks: 0,
 }];
 FULL_BOARD.board.PAID = [{
   id: 4, name: 'Helen Ackroyd', address: '2 Priory Court', source: 'referral',
-  latest_quote_total: 8900, pipeline_value: 8900, stage: 'PAID',
+  ref: 'L-0004', latest_quote_total: 8900, pipeline_value: 8900, stage: 'PAID',
   updated_at: daysAgoIso(20), open_tasks: 0,
 }];
 FULL_BOARD.owners = [{ id: 1, name: 'Paul Douglas' }, { id: 2, name: 'Lisa Grant' }];
@@ -109,13 +109,13 @@ describe('Pipeline board (requirement 4.1)', () => {
 
   it('shows name, address, source, quote and open tasks on a card', async () => {
     render(<MemoryRouter><Pipeline /></MemoryRouter>);
-    expect(await screen.findByText('Dave Whitfield')).toBeInTheDocument();
+    expect(await screen.findByText('L-0009 - Dave Whitfield')).toBeInTheDocument();
     expect(screen.getByText('14 Elm Grove, Reading')).toBeInTheDocument();
     expect(screen.getByText('whatsapp')).toBeInTheDocument();
     expect(screen.getByText('£2400.00')).toBeInTheDocument();
     expect(screen.getByText('2 tasks')).toBeInTheDocument();
     expect(screen.getAllByText('Updated 2d ago').length).toBeGreaterThanOrEqual(1);
-    expect(screen.getByText('Helen Ackroyd')).toBeInTheDocument();
+    expect(screen.getByText('L-0004 - Helen Ackroyd')).toBeInTheDocument();
     expect(screen.getByRole('link', { name: /dave whitfield/i })).toHaveAttribute('href', '/leads/9?from=pipeline&lead=9');
     const daveCard = screen.getByRole('link', { name: /dave whitfield/i }).closest('[data-customer-id]');
     const goToLead = [...daveCard.querySelectorAll('a')].find((a) => a.textContent.includes('Go to lead'));
@@ -129,17 +129,21 @@ describe('Pipeline board (requirement 4.1)', () => {
         ...FULL_BOARD.board,
         ENQUIRY: [{
           id: 40, lead_id: 40, customer_id: 27, name: 'M Iman', stage: 'ENQUIRY',
+          ref: 'L-0040',
           address: 'sui gas road', source: 'phone', pipeline_value: 0, updated_at: daysAgoIso(0), open_tasks: 0,
         }],
         LOST: [{
           id: 41, lead_id: 41, customer_id: 27, name: 'M Iman', stage: 'LOST',
+          ref: 'L-0041',
           address: 'sui gas road', source: 'email', pipeline_value: 0, updated_at: daysAgoIso(0), open_tasks: 0,
         }],
       },
     });
     render(<MemoryRouter><Pipeline /></MemoryRouter>);
-    const cards = await screen.findAllByText('M Iman');
+    const cards = await screen.findAllByText(/M Iman/);
     expect(cards).toHaveLength(2);
+    expect(screen.getByText('L-0040 - M Iman')).toBeInTheDocument();
+    expect(screen.getByText('L-0041 - M Iman')).toBeInTheDocument();
     expect(document.querySelector('[data-stage="ENQUIRY"] a[href="/leads/27?from=pipeline&lead=40"]')).toBeTruthy();
     expect(document.querySelector('[data-stage="LOST"] a[href="/leads/27?from=pipeline&lead=41"]')).toBeTruthy();
   });
@@ -154,7 +158,7 @@ describe('Pipeline drag-and-drop (requirement 4.2)', () => {
 
   it('moves a card to any column including skip, and toasts', async () => {
     render(<MemoryRouter><Pipeline /></MemoryRouter>);
-    const card = await screen.findByText('Dave Whitfield');
+    const card = await screen.findByText(/Dave Whitfield/);
     fireEvent.dragStart(card.closest('[data-customer-id]'));
     fireEvent.drop(document.querySelector('[data-stage="PAID"]'));
     expect(api.put).toHaveBeenCalledWith('/customers/9/stage', { stage: 'PAID', lead_id: 9, before_id: null });
@@ -163,15 +167,15 @@ describe('Pipeline drag-and-drop (requirement 4.2)', () => {
 
   it('reorders within a column when dropped on another card', async () => {
     render(<MemoryRouter><Pipeline /></MemoryRouter>);
-    fireEvent.dragStart((await screen.findByText('Dave Whitfield')).closest('[data-customer-id]'));
-    fireEvent.drop(screen.getByText('Priya Nair').closest('[data-customer-id]'));
+    fireEvent.dragStart((await screen.findByText(/Dave Whitfield/)).closest('[data-customer-id]'));
+    fireEvent.drop(screen.getByText(/Priya Nair/).closest('[data-customer-id]'));
     expect(api.put).toHaveBeenCalledWith('/customers/9/stage', { stage: 'ENQUIRY', lead_id: 9, before_id: 10 });
     expect(await screen.findByText('Order updated')).toBeInTheDocument();
   });
 
   it('highlights the column under the pointer while dragging', async () => {
     render(<MemoryRouter><Pipeline /></MemoryRouter>);
-    fireEvent.dragStart((await screen.findByText('Dave Whitfield')).closest('[data-customer-id]'));
+    fireEvent.dragStart((await screen.findByText(/Dave Whitfield/)).closest('[data-customer-id]'));
     const quoted = document.querySelector('[data-stage="QUOTED"]');
     fireEvent.dragOver(quoted);
     expect(quoted.className).toMatch(/ring/);
@@ -180,7 +184,7 @@ describe('Pipeline drag-and-drop (requirement 4.2)', () => {
   it('toasts the error when a move fails', async () => {
     api.put.mockRejectedValue(new Error('Unknown stage: NOPE'));
     render(<MemoryRouter><Pipeline /></MemoryRouter>);
-    fireEvent.dragStart((await screen.findByText('Dave Whitfield')).closest('[data-customer-id]'));
+    fireEvent.dragStart((await screen.findByText(/Dave Whitfield/)).closest('[data-customer-id]'));
     fireEvent.drop(document.querySelector('[data-stage="PAID"]'));
     expect(await screen.findByText('Unknown stage: NOPE')).toBeInTheDocument();
   });
@@ -206,7 +210,7 @@ describe('Pipeline lost reason (requirement 2.6)', () => {
   it('asks for a reason before moving a card to Lost', async () => {
     const user = userEvent.setup();
     render(<MemoryRouter><Pipeline /></MemoryRouter>);
-    const card = await screen.findByText('Dave Whitfield');
+    const card = await screen.findByText(/Dave Whitfield/);
     fireEvent.dragStart(card.closest('[data-customer-id]'));
     fireEvent.drop(screen.getByRole('heading', { name: 'Lost' }).closest('.flex-shrink-0'));
     expect(await screen.findByText(/why was this lost/i)).toBeInTheDocument();
@@ -251,7 +255,7 @@ describe('Pipeline filters (requirement 4.4)', () => {
         <Pipeline />
       </MemoryRouter>,
     );
-    await screen.findByText('Dave Whitfield');
+    await screen.findByText(/Dave Whitfield/);
     await user.click(screen.getByLabelText('Filter by source'));
     await user.click(screen.getByRole('option', { name: 'WhatsApp' }));
     await user.click(screen.getByRole('option', { name: 'Email' }));
@@ -301,7 +305,7 @@ describe('Pipeline filters (requirement 4.4)', () => {
         <Pipeline />
       </MemoryRouter>,
     );
-    await screen.findByText('Dave Whitfield');
+    await screen.findByText(/Dave Whitfield/);
     await user.type(screen.getByLabelText(/search pipeline/i), 'Dave');
     await waitFor(() => {
       expect(api.get).toHaveBeenCalledWith('/customers/pipeline/board?q=Dave');
@@ -339,7 +343,7 @@ describe('Pipeline value and stall (requirement 4.5)', () => {
     expect(document.querySelector('[data-stage-value="FOLLOW_UP"]')).toHaveTextContent('£876.00');
     expect(document.querySelector('[data-stage-value="PAID"]')).toBeNull();
     expect(document.querySelector('[data-stage-value="LOST"]')).toBeNull();
-    expect(screen.getByText('Dave Whitfield').closest('a')).toHaveTextContent('£2400.00');
+    expect(screen.getByText(/Dave Whitfield/).closest('a')).toHaveTextContent('£2400.00');
   });
 
   it('shows the latest open quote on the card, not the sum of every draft', async () => {
@@ -370,12 +374,12 @@ describe('Pipeline value and stall (requirement 4.5)', () => {
 
   it('marks amber and red stalls and skips Lost and Paid', async () => {
     render(<MemoryRouter><Pipeline /></MemoryRouter>);
-    expect(await screen.findByText('Marcus Reid')).toBeInTheDocument();
-    const marcus = screen.getByText('Marcus Reid').closest('a');
-    const tom = screen.getByText('Tom Ellery').closest('a');
-    const dave = screen.getByText('Dave Whitfield').closest('a');
-    const helen = screen.getByText('Helen Ackroyd').closest('a');
-    const kevin = screen.getByText('Kevin Postlethwaite').closest('a');
+    expect(await screen.findByText(/Marcus Reid/)).toBeInTheDocument();
+    const marcus = screen.getByText(/Marcus Reid/).closest('a');
+    const tom = screen.getByText(/Tom Ellery/).closest('a');
+    const dave = screen.getByText(/Dave Whitfield/).closest('a');
+    const helen = screen.getByText(/Helen Ackroyd/).closest('a');
+    const kevin = screen.getByText(/Kevin Postlethwaite/).closest('a');
     expect(marcus.textContent).toMatch(/Stalled/);
     expect(marcus.querySelector('.text-amber-700, .text-amber-800')).toBeTruthy();
     expect(tom.textContent).toMatch(/Stalled/);

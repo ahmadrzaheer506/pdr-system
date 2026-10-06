@@ -28,11 +28,11 @@ const DETAIL = {
   },
   leads: [
     {
-      id: 11, source: 'whatsapp', status: 'CONVERTED', message: 'Leak in the porch',
+      id: 11, ref: 'L-0011', source: 'whatsapp', status: 'CONVERTED', message: 'Leak in the porch',
       next_action: null, created_at: '2026-09-01T09:00:00Z',
     },
     {
-      id: 22, source: 'phone', status: 'NEW', message: 'Called about a garage roof',
+      id: 22, ref: 'L-0022', source: 'phone', status: 'NEW', message: 'Called about a garage roof',
       next_action: 'Review & respond', created_at: '2026-09-20T10:00:00Z',
     },
   ],
@@ -79,6 +79,8 @@ describe('Customer master record', () => {
     expect(screen.getByText('2 leads')).toBeInTheDocument();
     expect(screen.getByText('Leak in the porch')).toBeInTheDocument();
     expect(screen.getByText('Called about a garage roof')).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'L-0011 - Helen Ackroyd' })).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'L-0022 - Helen Ackroyd' })).toBeInTheDocument();
     expect(screen.getAllByRole('link', { name: /^open$/i })[0]).toHaveAttribute('href', '/leads/37?from=customer&lead=11');
   });
 

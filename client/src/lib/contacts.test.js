@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { formatSite, primaryOf, soleContactId, contactsFromSingleOptions, PHONE_TYPES, EMAIL_TYPES, emailFormatError } from './contacts';
+import { formatSite, primaryOf, soleContactId, contactsFromSingleOptions, primaryContactIds, contactIdsFromLead, findContact, PHONE_TYPES, EMAIL_TYPES, emailFormatError } from './contacts';
 
 describe('contact display helpers (requirement 2.2)', () => {
   it('formats a site as address + postcode', () => {
@@ -24,6 +24,27 @@ describe('contact display helpers (requirement 2.2)', () => {
     ]).id).toBe(2);
     expect(primaryOf([{ id: 1, is_primary: false }]).id).toBe(1);
     expect(primaryOf([])).toBeNull();
+  });
+
+  it('auto-selects the primary site, phone and email for a new enquiry', () => {
+    expect(primaryContactIds({
+      sites: [
+        { id: 11, is_primary: true },
+        { id: 12, is_primary: false },
+      ],
+      phones: [
+        { id: 21, is_primary: false },
+        { id: 22, is_primary: true },
+      ],
+      emails: [{ id: 31, is_primary: true }],
+    })).toEqual({ site_id: 11, phone_id: 22, email_id: 31 });
+  });
+
+  it('reads one site, phone and email from the lead', () => {
+    expect(contactIdsFromLead({ site_id: 6, phone_id: 2, email_id: 4 })).toEqual({
+      site_id: 6, phone_id: 2, email_id: 4,
+    });
+    expect(findContact([{ id: 6, address: 'Garage' }], 6).address).toBe('Garage');
   });
 
   it('exposes the stored phone and email types', () => {

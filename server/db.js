@@ -9,7 +9,7 @@ const path = require('path');
 const fs = require('fs');
 const { Umzug, SequelizeStorage } = require('umzug');
 const { Sequelize } = require('sequelize');
-const { sequelize, Setting, Quote, Invoice } = require('./models');
+const { sequelize, Setting, Quote, Invoice, Lead } = require('./models');
 const { DEFAULT_VAT_RATES, mergeVatRates } = require('./services/ukTax');
 
 const DATA_DIR = process.env.DATA_DIR
@@ -227,11 +227,19 @@ async function allSettings() {
 }
 
 /**
- * Sequential document refs: Q-2026-0001 / INV-2026-0001.
- * Uses the highest existing number for the year so deleted rows do not
- * reuse a live ref (count + 1 collides when the sequence has gaps).
+ * Sequential document refs: L-0001 / Q-2026-0001 / INV-2026-0001.
+ * Uses the highest existing number so deleted rows do not reuse a live ref.
  */
 async function nextRef(kind) {
+  if (kind === 'lead') {
+    const rows = await Lead.findAll({ attributes: ['ref'], raw: true });
+    let max = 0;
+    for (const row of rows) {
+      const match = String(row?.ref || '').match(/^L-(\d+)$/);
+      if (match) max = Math.max(max, parseInt(match[1], 10));
+    }
+    return `L-${String(max + 1).padStart(4, '0')}`;
+  }
   const Model = kind === 'quote' ? Quote : Invoice;
   const prefix = kind === 'quote' ? 'Q' : 'INV';
   const year = new Date().getFullYear();

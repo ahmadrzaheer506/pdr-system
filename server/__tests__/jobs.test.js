@@ -247,6 +247,25 @@ describe('PUT /api/jobs/:id/assignments (requirement 8.1)', () => {
     expect(JobDayAssignment.findOrCreate).toHaveBeenCalled();
   });
 
+  test('assigns crew on every work_date for a multi-day job', async () => {
+    const { JobDayAssignment } = require('../models');
+    Job.findByPk.mockResolvedValue({
+      id: 4, title: 'Re-roof', customer_id: 9,
+      start_date: '2026-10-07', end_date: '2026-10-09',
+    });
+    JobDayAssignment.findAll.mockResolvedValue([]);
+    JobDayAssignment.destroy.mockResolvedValue(0);
+    JobDayAssignment.findOrCreate.mockResolvedValue([{}, true]);
+    const res = await request(app).put('/api/jobs/4/assignments').send({
+      work_date: '2026-10-07',
+      work_dates: ['2026-10-07', '2026-10-08', '2026-10-09'],
+      user_ids: [99],
+    });
+    expect(res.status).toBe(200);
+    expect(JobDayAssignment.findOrCreate).toHaveBeenCalledTimes(3);
+    expect(res.body.work_dates).toEqual(['2026-10-07', '2026-10-08', '2026-10-09']);
+  });
+
   test('rejects crew before the job has dates', async () => {
     Job.findByPk.mockResolvedValue({ id: 4, title: 'Re-roof', customer_id: 9, start_date: null });
     const res = await request(app).put('/api/jobs/4/assignments').send({ work_date: '2026-09-24', user_ids: [99] });

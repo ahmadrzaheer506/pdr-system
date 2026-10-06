@@ -8,6 +8,7 @@ const whatsapp = require('../integrations/whatsapp');
 const email = require('../integrations/email');
 const meta = require('../integrations/meta');
 const contacts = require('../customerContacts');
+const { nextRef } = require('../db');
 const { normalisePhone } = require('../phone');
 
 /**
@@ -188,15 +189,22 @@ async function ingestInbound({ source, channel = null, name = null, phone = null
       ? null
       : await Lead.findOne({ where: { customer_id: customerId, status: 'NEW' } });
     if (!openLead) {
+      const contactBody = meta_ && typeof meta_ === 'object' && !Array.isArray(meta_) ? meta_ : {};
+      const picked = await contacts.resolveLeadContactsForCreate(customerId, contactBody);
+      const contactIds = picked.error
+        ? { site_id: null, phone_id: null, email_id: null }
+        : { site_id: picked.site_id, phone_id: picked.phone_id, email_id: picked.email_id };
       const created = await Lead.create({
         customer_id: customerId,
+        ref: await nextRef('lead'),
         source,
         subject,
         message: (body || '').slice(0, 2000),
         status: 'NEW',
         next_action: 'Review & respond',
-        meta: meta_,
+        meta: { ...contactBody, ...contactIds },
         stage: 'ENQUIRY',
+        ...contactIds,
       });
       leadId = created.id;
       createdNewLead = true;

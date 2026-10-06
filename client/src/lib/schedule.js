@@ -30,6 +30,26 @@ export function datesInRange(start, end) {
   return dates;
 }
 
+/** Inclusive job days from a start/end, a dates list, or a single iso. */
+export function crewWorkDates({ iso, dates, start, end } = {}) {
+  if (Array.isArray(dates) && dates.length) {
+    return [...new Set(dates.map(parseIsoDate).filter(Boolean))];
+  }
+  if (start) return datesInRange(start, end || start);
+  const day = parseIsoDate(iso);
+  return day ? [day] : [];
+}
+
+/** en-GB day label for conflict copy (e.g. 9 Oct 2026). */
+export function shortUkDate(iso) {
+  const day = parseIsoDate(iso);
+  if (!day) return '';
+  const [year, month, date] = day.split('-').map(Number);
+  return new Date(year, month - 1, date).toLocaleDateString('en-GB', {
+    day: 'numeric', month: 'short', year: 'numeric',
+  });
+}
+
 export function startOfWeekMonday(d) {
   const date = new Date(d.getFullYear(), d.getMonth(), d.getDate());
   const day = date.getDay();
@@ -107,6 +127,11 @@ export function bookingsFromJobs(jobs, iso) {
     }
   }
   return rows;
+}
+
+/** Bookings on every day in dates (for multi-day crew checks). */
+export function bookingsFromJobsRange(jobs, dates) {
+  return mergeCrewBookings(...crewWorkDates({ dates }).map((iso) => bookingsFromJobs(jobs, iso)));
 }
 
 function bookingKey(row) {
@@ -195,33 +220,40 @@ export function jobConflictCaption(crew, { holidays = [], bookings = [], iso, ex
 
 /**
  * Holiday / other-job conflicts for a crew save. Empty means save can go straight through.
+ * Pass `dates` (or start/end) to check every day of a multi-day job, not only the first.
  */
 export function crewSaveConflicts({
-  staff = [], selectedIds = [], holidays = [], bookings = [], iso, excludeJobId,
+  staff = [], selectedIds = [], holidays = [], bookings = [], iso, dates, start, end, excludeJobId,
 } = {}) {
+  const days = crewWorkDates({ iso, dates, start, end });
+  const namedDates = days.length > 1;
   const nameOf = (id) => (staff.find((row) => Number(row.id) === Number(id))?.name) || `User ${id}`;
   const rows = [];
-  for (const id of selectedIds || []) {
-    const { onHoliday, busyOn } = staffDayFlags({
-      holidays, bookings, userId: id, iso, excludeJobId,
-    });
-    if (onHoliday) {
-      rows.push({
-        user_id: id,
-        type: 'holiday',
-        name: nameOf(id),
-        detail: 'On approved holiday',
+  for (const day of days) {
+    for (const id of selectedIds || []) {
+      const { onHoliday, busyOn } = staffDayFlags({
+        holidays, bookings, userId: id, iso: day, excludeJobId,
       });
-    }
-    for (const booking of busyOn) {
-      rows.push({
-        user_id: id,
-        type: 'double_book',
-        name: nameOf(id),
-        job_id: booking.job_id,
-        job_title: booking.job_title || null,
-        detail: booking.job_title ? `Already on “${booking.job_title}”` : 'Already booked that day',
-      });
+      if (onHoliday) {
+        rows.push({
+          user_id: id,
+          type: 'holiday',
+          name: nameOf(id),
+          detail: 'On approved holiday',
+          ...(namedDates ? { work_date: day } : {}),
+        });
+      }
+      for (const booking of busyOn) {
+        rows.push({
+          user_id: id,
+          type: 'double_book',
+          name: nameOf(id),
+          job_id: booking.job_id,
+          job_title: booking.job_title || null,
+          detail: booking.job_title ? `Already on “${booking.job_title}”` : 'Already booked that day',
+          ...(namedDates ? { work_date: day } : {}),
+        });
+      }
     }
   }
   return rows;
@@ -230,24 +262,44 @@ export function crewSaveConflicts({
 /** Readable line for a holiday / double-book row (job modal + day view). */
 export function crewConflictSummaryLine(row) {
   const name = row?.name || `User ${row?.user_id}`;
-  if (row?.type === 'holiday') return `${name} is on holiday this day.`;
-  if (row?.job_title) return `${name} is already booked on “${row.job_title}”.`;
+  const when = shortUkDate(row?.work_date);
+  if (row?.type === 'holiday') {
+    return when ? `${name} is on holiday on ${when}.` : `${name} is on holiday this day.`;
+  }
+  if (row?.job_title) {
+    return when
+      ? `${name} is already booked on “${row.job_title}” on ${when}.`
+      : `${name} is already booked on “${row.job_title}”.`;
+  }
   const fromDetail = String(row?.detail || '').match(/Already on [“"](.+)[”"]/);
-  if (fromDetail) return `${name} is already booked on “${fromDetail[1]}”.`;
-  return `${name} is already booked this day.`;
+  if (fromDetail) {
+    return when
+      ? `${name} is already booked on “${fromDetail[1]}” on ${when}.`
+      : `${name} is already booked on “${fromDetail[1]}”.`;
+  }
+  return when ? `${name} is already booked on ${when}.` : `${name} is already booked this day.`;
 }
 
 /** Hover copy on a holiday / booked crew chip. */
-export function crewChipHoverHint({ name, onHoliday, busyOn } = {}) {
+export function crewChipHoverHint({ name, onHoliday, busyOn, workDate, holidayDate } = {}) {
   let line = '';
-  if (onHoliday) line = crewConflictSummaryLine({ name, type: 'holiday' });
-  else {
+  const chipDay = parseIsoDate(workDate);
+  if (onHoliday) {
+    const other = parseIsoDate(holidayDate) && parseIsoDate(holidayDate) !== chipDay
+      ? holidayDate
+      : undefined;
+    line = crewConflictSummaryLine({ name, type: 'holiday', work_date: other });
+  } else {
     const booking = Array.isArray(busyOn) ? busyOn[0] : null;
     if (booking) {
+      const other = parseIsoDate(booking.work_date) && parseIsoDate(booking.work_date) !== chipDay
+        ? booking.work_date
+        : undefined;
       line = crewConflictSummaryLine({
         name,
         type: 'double_book',
         job_title: booking.job_title,
+        work_date: other,
       });
     }
   }

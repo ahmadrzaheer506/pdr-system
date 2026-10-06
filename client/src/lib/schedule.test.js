@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { datesInRange, jobOnDate, crewForDate, addIsoDays, isOnHoliday, bookingsFromJobs, mergeCrewBookings, jobDatesForCrewDay, staffDayFlags, crewConflictLabel, crewChipHoverHint, crewSaveConflicts, jobConflictCaption, teamAvailabilityRows } from './schedule';
+import { datesInRange, jobOnDate, crewForDate, addIsoDays, isOnHoliday, bookingsFromJobs, mergeCrewBookings, jobDatesForCrewDay, staffDayFlags, crewConflictLabel, crewChipHoverHint, crewSaveConflicts, crewConflictSummaryLine, jobConflictCaption, teamAvailabilityRows } from './schedule';
 
 describe('schedule helpers (requirement 8.1)', () => {
   it('lists inclusive dates and matches jobs on a day', () => {
@@ -69,6 +69,22 @@ describe('schedule helpers (requirement 8.1)', () => {
       iso: '2026-09-22',
       excludeJobId: 8,
     }).map((row) => row.type)).toEqual(['holiday', 'double_book']);
+    const range = crewSaveConflicts({
+      staff: [{ id: 3, name: 'Jamie' }],
+      selectedIds: [3],
+      holidays: [{ user_id: 3, start_date: '2026-09-24', end_date: '2026-09-24' }],
+      bookings: bookingsFromJobs([
+        { id: 9, title: 'Guttering', day_assignments: [{ work_date: '2026-09-23', user_id: 3, name: 'Jamie' }] },
+      ], '2026-09-23'),
+      dates: ['2026-09-22', '2026-09-23', '2026-09-24'],
+      excludeJobId: 8,
+    });
+    expect(range.map((row) => [row.type, row.work_date])).toEqual([
+      ['double_book', '2026-09-23'],
+      ['holiday', '2026-09-24'],
+    ]);
+    expect(crewConflictSummaryLine(range[0])).toMatch(/Jamie is already booked on “Guttering” on 23 Sep/i);
+    expect(crewConflictSummaryLine(range[1])).toMatch(/Jamie is on holiday on 24 Sep/i);
   });
 
   it('sorts team availability as available then busy then holiday', () => {

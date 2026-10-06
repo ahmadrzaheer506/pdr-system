@@ -12,7 +12,7 @@ import JobFiles from './JobFiles.jsx';
 import JobVariations from './JobVariations.jsx';
 import { JOB_STATUSES, canAdvanceJobStatus, canUnscheduleJob, JOB_PRIORITY_OPTIONS } from '../lib/jobStatus';
 import { SKILL_OPTIONS, skillLabel, missingRequiredSkills, crewHasDriver } from '../lib/skills';
-import { datesInRange, localIsoDate, crewIdsForDate, crewSaveConflicts, bookingsFromJobs, mergeCrewBookings, jobDatesForCrewDay } from '../lib/schedule';
+import { datesInRange, localIsoDate, parseIsoDate, crewIdsForDate, crewSaveConflicts, bookingsFromJobsRange, mergeCrewBookings, jobDatesForCrewDay } from '../lib/schedule';
 import DatePicker from './DatePicker.jsx';
 import SelectMenu from './SelectMenu.jsx';
 import CrewChips, { CrewFitNotes, CrewConflictNotes } from './CrewChips.jsx';
@@ -250,7 +250,7 @@ function JobInvoiceCard({ invoiceId, invoiceRef, saving, onCreate }) {
   );
 }
 
-export default function JobModal({ jobId, onClose, onChanged, staff = [], jobs = [], holidays: holidayRows = [], from = 'schedule' }) {
+export default function JobModal({ jobId, crewDate, onClose, onChanged, staff = [], jobs = [], holidays: holidayRows = [], from = 'schedule' }) {
   const [job, setJob] = useState(null);
   const [messages, setMessages] = useState([]);
   const [crew, setCrew] = useState([]);
@@ -274,13 +274,18 @@ export default function JobModal({ jobId, onClose, onChanged, staff = [], jobs =
   const [savingPriority, setSavingPriority] = useState(false);
   const [editingPriority, setEditingPriority] = useState(false);
   const crewPanelRef = useRef(null);
+  const crewDateRef = useRef(crewDate);
+  crewDateRef.current = crewDate;
 
   const load = () => api.get(`/jobs/${jobId}`).then((d) => {
     setJob(d.job);
     setMessages(d.messages);
     const days = datesInRange(d.job.start_date, d.job.end_date || d.job.start_date);
     const today = localIsoDate();
-    const nextDay = days.includes(crewDay) ? crewDay : (days.includes(today) ? today : (days[0] || ''));
+    const preferred = parseIsoDate(crewDateRef.current);
+    const nextDay = days.includes(preferred)
+      ? preferred
+      : (days.includes(crewDay) ? crewDay : (days.includes(today) ? today : (days[0] || '')));
     setCrewDay(nextDay);
     setCrew(crewIdsForDate(d.job, nextDay));
     setSkills(Array.isArray(d.job.required_skills) ? d.job.required_skills : []);
@@ -293,12 +298,23 @@ export default function JobModal({ jobId, onClose, onChanged, staff = [], jobs =
   }).catch((err) => setError(err.message));
   useEffect(() => { if (jobId) { setCrewWarnings([]); setInvoiceNote(''); setEditingPriority(false); load(); } }, [jobId]);
   useEffect(() => {
-    if (!jobId || !crewDay) {
+    const preferred = parseIsoDate(crewDate);
+    if (!preferred || !job) return;
+    const days = datesInRange(job.start_date, job.end_date || job.start_date);
+    if (!days.includes(preferred) || preferred === crewDay) return;
+    setCrewDay(preferred);
+    setCrew(crewIdsForDate(job, preferred));
+  }, [crewDate]);
+  useEffect(() => {
+    const range = datesInRange(job?.start_date, job?.end_date || job?.start_date);
+    const from = range[0] || crewDay;
+    const to = range[range.length - 1] || crewDay;
+    if (!jobId || !from) {
       setAvail({ holidays: [], bookings: [] });
       return undefined;
     }
     let cancelled = false;
-    api.get(`/jobs/availability?from=${crewDay}&to=${crewDay}`)
+    api.get(`/jobs/availability?from=${from}&to=${to}`)
       .then((d) => {
         if (!cancelled) setAvail({ holidays: d.holidays || [], bookings: d.bookings || [] });
       })
@@ -306,12 +322,15 @@ export default function JobModal({ jobId, onClose, onChanged, staff = [], jobs =
         if (!cancelled) setAvail({ holidays: [], bookings: [] });
       });
     return () => { cancelled = true; };
-  }, [jobId, crewDay]);
+  }, [jobId, job?.start_date, job?.end_date, crewDay]);
 
   if (!jobId) return null;
 
+  const jobDays = job
+    ? datesInRange(job.start_date, job.end_date || job.start_date)
+    : (crewDay ? [crewDay] : []);
   const dayHolidays = holidayRows.length ? holidayRows : (avail.holidays || []);
-  const dayBookings = mergeCrewBookings(bookingsFromJobs(jobs, crewDay), avail.bookings);
+  const dayBookings = mergeCrewBookings(bookingsFromJobsRange(jobs, jobDays), avail.bookings);
 
   const toggleCrew = (uid) => setCrew((c) => (
     c.some((id) => Number(id) === Number(uid))
@@ -322,6 +341,8 @@ export default function JobModal({ jobId, onClose, onChanged, staff = [], jobs =
     setSkills((cur) => (cur.includes(skill) ? cur.filter((s) => s !== skill) : [...cur, skill]));
   };
   const saveDates = async (patch) => {
+    const today = localIsoDate();
+    if (patch.start_date && patch.start_date < today) return;
     setError('');
     setSavingDates(true);
     try {
@@ -369,7 +390,7 @@ export default function JobModal({ jobId, onClose, onChanged, staff = [], jobs =
       selectedIds: crew,
       holidays: dayHolidays,
       bookings: dayBookings,
-      iso: crewDay,
+      dates: jobDays.length ? jobDays : [crewDay],
       excludeJobId: job.id,
     });
     if (conflicts.length) {
@@ -664,10 +685,12 @@ export default function JobModal({ jobId, onClose, onChanged, staff = [], jobs =
                   id="job-start-date"
                   label="Start date"
                   value={job.start_date || ''}
+                  min={localIsoDate()}
                   max={job.end_date || undefined}
                   onChange={(iso) => {
                     if (savingDates) return;
                     if ((iso || '') === (job.start_date || '')) return;
+                    if (iso && iso < localIsoDate()) return;
                     saveDates({ start_date: iso || null });
                   }}
                   disabled={savingDates}
@@ -715,7 +738,8 @@ export default function JobModal({ jobId, onClose, onChanged, staff = [], jobs =
             ) : (
               <>
                 <p className="mb-3 text-xs text-slate-400">
-                  Crew for {crewDay ? fmtDate(crewDay) : 'this day'} only. Holiday and booked chips still save.
+                  Crew for {crewDay ? fmtDate(crewDay) : 'this day'} only. Holiday and booked chips still save
+                  {jobDays.length > 1 ? ', and conflicts are checked on every day of this job' : ''}.
                   {jobDatesForCrewDay(job, crewDay)
                     ? ` Saving crew will update the job to ${crewDay ? fmtDate(crewDay) : 'this day'}.`
                     : ''}
@@ -727,6 +751,7 @@ export default function JobModal({ jobId, onClose, onChanged, staff = [], jobs =
                   holidays={dayHolidays}
                   bookings={dayBookings}
                   workDate={crewDay}
+                  workDates={jobDays}
                   excludeJobId={job.id}
                   requiredSkills={skills}
                   disabled={savingCrew}
@@ -742,6 +767,7 @@ export default function JobModal({ jobId, onClose, onChanged, staff = [], jobs =
                   holidays={dayHolidays}
                   bookings={dayBookings}
                   workDate={crewDay}
+                  workDates={jobDays}
                   excludeJobId={job.id}
                 />
                 <button
@@ -835,7 +861,9 @@ export default function JobModal({ jobId, onClose, onChanged, staff = [], jobs =
     <CrewConflictModal
       open={crewConflicts.length > 0}
       conflicts={crewConflicts}
-      dateLabel={crewDay ? fmtDate(crewDay) : ''}
+      dateLabel={jobDays.length > 1
+        ? `${fmtDate(jobDays[0])} – ${fmtDate(jobDays[jobDays.length - 1])}`
+        : (crewDay ? fmtDate(crewDay) : '')}
       saving={savingCrew}
       onCancel={() => { if (!savingCrew) setCrewConflicts([]); }}
       onConfirm={() => writeCrew(true)}
