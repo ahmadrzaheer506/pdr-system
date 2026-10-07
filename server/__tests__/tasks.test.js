@@ -7,6 +7,10 @@ jest.mock('../db', () => ({
   todayStr: () => '2026-09-26',
   plain: (row) => (row && typeof row.toJSON === 'function' ? row.toJSON() : row),
 }));
+jest.mock('../calendarSync', () => ({
+  syncTask: jest.fn(async () => {}),
+  removeTask: jest.fn(async () => {}),
+}));
 jest.mock('../models', () => ({
   sequelize: { transaction: jest.fn(async (fn) => fn({})) },
   Task: { findAll: jest.fn(), count: jest.fn(), create: jest.fn(), findByPk: jest.fn() },

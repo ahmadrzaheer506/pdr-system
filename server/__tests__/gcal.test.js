@@ -1,7 +1,10 @@
 jest.mock('../models', () => ({
-  OauthToken: { findOne: jest.fn(), create: jest.fn(), update: jest.fn() },
+  OauthToken: { findOne: jest.fn(), create: jest.fn(), update: jest.fn(), destroy: jest.fn() },
   Appointment: { findAll: jest.fn() },
   logIntegrationEvent: jest.fn(),
+}));
+jest.mock('../calendarSync', () => ({
+  pollInbound: jest.fn(async () => 0),
 }));
 
 jest.mock('../db', () => ({
@@ -110,6 +113,15 @@ describe('Google Calendar per-user tokens (requirement 5.2)', () => {
     const changed = await gcal.pollChanges();
     expect(changed).toBe(0);
     expect(global.fetch).not.toHaveBeenCalled();
+  });
+
+  test('disconnect removes that user\'s Google token', async () => {
+    OauthToken.destroy.mockResolvedValue(1);
+    const ok = await gcal.disconnect(LISA);
+    expect(ok).toBe(true);
+    expect(OauthToken.destroy).toHaveBeenCalledWith({
+      where: { provider: 'google', user_id: LISA },
+    });
   });
 
   test('oauth state round-trips the office user id', () => {

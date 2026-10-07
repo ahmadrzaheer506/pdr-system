@@ -25,12 +25,12 @@ function telephonyStatus() {
 
 async function all(userId) {
   return [
-    ai.status(),
-    whatsapp.status(),
-    meta.status(),
-    email.status(),
     await gcal.status(userId),
     await quickbooks.status(),
+    email.status(),
+    whatsapp.status(),
+    ai.status(),
+    meta.status(),
     telephonyStatus(),
   ];
 }

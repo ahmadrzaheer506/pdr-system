@@ -7,6 +7,12 @@ jest.mock('../integrations/gcal', () => ({
     throw new Error('Invalid OAuth state');
   }),
   exchangeCode: jest.fn(async () => true),
+  disconnect: jest.fn(async () => true),
+  status: jest.fn(async () => ({ id: 'google', connected: true, configured: true })),
+}));
+
+jest.mock('../calendarSync', () => ({
+  backfillUser: jest.fn(async () => ({ appointments: 0, jobs: 0, holidays: 0, tasks: 0 })),
 }));
 
 jest.mock('../integrations/quickbooks', () => ({
@@ -32,6 +38,7 @@ const express = require('express');
 const { __setUser } = require('../auth');
 const gcal = require('../integrations/gcal');
 const integrations = require('../routes/integrations');
+const { spaOrigin } = require('../passwordReset');
 
 const app = express();
 app.use(express.json());
@@ -60,11 +67,12 @@ describe('GET /api/integrations/google/connect (requirement 5.2)', () => {
     expect(gcal.signOauthState).toHaveBeenCalledWith(1);
   });
 
-  test('rejects field staff', async () => {
+  test('lets field staff start Connect', async () => {
     __setUser({ id: 9, role: 'STAFF', name: 'Jamie' });
+    gcal.signOauthState.mockReturnValueOnce('state-for-9');
     const res = await request(app).get('/api/integrations/google/connect');
-    expect(res.status).toBe(403);
-    expect(gcal.signOauthState).not.toHaveBeenCalled();
+    expect(res.status).toBe(200);
+    expect(gcal.signOauthState).toHaveBeenCalledWith(9);
   });
 });
 
@@ -80,6 +88,10 @@ describe('GET /api/integrations/google/callback (requirement 5.2)', () => {
     expect(gcal.parseOauthState).toHaveBeenCalledWith('state-for-2');
     expect(gcal.exchangeCode).toHaveBeenCalledWith('auth-code', 2);
     expect(res.text).toMatch(/connected/i);
+    expect(res.text).toMatch(/Go to Settings/i);
+    expect(res.text).toContain(`href="${spaOrigin()}/settings"`);
+    const calendarSync = require('../calendarSync');
+    expect(calendarSync.backfillUser).toHaveBeenCalledWith(2);
   });
 
   test('rejects a missing or forged state', async () => {
@@ -87,5 +99,33 @@ describe('GET /api/integrations/google/callback (requirement 5.2)', () => {
     const res = await request(app).get('/api/integrations/google/callback').query({ code: 'auth-code' });
     expect(res.status).toBe(400);
     expect(gcal.exchangeCode).not.toHaveBeenCalled();
+    expect(res.text).toMatch(/Go to Settings/i);
+  });
+});
+
+describe('POST /api/integrations/google/disconnect (requirement 16.3)', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    __setUser({ id: 2, role: 'OFFICE', name: 'Lisa' });
+  });
+
+  test('drops the signed-in user token', async () => {
+    const res = await request(app).post('/api/integrations/google/disconnect');
+    expect(res.status).toBe(200);
+    expect(gcal.disconnect).toHaveBeenCalledWith(2);
+    expect(res.body.connected).toBe(false);
+  });
+});
+
+describe('GET /api/integrations/google/status (requirement 16.3)', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    __setUser({ id: 2, role: 'OFFICE', name: 'Lisa' });
+  });
+
+  test('returns this user\'s connection', async () => {
+    const res = await request(app).get('/api/integrations/google/status');
+    expect(res.status).toBe(200);
+    expect(gcal.status).toHaveBeenCalledWith(2);
   });
 });

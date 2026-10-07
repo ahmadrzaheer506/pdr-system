@@ -11,6 +11,9 @@ jest.mock('../db', () => ({
   todayStr: () => '2026-09-26',
   plain: (row) => row,
 }));
+jest.mock('../calendarSync', () => ({
+  syncTask: jest.fn(async () => {}),
+}));
 jest.mock('../notifications', () => ({
   safeNotify: jest.fn(async (fn) => fn()),
   notifyOffice: jest.fn(async () => []),

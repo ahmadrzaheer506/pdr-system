@@ -485,6 +485,14 @@ const AiProposal = sequelize.define('AiProposal', {
   approved_at: { type: DataTypes.DATE },
 }, { tableName: 'ai_proposals', timestamps: true, createdAt: 'created_at', updatedAt: false });
 
+const CalendarSyncLink = sequelize.define('CalendarSyncLink', {
+  id: { type: DataTypes.INTEGER, primaryKey: true, autoIncrement: true },
+  user_id: { type: DataTypes.INTEGER, allowNull: false },
+  entity_type: { type: DataTypes.TEXT, allowNull: false },
+  entity_id: { type: DataTypes.INTEGER, allowNull: false },
+  gcal_event_id: { type: DataTypes.TEXT, allowNull: false },
+}, { tableName: 'calendar_sync_links', timestamps: true, createdAt: 'created_at', updatedAt: 'updated_at' });
+
 const OauthToken = sequelize.define('OauthToken', {
   id: { type: DataTypes.INTEGER, primaryKey: true, autoIncrement: true },
   provider: { type: DataTypes.TEXT, allowNull: false },
@@ -570,6 +578,7 @@ Appointment.belongsToMany(User, { through: AppointmentAssignee, foreignKey: 'app
 User.belongsToMany(Appointment, { through: AppointmentAssignee, foreignKey: 'user_id', otherKey: 'appointment_id', as: 'assignedAppointments' });
 AppointmentAssignee.belongsTo(Appointment, { foreignKey: 'appointment_id' });
 AppointmentAssignee.belongsTo(User, { foreignKey: 'user_id' });
+Appointment.hasMany(AppointmentAssignee, { foreignKey: 'appointment_id' });
 Customer.hasMany(Appointment, { foreignKey: 'customer_id' });
 
 Quote.belongsTo(Customer, { foreignKey: 'customer_id' });
@@ -646,6 +655,9 @@ Notification.belongsTo(Job, { foreignKey: 'job_id' });
 User.hasMany(Notification, { foreignKey: 'user_id' });
 Job.hasMany(Notification, { foreignKey: 'job_id' });
 
+CalendarSyncLink.belongsTo(User, { foreignKey: 'user_id' });
+User.hasMany(CalendarSyncLink, { foreignKey: 'user_id' });
+
 Timesheet.belongsTo(User, { foreignKey: 'user_id' });
 Timesheet.belongsTo(Job, { foreignKey: 'job_id' });
 Timesheet.belongsTo(User, { foreignKey: 'approved_by', as: 'approver' });
@@ -702,6 +714,7 @@ module.exports = {
   SecurityEvent,
   AiProposal,
   OauthToken,
+  CalendarSyncLink,
   Timesheet,
   logIntegrationEvent,
 };

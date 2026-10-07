@@ -174,6 +174,7 @@ async function createRequest(actor, { start_date, end_date, reason, user_id, kin
       entity_id: created.id,
     }));
   }
+  await require('./calendarSync').syncHoliday(created.id);
   return { id: created.id, days: created.days, kind, status: created.status };
 }
 
@@ -290,6 +291,7 @@ async function decideRequest(actor, id, { decision, decline_reason } = {}) {
       decline_reason: reason,
     });
     await notifyHolidayDecision(row, 'declined', reason);
+    await require('./calendarSync').syncHoliday(row.id);
     return { ok: true, status: 'declined' };
   }
 
@@ -309,6 +311,7 @@ async function decideRequest(actor, id, { decision, decline_reason } = {}) {
     decline_reason: null,
   });
   await notifyHolidayDecision(row, 'approved');
+  await require('./calendarSync').syncHoliday(row.id);
   return { ok: true, status: 'approved' };
 }
 
@@ -320,7 +323,9 @@ async function withdrawRequest(actor, id) {
   if (!row) fail(404, 'Request not found');
   if (actor.role === ROLES.STAFF && row.user_id !== actor.id) fail(403, 'Not permitted');
   if (row.status !== 'pending') fail(400, 'Only pending requests can be withdrawn');
+  const holidayId = row.id;
   await row.destroy();
+  await require('./calendarSync').syncHoliday(holidayId);
   return { ok: true };
 }
 

@@ -4,11 +4,11 @@ const { Appointment, AppointmentAssignee, Customer, Lead, User } = require('../m
 const { requireAuth, requireOffice, asyncHandler } = require('../auth');
 const { ROLES } = require('../roles');
 const { setStage, logActivity, resolveLeadForCustomer } = require('../services/pipeline');
-const gcal = require('../integrations/gcal');
 const { plain } = require('../db');
 const contacts = require('../customerContacts');
 const { parseVisitType, visitTitle, visitChangeBlock, VISIT_TYPE_VALUES } = require('../visitTypes');
 const visitAssignees = require('../appointmentAssignees');
+const calendarSync = require('../calendarSync');
 const { completeVisit } = require('../services/taskEngine');
 
 const router = express.Router();
@@ -191,24 +191,6 @@ router.post('/', asyncHandler(async (req, res) => {
   const useAddress = address || contacts.formatSite(picked.site) || customer.address;
   const useTitle = title || visitTitle(visitType.value, customer.name);
 
-  let eventId = null, gcalStatus = 'simulated';
-  try {
-    const ev = await gcal.createEvent({
-      title: useTitle,
-      start: startAt.date.toISOString(),
-      end: endTime.toISOString(),
-      address: useAddress,
-      notes,
-      customerName: customer.name,
-      userId: req.user.id,
-    });
-    eventId = ev.eventId;
-    gcalStatus = ev.simulated ? 'simulated' : 'synced';
-  } catch (err) {
-    gcalStatus = 'not_synced';
-    await logActivity(customer_id, req.user.id, 'gcal_error', `Calendar sync failed: ${String(err.message).slice(0, 150)}`);
-  }
-
   const created = await Appointment.create({
     customer_id,
     lead_id: lead?.id || null,
@@ -217,8 +199,8 @@ router.post('/', asyncHandler(async (req, res) => {
     end: endTime,
     address: useAddress,
     notes: notes || null,
-    gcal_event_id: eventId,
-    gcal_status: gcalStatus,
+    gcal_event_id: null,
+    gcal_status: 'not_synced',
     created_by: req.user.id,
     site_id: picked.site_id,
     phone_id: picked.phone_id,
@@ -226,6 +208,9 @@ router.post('/', asyncHandler(async (req, res) => {
     visit_type: visitType.value,
   });
   await visitAssignees.replaceAppointmentAssignees(created.id, assigned.ids);
+  await calendarSync.syncAppointment(created.id);
+  const synced = await Appointment.findByPk(created.id, { attributes: ['gcal_status'] });
+  const gcalStatus = synced?.gcal_status || 'not_synced';
 
   /** Requirement 5.1: only Enquiry moves to Site visit booked. Later stages stay put. */
   const enquiryStage = lead?.stage || customer.stage;
@@ -331,12 +316,7 @@ router.put('/:id', asyncHandler(async (req, res) => {
   if (nextAssignees) {
     await visitAssignees.replaceAppointmentAssignees(a.id, nextAssignees);
   }
-  if (a.gcal_event_id) {
-    try {
-      if (cancelling) await gcal.cancelEvent(a.gcal_event_id, a.created_by);
-      else await gcal.updateEvent(a.gcal_event_id, { title: useTitle, start: newStart, end: newEnd, address: useAddress, notes: notes !== undefined ? notes : a.notes }, a.created_by);
-    } catch { /* sync failure is non-fatal */ }
-  }
+  await calendarSync.syncAppointment(a.id);
   const cancelNote = String(req.body.cancel_note || '').trim();
   const activity = cancelling
     ? (cancelNote ? `Site visit cancelled: ${cancelNote}` : 'Site visit cancelled')

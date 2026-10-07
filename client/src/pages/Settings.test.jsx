@@ -418,6 +418,61 @@ describe('Settings Google Calendar (requirement 5.2)', () => {
     expect(api.get).toHaveBeenCalledWith('/integrations/google/connect');
     expect(window.open).toHaveBeenCalledWith('https://accounts.google.com/o/oauth2', '_blank');
   });
+
+  it('lets an office user Disconnect their calendar', async () => {
+    api.get.mockImplementation(async (path) => {
+      if (path === '/settings/integrations') {
+        return {
+          integrations: [{
+            id: 'google',
+            name: 'Google Calendar',
+            configured: true,
+            connected: true,
+            mode: 'live',
+            detail: 'Connected to your Google Calendar.',
+          }],
+          events: [],
+        };
+      }
+      return { users: [], events: [] };
+    });
+    api.post.mockResolvedValue({ ok: true, connected: false });
+    const user = userEvent.setup();
+    render(<Settings />);
+    await user.click(await screen.findByRole('button', { name: /^integrations$/i }));
+    await user.click(await screen.findByRole('button', { name: /^disconnect$/i }));
+    expect(await screen.findByText(/disconnect google calendar\?/i)).toBeInTheDocument();
+    expect(api.post).not.toHaveBeenCalledWith('/integrations/google/disconnect');
+    await user.click(await screen.findByRole('button', { name: /yes, disconnect/i }));
+    expect(api.post).toHaveBeenCalledWith('/integrations/google/disconnect');
+    expect(await screen.findByText(/disconnected/i)).toBeInTheDocument();
+  });
+
+  it('keeps the calendar connected when disconnect is cancelled', async () => {
+    api.get.mockImplementation(async (path) => {
+      if (path === '/settings/integrations') {
+        return {
+          integrations: [{
+            id: 'google',
+            name: 'Google Calendar',
+            configured: true,
+            connected: true,
+            mode: 'live',
+            detail: 'Connected to your Google Calendar.',
+          }],
+          events: [],
+        };
+      }
+      return { users: [], events: [] };
+    });
+    const user = userEvent.setup();
+    render(<Settings />);
+    await user.click(await screen.findByRole('button', { name: /^integrations$/i }));
+    await user.click(await screen.findByRole('button', { name: /^disconnect$/i }));
+    await user.click(await screen.findByRole('button', { name: /^cancel$/i }));
+    expect(screen.queryByText(/disconnect google calendar\?/i)).toBeNull();
+    expect(api.post).not.toHaveBeenCalledWith('/integrations/google/disconnect');
+  });
 });
 
 describe('Settings VAT rates (requirement 6.3)', () => {

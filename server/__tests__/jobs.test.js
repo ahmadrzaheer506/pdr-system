@@ -21,6 +21,9 @@ jest.mock('../geocode', () => ({
   ensureJobSitePoint: jest.fn(async () => null),
   geocodeAddress: jest.fn(async () => null),
 }));
+jest.mock('../calendarSync', () => ({
+  syncJob: jest.fn(async () => {}),
+}));
 jest.mock('../models', () => ({
   Job: { findByPk: jest.fn(), findAll: jest.fn(), create: jest.fn() },
   Customer: { findByPk: jest.fn() },

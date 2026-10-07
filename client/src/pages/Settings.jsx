@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { Plug, Building2, Users, Plus, ExternalLink, Copy, Shield, Trash2, Bell, Package, FileText, Search, MoreHorizontal, Landmark, Percent, Image, Clock, Mail, Upload } from 'lucide-react';
 import { api, fmtTimeAgo, fmtDate, money } from '../lib/api';
-import { PageLoading, LoadError, ModeBadge, Avatar, Modal, useToast, Toast, avatarUrl } from '../components/ui.jsx';
+import { PageLoading, LoadError, ModeBadge, Avatar, Modal, ConfirmModal, useToast, Toast, avatarUrl } from '../components/ui.jsx';
 import { useAuth } from '../lib/auth.jsx';
 import { ROLES } from '../lib/roles';
 import { SKILL_OPTIONS, skillLabel } from '../lib/skills';
@@ -158,6 +158,8 @@ export default function Settings() {
 
 function IntegrationsTab() {
   const [data, setData] = useState(null);
+  const [confirmDisconnect, setConfirmDisconnect] = useState(false);
+  const [disconnecting, setDisconnecting] = useState(false);
   const { toast, show } = useToast();
   const load = () => api.get('/settings/integrations').then(setData).catch((err) => {
     show(err.message, 'error');
@@ -172,6 +174,19 @@ function IntegrationsTab() {
       window.open(url, '_blank');
     } catch (err) { show(err.message, 'error'); }
   };
+  const disconnectGoogle = async () => {
+    setDisconnecting(true);
+    try {
+      await api.post('/integrations/google/disconnect');
+      show('Google Calendar disconnected');
+      setConfirmDisconnect(false);
+      load();
+    } catch (err) {
+      show(err.message, 'error');
+    } finally {
+      setDisconnecting(false);
+    }
+  };
   const copy = (text) => { navigator.clipboard?.writeText(text); show('Copied to clipboard'); };
 
   return (
@@ -184,9 +199,14 @@ function IntegrationsTab() {
                 <div className="font-semibold text-slate-900">{intg.name}</div>
                 <div className="mt-1"><ModeBadge mode={intg.mode} /></div>
               </div>
-              {(intg.id === 'google' || intg.id === 'quickbooks') && intg.configured && !intg.connected && (
-                <button onClick={() => connect(intg.id)} className="btn-primary !py-1.5 !px-3 text-xs">Connect</button>
-              )}
+              <div className="flex shrink-0 items-center gap-2">
+                {(intg.id === 'google' || intg.id === 'quickbooks') && intg.configured && !intg.connected && (
+                  <button type="button" onClick={() => connect(intg.id)} className="btn-primary !py-1.5 !px-3 text-xs">Connect</button>
+                )}
+                {intg.id === 'google' && intg.connected && (
+                  <button type="button" onClick={() => setConfirmDisconnect(true)} className="btn-secondary !py-1.5 !px-3 text-xs">Disconnect</button>
+                )}
+              </div>
             </div>
             <p className="text-xs text-slate-500 mt-2">{intg.detail}</p>
             {intg.webhook_url && (
@@ -215,6 +235,17 @@ function IntegrationsTab() {
           ))}
         </div>
       </section>
+      <ConfirmModal
+        open={confirmDisconnect}
+        title="Disconnect Google Calendar?"
+        message="Site visits, jobs, holidays and tasks will stop syncing to Google Calendar. Nothing already on the calendar is deleted, and you can reconnect any time from here."
+        confirmLabel="Yes, disconnect"
+        busyLabel="Disconnecting…"
+        danger
+        busy={disconnecting}
+        onConfirm={disconnectGoogle}
+        onCancel={() => setConfirmDisconnect(false)}
+      />
       <Toast {...toast} />
     </div>
   );

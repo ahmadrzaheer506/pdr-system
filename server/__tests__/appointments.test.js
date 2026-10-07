@@ -33,6 +33,9 @@ jest.mock('../integrations/gcal', () => ({
   updateEvent: jest.fn(),
   cancelEvent: jest.fn(),
 }));
+jest.mock('../calendarSync', () => ({
+  syncAppointment: jest.fn(async () => {}),
+}));
 jest.mock('../notifications', () => ({
   safeNotify: jest.fn(async (fn) => { await fn(); return []; }),
   notifyOffice: jest.fn(async () => []),
@@ -49,6 +52,7 @@ const { Appointment, AppointmentAssignee, User } = require('../models');
 const contacts = require('../customerContacts');
 const { setStage, logActivity } = require('../services/pipeline');
 const gcal = require('../integrations/gcal');
+const calendarSync = require('../calendarSync');
 const { notifyUsers } = require('../notifications');
 const { completeVisit } = require('../services/taskEngine');
 const appointments = require('../routes/appointments');
@@ -191,10 +195,7 @@ describe('POST /api/appointments (requirement 5.1)', () => {
       visit_type: 'site_visit',
     });
     expect(Appointment.create.mock.calls[0][0].start).toEqual(new Date(START));
-    expect(gcal.createEvent).toHaveBeenCalledWith(expect.objectContaining({
-      customerName: 'Dave Whitfield',
-      userId: 1,
-    }));
+    expect(calendarSync.syncAppointment).toHaveBeenCalledWith(50);
     expect(logActivity).toHaveBeenCalledWith(
       9, 1, 'appointment_booked', expect.stringMatching(/Site visit booked/), 'appointment', 50,
     );
@@ -322,11 +323,7 @@ describe('PUT /api/appointments/:id (requirement 5.3)', () => {
       status: 'booked',
       title: 'Follow-up — Dave Whitfield',
     }));
-    expect(gcal.updateEvent).toHaveBeenCalledWith(
-      'g-1',
-      expect.objectContaining({ title: 'Follow-up — Dave Whitfield' }),
-      1,
-    );
+    expect(calendarSync.syncAppointment).toHaveBeenCalledWith(50);
     expect(setStage).not.toHaveBeenCalled();
     expect(logActivity).toHaveBeenCalledWith(9, 1, 'appointment_updated', 'Site visit updated', 'appointment', 50);
   });
@@ -351,7 +348,7 @@ describe('PUT /api/appointments/:id (requirement 5.3)', () => {
     });
     expect(res.status).toBe(200);
     expect(row.update).toHaveBeenCalledWith(expect.objectContaining({ status: 'cancelled' }));
-    expect(gcal.cancelEvent).toHaveBeenCalledWith('g-1', 1);
+    expect(calendarSync.syncAppointment).toHaveBeenCalledWith(50);
     expect(setStage).not.toHaveBeenCalled();
     expect(logActivity).toHaveBeenCalledWith(
       9, 1, 'appointment_updated', 'Site visit cancelled: Customer away', 'appointment', 50,
@@ -366,7 +363,7 @@ describe('PUT /api/appointments/:id (requirement 5.3)', () => {
     const res = await request(app).put('/api/appointments/50').send({ status: 'cancelled' });
     expect(res.status).toBe(400);
     expect(res.body.error).toBe('This visit has already ended');
-    expect(gcal.cancelEvent).not.toHaveBeenCalled();
+    expect(calendarSync.syncAppointment).not.toHaveBeenCalled();
   });
 
   test('rejects a visit that is not booked', async () => {

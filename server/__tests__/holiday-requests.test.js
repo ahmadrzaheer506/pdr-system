@@ -6,6 +6,9 @@ jest.mock('../models', () => ({
 jest.mock('../db', () => ({
   getSetting: jest.fn(async () => 28),
 }));
+jest.mock('../calendarSync', () => ({
+  syncHoliday: jest.fn(async () => {}),
+}));
 
 const { HolidayRequest, User } = require('../models');
 const { getSetting } = require('../db');

@@ -117,6 +117,7 @@ router.post('/', asyncHandler(async (req, res) => {
     await replaceAssignees(row.id, allowed.ids, { transaction });
     return row;
   });
+  await require('../calendarSync').syncTask(created.id);
   res.json({ id: created.id });
 }));
 
@@ -171,13 +172,16 @@ router.put('/:id', asyncHandler(async (req, res) => {
     await t.update(patch, { transaction });
     if (nextAssignees) await replaceAssignees(t.id, nextAssignees, { transaction });
   });
+  await require('../calendarSync').syncTask(t.id);
   res.json({ ok: true });
 }));
 
 router.delete('/:id', asyncHandler(async (req, res) => {
   const t = await Task.findByPk(req.params.id);
   if (!t) return res.status(404).json({ error: 'Task not found' });
+  const taskId = t.id;
   await t.destroy();
+  await require('../calendarSync').removeTask(taskId);
   res.json({ ok: true });
 }));
 

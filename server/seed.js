@@ -28,7 +28,7 @@ const {
 const CLEAN = process.argv.includes('--clean');
 
 const TABLES = [
-  'ai_proposals', 'oauth_tokens', 'integration_events', 'stage_history', 'activity',
+  'ai_proposals', 'calendar_sync_links', 'oauth_tokens', 'integration_events', 'stage_history', 'activity',
   'followups', 'task_assignees', 'tasks', 'timesheets', 'notifications',
   'invoice_payments', 'invoices',
   'job_variations', 'job_files', 'job_messages', 'job_material_lines', 'job_checklist_items',

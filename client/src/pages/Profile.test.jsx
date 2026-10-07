@@ -20,7 +20,7 @@ vi.mock('../lib/auth.jsx', () => ({
 }));
 
 vi.mock('../lib/api', () => ({
-  api: { get: vi.fn(), put: vi.fn(), upload: vi.fn(), del: vi.fn() },
+  api: { get: vi.fn(), put: vi.fn(), post: vi.fn(), upload: vi.fn(), del: vi.fn() },
 }));
 
 vi.mock('../components/ChangePasswordForm.jsx', () => ({
@@ -42,6 +42,15 @@ describe('Profile page', () => {
       color: '#ea580c',
     };
     api.put.mockResolvedValue({ user: { ...auth.user, name: 'Paul D' } });
+    api.get.mockImplementation(async (path) => {
+      if (path === '/integrations/google/status') {
+        return { id: 'google', configured: true, connected: false, detail: 'Keys present' };
+      }
+      if (path === '/integrations/google/connect') {
+        return { url: 'https://accounts.google.com/o/oauth2' };
+      }
+      return {};
+    });
   });
 
   it('lets the current user change their name, with email locked', async () => {
@@ -62,6 +71,41 @@ describe('Profile page', () => {
     expect(await screen.findByText('Profile updated')).toBeInTheDocument();
     expect(screen.getByText('Change password')).toBeInTheDocument();
     expect(screen.queryByText('Notification preferences')).toBeNull();
+  });
+
+  it('lets any role connect Google Calendar from profile', async () => {
+    const user = userEvent.setup();
+    const open = vi.fn();
+    vi.stubGlobal('open', open);
+    render(<Profile />);
+    expect(await screen.findByRole('heading', { name: 'Google Calendar' })).toBeInTheDocument();
+    await user.click(await screen.findByRole('button', { name: /^connect$/i }));
+    expect(api.get).toHaveBeenCalledWith('/integrations/google/connect');
+    expect(open).toHaveBeenCalledWith('https://accounts.google.com/o/oauth2', '_blank');
+    vi.unstubAllGlobals();
+  });
+
+  it('shows disconnect when Google Calendar is connected', async () => {
+    api.get.mockResolvedValue({ id: 'google', configured: true, connected: true, detail: 'Live' });
+    api.post.mockResolvedValue({ ok: true, connected: false });
+    const user = userEvent.setup();
+    render(<Profile />);
+    await user.click(await screen.findByRole('button', { name: /^disconnect$/i }));
+    expect(await screen.findByText(/disconnect google calendar\?/i)).toBeInTheDocument();
+    expect(api.post).not.toHaveBeenCalledWith('/integrations/google/disconnect');
+    await user.click(await screen.findByRole('button', { name: /yes, disconnect/i }));
+    expect(api.post).toHaveBeenCalledWith('/integrations/google/disconnect');
+    expect(await screen.findByText(/disconnected/i)).toBeInTheDocument();
+  });
+
+  it('keeps the calendar connected when disconnect is cancelled', async () => {
+    api.get.mockResolvedValue({ id: 'google', configured: true, connected: true, detail: 'Live' });
+    const user = userEvent.setup();
+    render(<Profile />);
+    await user.click(await screen.findByRole('button', { name: /^disconnect$/i }));
+    await user.click(await screen.findByRole('button', { name: /^cancel$/i }));
+    expect(screen.queryByText(/disconnect google calendar\?/i)).toBeNull();
+    expect(api.post).not.toHaveBeenCalledWith('/integrations/google/disconnect');
   });
 
   it('uploads a profile photo', async () => {
@@ -88,9 +132,10 @@ describe('Profile page', () => {
     expect(await screen.findByText('Photo removed')).toBeInTheDocument();
   });
 
-  it('shows notification preferences for field staff', () => {
+  it('shows notification preferences for field staff', async () => {
     auth.user = { ...auth.user, role: 'STAFF', name: 'Jamie Fisher' };
     render(<Profile />);
     expect(screen.getByText('Notification preferences')).toBeInTheDocument();
+    expect(await screen.findByRole('button', { name: /^connect$/i })).toBeInTheDocument();
   });
 });

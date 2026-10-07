@@ -34,14 +34,18 @@ async function ensureTask({ ruleKey, title, detail = null, dueDate = null, prior
     entity_type: entityType,
     entity_id: entityId,
   });
+  await require('../calendarSync').syncTask(created.id);
   return created.id;
 }
 
 async function resolveRule(ruleKey) {
+  const open = await Task.findAll({ where: { rule_key: ruleKey, status: 'open' }, attributes: ['id'] });
   await Task.update(
     { status: 'done', done_at: new Date() },
     { where: { rule_key: ruleKey, status: 'open' } }
   );
+  const calendarSync = require('../calendarSync');
+  await Promise.all(open.map((row) => calendarSync.syncTask(row.id)));
 }
 
 function quoteFollowupRuleKey(quoteId) {
@@ -72,6 +76,7 @@ async function ensureQuoteFollowupTask(quote, firstStepAt) {
       entity_type: 'quote',
       entity_id: quote.id,
     });
+    await require('../calendarSync').syncTask(existing.id);
     return existing.id;
   }
   const created = await Task.create({
@@ -85,6 +90,7 @@ async function ensureQuoteFollowupTask(quote, firstStepAt) {
     entity_type: 'quote',
     entity_id: quote.id,
   });
+  await require('../calendarSync').syncTask(created.id);
   return created.id;
 }
 

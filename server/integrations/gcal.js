@@ -83,6 +83,31 @@ async function saveUserTokens(userId, data) {
   }
 }
 
+/** Drop this user's Google token. CRM records stay; Google events are left in place. */
+async function disconnect(userId) {
+  if (!userId) return false;
+  const n = await OauthToken.destroy({ where: { provider: 'google', user_id: userId } });
+  if (n) await logEvent('in', 'oauth.disconnected', { userId });
+  return n > 0;
+}
+
+function eventBody({ title, start, end, address, notes, allDay, startDate, endDateExclusive }) {
+  const body = {
+    summary: title,
+    location: address || undefined,
+    description: notes || undefined,
+    reminders: { useDefault: true },
+  };
+  if (allDay) {
+    body.start = { date: startDate };
+    body.end = { date: endDateExclusive };
+  } else {
+    body.start = { dateTime: new Date(start).toISOString(), timeZone: 'Europe/London' };
+    body.end = { dateTime: new Date(end).toISOString(), timeZone: 'Europe/London' };
+  }
+  return body;
+}
+
 async function exchangeCode(code, userId) {
   if (!userId) throw new Error('Google Calendar connect must be tied to a user');
   const res = await fetch(TOKEN_URL, {
@@ -143,37 +168,36 @@ function shouldSimulate(userId) {
   return !userId || !isConfigured();
 }
 
-/** Create a calendar event on the booking user's calendar, or simulate if they are not connected. */
-async function createEvent({ title, start, end, address, notes, customerName, userId }) {
+/** Create a calendar event on the user's primary calendar, or simulate if they are not connected. */
+async function createEvent({ title, start, end, address, notes, customerName, userId, allDay, startDate, endDateExclusive }) {
+  const description = customerName
+    ? `Customer: ${customerName}\n${notes || ''}\n\n(Booked from PDR Business OS)`
+    : (notes || '(From PDR Business OS)');
   if (shouldSimulate(userId) || !(await isConnected(userId))) {
     await logEvent('out', 'event.simulated', { title, start, userId: userId || null }, 'simulated');
     return { eventId: `sim-${Date.now()}`, simulated: true };
   }
-  const body = {
-    summary: title,
-    location: address || undefined,
-    description: `Customer: ${customerName || ''}\n${notes || ''}\n\n(Booked from PDR Business OS)`,
-    start: { dateTime: new Date(start).toISOString(), timeZone: 'Europe/London' },
-    end: { dateTime: new Date(end).toISOString(), timeZone: 'Europe/London' },
-    reminders: { useDefault: true },
-  };
+  const body = eventBody({
+    title,
+    start,
+    end,
+    address,
+    notes: description,
+    allDay,
+    startDate,
+    endDateExclusive,
+  });
   const data = await calFetch(userId, '/calendars/primary/events', { method: 'POST', body: JSON.stringify(body) });
   await logEvent('out', 'event.created', { id: data.id, title, userId });
   return { eventId: data.id, simulated: false };
 }
 
-async function updateEvent(eventId, { title, start, end, address, notes }, userId) {
+async function updateEvent(eventId, payload, userId) {
   if (shouldSimulate(userId) || !(await isConnected(userId)) || String(eventId).startsWith('sim-')) {
     await logEvent('out', 'event.update_simulated', { eventId, userId: userId || null }, 'simulated');
     return { simulated: true };
   }
-  const body = {
-    summary: title,
-    location: address || undefined,
-    description: notes || undefined,
-    start: { dateTime: new Date(start).toISOString(), timeZone: 'Europe/London' },
-    end: { dateTime: new Date(end).toISOString(), timeZone: 'Europe/London' },
-  };
+  const body = eventBody(payload);
   await calFetch(userId, `/calendars/primary/events/${eventId}`, { method: 'PATCH', body: JSON.stringify(body) });
   await logEvent('out', 'event.updated', { eventId, userId });
   return { simulated: false };
@@ -229,7 +253,12 @@ async function pollChanges() {
     }
   }
   if (changed) await logEvent('in', 'poll.synced', { changed });
-  return changed;
+  try {
+    const extra = await require('../calendarSync').pollInbound();
+    return changed + extra;
+  } catch {
+    return changed;
+  }
 }
 
 async function status(userId) {
@@ -243,10 +272,10 @@ async function status(userId) {
     env_needed: ['GOOGLE_CLIENT_ID', 'GOOGLE_CLIENT_SECRET', 'GOOGLE_REDIRECT_URI'],
     connect_url: '/api/integrations/google/connect',
     detail: !isConfigured()
-      ? 'Simulated — site visits are tracked in-app. Add OAuth client keys, then each office user clicks Connect for their own calendar.'
+      ? 'Simulated — events stay in-app until OAuth client keys are set, then each user connects their own calendar from Profile.'
       : connected
-        ? 'Live — visits you book go on your Google Calendar'
-        : 'Keys present — connect your Google Calendar here. You can still book visits in-app until you do.',
+        ? 'Live — site visits, jobs, holidays and tasks you can see in the CRM go on your Google Calendar'
+        : 'Keys present — connect Google Calendar from Profile. Nothing is pushed until you connect.',
   };
 }
 
@@ -257,9 +286,11 @@ module.exports = {
   signOauthState,
   parseOauthState,
   exchangeCode,
+  disconnect,
   createEvent,
   updateEvent,
   cancelEvent,
   pollChanges,
   status,
+  calFetch,
 };

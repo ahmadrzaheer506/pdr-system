@@ -152,6 +152,50 @@ export function Modal({ open, onClose, title, subtitle, headerActions, children,
   );
 }
 
+/**
+ * Shared "are you sure?" dialog for destructive or hard-to-undo actions
+ * (disconnect an integration, delete a record, etc). Keeps Cancel/Confirm
+ * styling consistent instead of each page rolling its own window.confirm.
+ */
+export function ConfirmModal({
+  open,
+  title,
+  message,
+  confirmLabel = 'Confirm',
+  cancelLabel = 'Cancel',
+  danger = false,
+  busy = false,
+  busyLabel,
+  onConfirm,
+  onCancel,
+}) {
+  const close = () => { if (!busy) onCancel?.(); };
+  return (
+    <Modal
+      open={open}
+      onClose={close}
+      title={title}
+      zClass="z-[130]"
+      footer={(
+        <>
+          <button type="button" className="btn-secondary" disabled={busy} onClick={close}>{cancelLabel}</button>
+          <button
+            type="button"
+            className={danger ? 'btn-danger' : 'btn-primary'}
+            disabled={busy}
+            aria-busy={busy || undefined}
+            onClick={() => { if (!busy) onConfirm?.(); }}
+          >
+            {busy ? (busyLabel || 'Working…') : confirmLabel}
+          </button>
+        </>
+      )}
+    >
+      <p className="text-sm leading-relaxed text-slate-600">{message}</p>
+    </Modal>
+  );
+}
+
 export function StatTile({ label, value, sub, icon: Icon, accent = 'brand' }) {
   const accents = { brand: 'text-brand-600 bg-brand-50', slate: 'text-slate-600 bg-slate-100', green: 'text-emerald-600 bg-emerald-50', red: 'text-red-600 bg-red-50' };
   return (

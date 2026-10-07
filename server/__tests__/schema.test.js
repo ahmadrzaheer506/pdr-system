@@ -661,3 +661,30 @@ describe('lead pipeline stage migration', () => {
     expect(sql.some((q) => /sh\.lead_id = l\.id/.test(q))).toBe(true);
   });
 });
+
+describe('calendar_sync_links migration (requirement 16.3)', () => {
+  test('creates per-user Google event links for visits, jobs, holidays, and tasks', async () => {
+    const tables = {};
+    const indexes = [];
+    const sql = [];
+    const queryInterface = {
+      createTable: async (name, cols) => { tables[name] = cols; },
+      addIndex: async (table, cols, opts) => { indexes.push({ table, cols, opts }); },
+      sequelize: { query: async (q) => { sql.push(q); } },
+    };
+    const Sequelize = {
+      INTEGER: 'INTEGER', TEXT: 'TEXT', DATE: 'DATE',
+      fn: () => 'NOW',
+    };
+    const migration = require('../migrations/20261007010000-calendar-sync-links');
+    await migration.up(queryInterface, Sequelize);
+    expect(tables.calendar_sync_links.user_id.allowNull).toBe(false);
+    expect(tables.calendar_sync_links.entity_type.allowNull).toBe(false);
+    expect(tables.calendar_sync_links.gcal_event_id.allowNull).toBe(false);
+    expect(indexes).toEqual([expect.objectContaining({
+      table: 'calendar_sync_links',
+      opts: expect.objectContaining({ unique: true, name: 'idx_calendar_sync_links_user_entity' }),
+    })]);
+    expect(sql.join('\n')).toMatch(/appointment.*job.*holiday.*task/);
+  });
+});

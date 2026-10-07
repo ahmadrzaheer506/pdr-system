@@ -14,6 +14,9 @@ jest.mock('../db', () => ({
   todayStr: () => '2026-09-23',
   plain: (row) => row,
 }));
+jest.mock('../calendarSync', () => ({
+  syncTask: jest.fn(async () => {}),
+}));
 
 const { Appointment, Task, Quote, Lead } = require('../models');
 const { scanAppointments, completeVisit } = require('../services/taskEngine');

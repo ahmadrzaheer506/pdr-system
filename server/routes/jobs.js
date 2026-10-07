@@ -16,6 +16,7 @@ const { buildContext, validateProposal, proposalConflicts } = require('../servic
 const ai = require('../integrations/ai');
 const contacts = require('../customerContacts');
 const geocode = require('../geocode');
+const calendarSync = require('../calendarSync');
 
 const router = express.Router();
 router.use(requireAuth, requireOffice);
@@ -111,6 +112,7 @@ router.post('/', asyncHandler(async (req, res) => {
   });
   await logActivity(customer_id, req.user.id, 'job_created', `Job "${title}" created`, 'job', created.id);
   await geocode.ensureJobSitePoint(created, { refresh: true });
+  await calendarSync.syncJob(created.id);
   res.json({ id: created.id });
 }));
 
@@ -216,6 +218,7 @@ router.put('/:id', asyncHandler(async (req, res) => {
     }
   }
   await logActivity(jb.customer_id, req.user.id, 'job_updated', `Job "${jb.title}" updated`, 'job', jb.id);
+  await calendarSync.syncJob(jb.id);
   res.json({ ok: true });
 }));
 
@@ -268,6 +271,7 @@ router.post('/:id/unschedule', asyncHandler(async (req, res) => {
     });
   }
   await logActivity(jb.customer_id, req.user.id, 'job_unscheduled', `Job "${jb.title}" unscheduled`, 'job', jb.id);
+  await calendarSync.syncJob(jb.id);
   res.json({ ok: true });
 }));
 
@@ -412,7 +416,9 @@ router.put('/:id/assignments', asyncHandler(async (req, res) => {
     }
   }
   if (!days.length) {
-    return jobDays.sendResult(res, await jobDays.setDayCrew(jb, req.body?.work_date, req.body?.user_ids));
+    const result = await jobDays.setDayCrew(jb, req.body?.work_date, req.body?.user_ids);
+    if (!result.error) await calendarSync.syncJob(jb.id);
+    return jobDays.sendResult(res, result);
   }
   let result = null;
   for (const day of days) {
@@ -428,6 +434,7 @@ router.put('/:id/assignments', asyncHandler(async (req, res) => {
   result.work_dates = days;
   result.warnings = await crewAvailability.assignmentWarnings(jb, result.work_date, result.user_ids);
   await logActivity(jb.customer_id, req.user.id, 'job_assigned', `Crew updated for "${jb.title}" on ${days.join(', ')} (${result.user_ids.length} assigned)`, 'job', jb.id);
+  await calendarSync.syncJob(jb.id);
   return jobDays.sendResult(res, result);
 }));
 
@@ -532,6 +539,7 @@ router.post('/ai/approve', asyncHandler(async (req, res) => {
       { where: { id: proposal_id } }
     );
   }
+  await Promise.all(clean.map((a) => calendarSync.syncJob(a.job_id)));
   res.json({ ok: true, scheduled: clean.length });
 }));
 

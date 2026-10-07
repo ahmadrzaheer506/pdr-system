@@ -1,9 +1,9 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { Camera, Lock, Mail, Shield, Trash2 } from 'lucide-react';
+import { Camera, Lock, Mail, Shield, Trash2, Calendar } from 'lucide-react';
 import { api } from '../lib/api';
 import { useAuth } from '../lib/auth.jsx';
 import { ROLES } from '../lib/roles';
-import { Avatar, PageLoading, useToast, Toast, avatarUrl } from '../components/ui.jsx';
+import { Avatar, PageLoading, useToast, Toast, ConfirmModal, avatarUrl } from '../components/ui.jsx';
 import ChangePasswordForm from '../components/ChangePasswordForm.jsx';
 import NotificationPrefsForm from '../components/NotificationPrefsForm.jsx';
 
@@ -11,6 +11,89 @@ function roleLabel(role) {
   if (role === ROLES.ADMIN) return 'Owner / Admin';
   if (role === ROLES.OFFICE) return 'Office';
   return 'Field operative';
+}
+
+function GoogleCalendarCard({ show }) {
+  const [status, setStatus] = useState(null);
+  const [busy, setBusy] = useState(false);
+  const [confirmDisconnect, setConfirmDisconnect] = useState(false);
+
+  const load = () => {
+    api.get('/integrations/google/status')
+      .then(setStatus)
+      .catch((err) => show(err.message || 'Could not load Google Calendar status', 'error'));
+  };
+
+  useEffect(() => { load(); }, []);
+
+  const connect = async () => {
+    setBusy(true);
+    try {
+      const { url } = await api.get('/integrations/google/connect');
+      window.open(url, '_blank');
+      show('Finish connecting in the Google window, then refresh this page.');
+    } catch (err) {
+      show(err.message || 'Could not start Google Calendar connect', 'error');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const disconnect = async () => {
+    setBusy(true);
+    try {
+      await api.post('/integrations/google/disconnect');
+      show('Google Calendar disconnected');
+      setConfirmDisconnect(false);
+      load();
+    } catch (err) {
+      show(err.message || 'Could not disconnect', 'error');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <section className="rounded-2xl border border-slate-200/80 bg-white p-6 shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+        <div className="min-w-0">
+          <h2 className="font-semibold text-slate-900 flex items-center gap-2">
+            <Calendar size={16} className="text-slate-400" />
+            Google Calendar
+          </h2>
+          <p className="text-xs text-slate-400 mt-1">
+            When connected, site visits, jobs, holidays and tasks you can see in the CRM are pushed to your calendar. Create and edit in the CRM updates Google; nothing is sent until you connect.
+          </p>
+          {status && (
+            <p className="text-sm text-slate-600 mt-2">{status.detail}</p>
+          )}
+        </div>
+        <div className="flex shrink-0 items-center gap-2">
+          {status && !status.connected && (
+            <button type="button" className="btn-primary text-sm" disabled={busy || !status.configured} onClick={connect}>
+              {busy ? 'Opening…' : 'Connect'}
+            </button>
+          )}
+          {status?.connected && (
+            <button type="button" className="btn-secondary text-sm" disabled={busy} onClick={() => setConfirmDisconnect(true)}>
+              Disconnect
+            </button>
+          )}
+        </div>
+      </div>
+      <ConfirmModal
+        open={confirmDisconnect}
+        title="Disconnect Google Calendar?"
+        message="Site visits, jobs, holidays and tasks will stop syncing to Google Calendar. Nothing already on the calendar is deleted, and you can reconnect any time from here."
+        confirmLabel="Yes, disconnect"
+        busyLabel="Disconnecting…"
+        danger
+        busy={busy}
+        onConfirm={disconnect}
+        onCancel={() => setConfirmDisconnect(false)}
+      />
+    </section>
+  );
 }
 
 /**
@@ -87,7 +170,7 @@ export default function Profile() {
     <div className="mx-auto max-w-3xl space-y-6 pb-10">
       <div>
         <h1 className="text-[1.65rem] font-semibold tracking-tight text-slate-900">Profile</h1>
-        <p className="text-sm text-slate-500 mt-1">Your name, photo, sign-in email, and password.</p>
+        <p className="text-sm text-slate-500 mt-1">Your name, photo, sign-in email, password, and Google Calendar.</p>
       </div>
 
       <section className="rounded-2xl border border-slate-200/80 bg-white p-6 shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
@@ -192,6 +275,8 @@ export default function Profile() {
       </section>
 
       {user.role === ROLES.STAFF && <NotificationPrefsForm />}
+
+      <GoogleCalendarCard show={show} />
 
       <Toast {...toast} />
     </div>
