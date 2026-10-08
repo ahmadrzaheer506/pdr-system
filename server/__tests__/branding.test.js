@@ -62,6 +62,13 @@ describe('branding logo (requirement 17.3)', () => {
     expect(res.headers['content-type']).toMatch(/image\//);
   });
 
+  test('mimeForPath is exported so Mailgun can set the logo Content-Type', () => {
+    expect(typeof branding.mimeForPath).toBe('function');
+    expect(branding.mimeForPath('brand-logo.png')).toBe('image/png');
+    expect(branding.mimeForPath('C:\\files\\brand-logo.JPG')).toBe('image/jpeg');
+    expect(branding.mimeForPath(null)).toBe('image/png');
+  });
+
   test('sendLogo serves the uploaded file', () => {
     const res = {
       setHeader: jest.fn(),

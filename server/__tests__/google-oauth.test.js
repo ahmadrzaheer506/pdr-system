@@ -18,7 +18,10 @@ jest.mock('../calendarSync', () => ({
 jest.mock('../integrations/quickbooks', () => ({
   isConfigured: jest.fn(() => false),
   authUrl: jest.fn(),
+  signOauthState: jest.fn(() => 'qbo-state'),
+  parseOauthState: jest.fn(),
   exchangeCode: jest.fn(),
+  disconnect: jest.fn(async () => true),
 }));
 
 jest.mock('../services/messenger', () => ({ ingestInbound: jest.fn() }));

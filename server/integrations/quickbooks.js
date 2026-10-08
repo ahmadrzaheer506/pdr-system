@@ -1,14 +1,23 @@
-// ============================================================
-// QuickBooks Online (UK) adapter — OAuth2 + invoice push +
-// payment status sync back (PRD §10.3). Raw REST, no SDK.
-// Live once QBO_CLIENT_ID/SECRET set AND Paul clicks Connect.
-// ============================================================
+'use strict';
+
+/**
+ * QuickBooks Online (UK) — company OAuth, quote→Estimate, invoice push
+ * with PDF attachment, payment push, and payment poll back into the CRM.
+ * Live once QBO_CLIENT_ID/SECRET are set AND an owner connects in Settings.
+ * Until then, send/pay still work in simulated mode.
+ */
+const fs = require('fs');
+const path = require('path');
+const jwt = require('jsonwebtoken');
 const { Op } = require('sequelize');
-const { OauthToken, Invoice, logIntegrationEvent } = require('../models');
-const { plain } = require('../db');
+const { OauthToken, Invoice, Customer, Job, Quote, logIntegrationEvent } = require('../models');
+const { plain, todayStr, DATA_DIR } = require('../db');
 
 const AUTH_URL = 'https://appcenter.intuit.com/connect/oauth2';
 const TOKEN_URL = 'https://oauth.platform.intuit.com/oauth2/v1/tokens/bearer';
+const MINOR_VERSION = '75';
+const JWT_SECRET = process.env.JWT_SECRET || 'dev-secret-change-me';
+const SCOPE = 'com.intuit.quickbooks.accounting';
 
 function apiBase() {
   return process.env.QBO_ENVIRONMENT === 'production'
@@ -19,27 +28,64 @@ function apiBase() {
 function isConfigured() {
   return !!(process.env.QBO_CLIENT_ID && process.env.QBO_CLIENT_SECRET);
 }
+
 function redirectUri() {
-  return process.env.QBO_REDIRECT_URI || `${process.env.APP_URL || 'http://localhost:4000'}/api/integrations/quickbooks/callback`;
+  return process.env.QBO_REDIRECT_URI
+    || `${process.env.APP_URL || 'http://localhost:4000'}/api/integrations/quickbooks/callback`;
 }
+
+function liveInvoiceId(id) {
+  if (!id) return null;
+  const text = String(id);
+  return text.startsWith('SIM-') ? null : text;
+}
+
+function roundMoney(n) {
+  return Math.round((Number(n) + Number.EPSILON) * 100) / 100;
+}
+
+function escapeQbo(value) {
+  return String(value || '').replace(/\\/g, '\\\\').replace(/'/g, "\\'");
+}
+
+function withMinor(path) {
+  return path.includes('?') ? `${path}&minorversion=${MINOR_VERSION}` : `${path}?minorversion=${MINOR_VERSION}`;
+}
+
 async function getTokens() {
   return plain(await OauthToken.findOne({ where: { provider: 'quickbooks', user_id: null } }));
 }
+
 async function isConnected() {
   const t = await getTokens();
   return !!(t && t.meta && t.meta.realmId);
+}
+
+async function isLive() {
+  return isConfigured() && (await isConnected());
 }
 
 async function logEvent(direction, event, payload, status = 'ok') {
   await logIntegrationEvent('quickbooks', direction, event, payload, status);
 }
 
-function authUrl(state = 'pdr') {
+function signOauthState(userId) {
+  return jwt.sign({ uid: Number(userId), p: 'qbo' }, JWT_SECRET, { expiresIn: '15m' });
+}
+
+function parseOauthState(state) {
+  if (!state) throw new Error('Missing OAuth state');
+  const payload = jwt.verify(state, JWT_SECRET);
+  if (payload.p !== 'qbo' || !payload.uid) throw new Error('Invalid OAuth state');
+  return Number(payload.uid);
+}
+
+function authUrl(state = '') {
   const params = new URLSearchParams({
     client_id: process.env.QBO_CLIENT_ID,
     redirect_uri: redirectUri(),
     response_type: 'code',
-    scope: 'com.intuit.quickbooks.accounting',
+    scope: SCOPE,
     state,
   });
   return `${AUTH_URL}?${params}`;
@@ -49,53 +95,74 @@ function basicAuth() {
   return 'Basic ' + Buffer.from(`${process.env.QBO_CLIENT_ID}:${process.env.QBO_CLIENT_SECRET}`).toString('base64');
 }
 
-async function exchangeCode(code, realmId) {
-  const res = await fetch(TOKEN_URL, {
-    method: 'POST',
-    headers: { Authorization: basicAuth(), 'Content-Type': 'application/x-www-form-urlencoded', Accept: 'application/json' },
-    body: new URLSearchParams({ grant_type: 'authorization_code', code, redirect_uri: redirectUri() }),
-  });
-  const data = await res.json();
-  if (!res.ok) throw new Error(`QBO token exchange failed: ${JSON.stringify(data)}`);
-  const expiresAt = new Date(Date.now() + (data.expires_in - 60) * 1000);
+async function saveCompanyTokens(data, realmId, extraMeta = {}) {
+  const expiresAt = new Date(Date.now() + (Number(data.expires_in || 3600) - 60) * 1000);
   const existing = await OauthToken.findOne({ where: { provider: 'quickbooks', user_id: null } });
+  const prevMeta = existing?.meta && typeof existing.meta === 'object' ? existing.meta : {};
   const fields = {
     access_token: data.access_token,
-    refresh_token: data.refresh_token,
+    refresh_token: data.refresh_token || existing?.refresh_token || null,
     expires_at: expiresAt,
-    meta: { realmId },
+    meta: { ...prevMeta, ...extraMeta, realmId: realmId || prevMeta.realmId },
   };
   if (existing) await existing.update(fields);
   else await OauthToken.create({ provider: 'quickbooks', user_id: null, ...fields });
-  await logEvent('in', 'oauth.connected', { realmId });
+}
+
+async function exchangeCode(code, realmId, stateUserId) {
+  if (!code) throw new Error('QuickBooks did not return an authorisation code');
+  if (!realmId) throw new Error('QuickBooks did not return a company (realm) id');
+  const res = await fetch(TOKEN_URL, {
+    method: 'POST',
+    headers: {
+      Authorization: basicAuth(),
+      'Content-Type': 'application/x-www-form-urlencoded',
+      Accept: 'application/json',
+    },
+    body: new URLSearchParams({
+      grant_type: 'authorization_code',
+      code,
+      redirect_uri: redirectUri(),
+    }),
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(`QuickBooks token exchange failed: ${JSON.stringify(data)}`);
+  await saveCompanyTokens(data, realmId, stateUserId ? { connected_by: stateUserId } : {});
+  await logEvent('in', 'oauth.connected', { realmId, connected_by: stateUserId || null });
   return true;
+}
+
+async function disconnect() {
+  const n = await OauthToken.destroy({ where: { provider: 'quickbooks', user_id: null } });
+  if (n) await logEvent('in', 'oauth.disconnected', {});
+  return n > 0;
 }
 
 async function accessToken() {
   const t = await getTokens();
-  if (!t) throw new Error('QuickBooks not connected');
+  if (!t) throw new Error('QuickBooks is not connected');
   if (t.expires_at && new Date(t.expires_at) > new Date()) return t.access_token;
   const res = await fetch(TOKEN_URL, {
     method: 'POST',
-    headers: { Authorization: basicAuth(), 'Content-Type': 'application/x-www-form-urlencoded', Accept: 'application/json' },
+    headers: {
+      Authorization: basicAuth(),
+      'Content-Type': 'application/x-www-form-urlencoded',
+      Accept: 'application/json',
+    },
     body: new URLSearchParams({ grant_type: 'refresh_token', refresh_token: t.refresh_token }),
   });
-  const data = await res.json();
-  if (!res.ok) throw new Error(`QBO token refresh failed: ${JSON.stringify(data)}`);
-  const expiresAt = new Date(Date.now() + (data.expires_in - 60) * 1000);
-  await OauthToken.update({
-    access_token: data.access_token,
-    refresh_token: data.refresh_token || t.refresh_token,
-    expires_at: expiresAt,
-  }, { where: { provider: 'quickbooks', user_id: null } });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(`QuickBooks token refresh failed: ${JSON.stringify(data)}`);
+  await saveCompanyTokens(data, t.meta?.realmId);
   return data.access_token;
 }
 
-async function qboFetch(path, options = {}) {
+async function qboFetch(path, options = {}, retried = false) {
   const t = await getTokens();
-  const realmId = (t.meta || {}).realmId;
+  const realmId = t?.meta?.realmId;
+  if (!realmId) throw new Error('QuickBooks company (realm) is missing — reconnect in Settings');
   const token = await accessToken();
-  const res = await fetch(`${apiBase()}/v3/company/${realmId}${path}`, {
+  const res = await fetch(`${apiBase()}/v3/company/${realmId}${withMinor(path)}`, {
     ...options,
     headers: {
       Authorization: `Bearer ${token}`,
@@ -104,64 +171,600 @@ async function qboFetch(path, options = {}) {
       ...(options.headers || {}),
     },
   });
+  if (res.status === 401 && !retried) {
+    const existing = await OauthToken.findOne({ where: { provider: 'quickbooks', user_id: null } });
+    if (existing) await existing.update({ expires_at: new Date(0) });
+    return qboFetch(path, options, true);
+  }
+  if (res.status === 204) return null;
   const data = await res.json().catch(() => ({}));
-  if (!res.ok) throw new Error(`QBO API ${res.status}: ${JSON.stringify(data.Fault || data)}`);
+  if (!res.ok) throw new Error(`QuickBooks API ${res.status}: ${JSON.stringify(data.Fault || data)}`);
   return data;
 }
 
-/** Find or create the QBO customer matching ours (dedupe per PRD §10.3). */
-async function ensureQboCustomer(customer) {
-  const name = customer.name.replace(/'/g, "\\'");
-  const q = await qboFetch(`/query?query=${encodeURIComponent(`select * from Customer where DisplayName = '${name}'`)}`);
-  const found = q.QueryResponse?.Customer?.[0];
-  if (found) return found.Id;
-  const created = await qboFetch('/customer', {
+async function qboQuery(sql) {
+  const data = await qboFetch(`/query?query=${encodeURIComponent(sql)}`);
+  return data?.QueryResponse || {};
+}
+
+async function qboUpload(form, retried = false) {
+  const t = await getTokens();
+  const realmId = t?.meta?.realmId;
+  if (!realmId) throw new Error('QuickBooks company (realm) is missing — reconnect in Settings');
+  const token = await accessToken();
+  const res = await fetch(`${apiBase()}/v3/company/${realmId}${withMinor('/upload')}`, {
     method: 'POST',
-    body: JSON.stringify({
-      DisplayName: customer.name,
-      PrimaryPhone: customer.phone ? { FreeFormNumber: customer.phone } : undefined,
-      PrimaryEmailAddr: customer.email ? { Address: customer.email } : undefined,
-      BillAddr: customer.address ? { Line1: customer.address, PostalCode: customer.postcode || undefined } : undefined,
-    }),
+    headers: {
+      Authorization: `Bearer ${token}`,
+      Accept: 'application/json',
+    },
+    body: form,
   });
-  return created.Customer.Id;
+  if (res.status === 401 && !retried) {
+    const existing = await OauthToken.findOne({ where: { provider: 'quickbooks', user_id: null } });
+    if (existing) await existing.update({ expires_at: new Date(0) });
+    return qboUpload(form, true);
+  }
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(`QuickBooks upload ${res.status}: ${JSON.stringify(data.Fault || data)}`);
+  return data;
+}
+
+function pdfPathFor(filename) {
+  if (!filename) return null;
+  return path.join(DATA_DIR, 'files', filename);
 }
 
 /**
- * Push an in-app invoice into QuickBooks. Returns { qboId, simulated }.
- * In simulated mode a fake id is issued so the workflow still demos.
+ * Attach a CRM PDF to a QuickBooks Invoice or Estimate. Skips if already linked
+ * or the file is missing so send/pay never fail on the attachment.
+ */
+async function attachPdf({ entityType, entityId, fileName, filePath, existingId }) {
+  if (!(await isLive()) || !entityId) return { attachableId: null, simulated: true };
+  if (liveInvoiceId(existingId)) return { attachableId: existingId, simulated: false };
+  if (!filePath || !fs.existsSync(filePath)) return { attachableId: null, simulated: false };
+  const bytes = fs.readFileSync(filePath);
+  const form = new FormData();
+  const meta = {
+    FileName: fileName || path.basename(filePath),
+    ContentType: 'application/pdf',
+    AttachableRef: [{ EntityRef: { type: entityType, value: String(entityId) } }],
+  };
+  form.append('file_metadata_01', new Blob([JSON.stringify(meta)], { type: 'application/json' }));
+  form.append('file_content_01', new Blob([bytes], { type: 'application/pdf' }), meta.FileName);
+  const data = await qboUpload(form);
+  const attachableId = data?.Attachable?.Id || null;
+  await logEvent('out', 'attachable.uploaded', { entityType, entityId, attachableId, fileName: meta.FileName });
+  return { attachableId, simulated: false };
+}
+
+async function patchCompanyMeta(patch) {
+  const existing = await OauthToken.findOne({ where: { provider: 'quickbooks', user_id: null } });
+  if (!existing) return;
+  const meta = { ...(existing.meta || {}), ...patch };
+  await existing.update({ meta });
+}
+
+async function ensureIncomeAccountId() {
+  const t = await getTokens();
+  if (t?.meta?.incomeAccountId) return t.meta.incomeAccountId;
+  const q = await qboQuery("select * from Account where AccountType = 'Income' maxresults 1");
+  const id = q.Account?.[0]?.Id;
+  if (id) await patchCompanyMeta({ incomeAccountId: id });
+  return id || null;
+}
+
+async function ensureServiceItemId() {
+  const t = await getTokens();
+  if (t?.meta?.itemId) return t.meta.itemId;
+  const named = await qboQuery("select * from Item where Name = 'Roofing work' maxresults 1");
+  if (named.Item?.[0]?.Id) {
+    await patchCompanyMeta({ itemId: named.Item[0].Id });
+    return named.Item[0].Id;
+  }
+  const any = await qboQuery("select * from Item where Type = 'Service' maxresults 1");
+  if (any.Item?.[0]?.Id) {
+    await patchCompanyMeta({ itemId: any.Item[0].Id });
+    return any.Item[0].Id;
+  }
+  const incomeId = await ensureIncomeAccountId();
+  const created = await qboFetch('/item', {
+    method: 'POST',
+    body: JSON.stringify({
+      Name: 'Roofing work',
+      Type: 'Service',
+      IncomeAccountRef: incomeId ? { value: incomeId } : undefined,
+    }),
+  });
+  const id = created?.Item?.Id;
+  if (id) await patchCompanyMeta({ itemId: id });
+  return id;
+}
+
+function pickTaxCodeId(codes, { wantZero }) {
+  const list = Array.isArray(codes) ? codes : [];
+  const scored = list.map((code) => {
+    const name = `${code.Name || ''} ${code.Description || ''}`;
+    const rate = Number(code.SalesTaxRateList?.TaxRateDetail?.[0]?.TaxRateRef?.value) || 0;
+    let score = 0;
+    if (wantZero) {
+      if (/zero|exempt|out of scope|\bnon\b|0%/i.test(name)) score += 5;
+      if (code.Id === 'NON' || code.Id === 'ZERO') score += 4;
+    } else {
+      if (/20|standard/i.test(name)) score += 5;
+      if (rate === 20) score += 3;
+      if (code.Id === '3') score += 1;
+    }
+    return { id: code.Id, score };
+  }).filter((row) => row.id);
+  scored.sort((a, b) => b.score - a.score);
+  if (scored[0]?.score > 0) return scored[0].id;
+  return wantZero ? 'NON' : '3';
+}
+
+async function taxCodeForInvoice(invoice) {
+  const wantZero = !(Number(invoice.vat_amount) > 0);
+  const t = await getTokens();
+  const cached = wantZero ? t?.meta?.taxCodeZero : t?.meta?.taxCodeStandard;
+  if (cached) return cached;
+  const q = await qboQuery('select * from TaxCode maxresults 50');
+  const id = pickTaxCodeId(q.TaxCode, { wantZero });
+  await patchCompanyMeta(wantZero ? { taxCodeZero: id } : { taxCodeStandard: id });
+  return id;
+}
+
+function customerDisplayName(customer) {
+  const company = String(customer.company_name || '').trim();
+  if (customer.customer_type === 'commercial' && company) return company;
+  return String(customer.name || 'Customer').trim() || 'Customer';
+}
+
+async function ensureQboCustomer(customer) {
+  const existingId = liveInvoiceId(customer.qbo_id);
+  if (existingId) return existingId;
+  const display = customerDisplayName(customer);
+  const q = await qboQuery(`select * from Customer where DisplayName = '${escapeQbo(display)}' maxresults 1`);
+  let id = q.Customer?.[0]?.Id;
+  if (!id) {
+    try {
+      const created = await qboFetch('/customer', {
+        method: 'POST',
+        body: JSON.stringify({
+          DisplayName: display,
+          CompanyName: customer.company_name || undefined,
+          PrimaryPhone: customer.phone ? { FreeFormNumber: customer.phone } : undefined,
+          PrimaryEmailAddr: customer.email ? { Address: customer.email } : undefined,
+          BillAddr: customer.address
+            ? { Line1: customer.address, PostalCode: customer.postcode || undefined }
+            : undefined,
+        }),
+      });
+      id = created?.Customer?.Id;
+    } catch (err) {
+      const retry = await qboQuery(`select * from Customer where DisplayName = '${escapeQbo(`${display} (CRM ${customer.id})`)}' maxresults 1`);
+      id = retry.Customer?.[0]?.Id;
+      if (!id) {
+        const created = await qboFetch('/customer', {
+          method: 'POST',
+          body: JSON.stringify({ DisplayName: `${display} (CRM ${customer.id})` }),
+        });
+        id = created?.Customer?.Id;
+      }
+      if (!id) throw err;
+    }
+  }
+  if (id && customer.id) {
+    await Customer.update({ qbo_id: id }, { where: { id: customer.id } });
+  }
+  return id;
+}
+
+function salesLines(doc, itemId, taxCode, fallbackDescription) {
+  const items = Array.isArray(doc.items) ? doc.items : [];
+  const lines = items.map((it, index) => ({
+    LineNum: index + 1,
+    DetailType: 'SalesItemLineDetail',
+    Amount: roundMoney(Number(it.qty) * Number(it.unit_price)),
+    Description: it.description || 'Roofing work',
+    SalesItemLineDetail: {
+      ItemRef: { value: String(itemId) },
+      Qty: Number(it.qty) || 1,
+      UnitPrice: Number(it.unit_price) || 0,
+      TaxCodeRef: { value: String(taxCode) },
+    },
+  })).filter((line) => line.Amount !== 0 || items.length === 1);
+
+  if (!lines.length) {
+    lines.push({
+      DetailType: 'SalesItemLineDetail',
+      Amount: roundMoney(Number(doc.subtotal) || Number(doc.total) || 0),
+      Description: fallbackDescription || doc.ref || 'Roofing work',
+      SalesItemLineDetail: {
+        ItemRef: { value: String(itemId) },
+        Qty: 1,
+        UnitPrice: roundMoney(Number(doc.subtotal) || Number(doc.total) || 0),
+        TaxCodeRef: { value: String(taxCode) },
+      },
+    });
+  }
+
+  const held = roundMoney((Number(doc.cis_deduction) || 0) + (Number(doc.retention_amount) || 0));
+  if (held > 0) {
+    lines.push({
+      DetailType: 'DiscountLineDetail',
+      Amount: held,
+      Description: [
+        Number(doc.cis_deduction) > 0 ? `CIS ${doc.cis_rate || 20}%` : null,
+        Number(doc.retention_amount) > 0 ? `Retention ${doc.retention_percent || 0}%` : null,
+      ].filter(Boolean).join(' · ') || 'Held from this document',
+      DiscountLineDetail: { PercentBased: false },
+    });
+  }
+  return lines;
+}
+
+function invoiceLines(invoice, itemId, taxCode) {
+  return salesLines(invoice, itemId, taxCode, invoice.ref || 'Invoice');
+}
+
+function invoiceBody(invoice, qboCustomerId, itemId, taxCode, extra = {}) {
+  return {
+    ...extra,
+    CustomerRef: { value: String(qboCustomerId) },
+    DocNumber: String(invoice.ref || '').slice(0, 21),
+    TxnDate: invoice.issue_date || undefined,
+    DueDate: invoice.due_date || undefined,
+    PrivateNote: extra.PrivateNote || invoice.notes || `PDR invoice ${invoice.ref}`,
+    GlobalTaxCalculation: Number(invoice.vat_amount) > 0 ? 'TaxExcluded' : 'NotApplicable',
+    Line: invoiceLines(invoice, itemId, taxCode),
+  };
+}
+
+/**
+ * Job invoices come from an accepted quote that may already be an Estimate.
+ * We look it up so we can remove it from All Sales — not so we can convert it.
+ * Converting via LinkedTxn closes the estimate but still adds it to the total.
+ */
+async function quoteEstimateForInvoice(invoice) {
+  if (!invoice?.job_id) return null;
+  const job = await Job.findByPk(invoice.job_id, { attributes: ['quote_id'] });
+  if (!job?.quote_id) return null;
+  const quote = await Quote.findByPk(job.quote_id, { attributes: ['id', 'ref', 'qbo_id'] });
+  const estimateId = liveInvoiceId(quote?.qbo_id);
+  if (!estimateId) return null;
+  return { TxnId: estimateId, quoteRef: quote.ref, quoteId: quote.id };
+}
+
+function isMissingQboObject(err) {
+  const text = String(err?.message || '');
+  return /\b404\b/.test(text) || /object not found/i.test(text);
+}
+
+/**
+ * QBO deletes with POST ?operation=delete and the current SyncToken.
+ * HTTP DELETE /estimate/{id} is not supported and silently fails.
+ */
+async function tryDeleteEstimate(estimateId) {
+  if (!liveInvoiceId(estimateId)) return false;
+  try {
+    const current = await qboFetch(`/estimate/${estimateId}`);
+    const est = current?.Estimate;
+    if (!est?.Id) return true;
+    await qboFetch('/estimate?operation=delete', {
+      method: 'POST',
+      body: JSON.stringify({ Id: String(est.Id), SyncToken: String(est.SyncToken || '0') }),
+    });
+    await logEvent('out', 'estimate.deleted', { estimateId: est.Id });
+    return true;
+  } catch (err) {
+    if (isMissingQboObject(err)) return true;
+    await logEvent('out', 'estimate.delete_failed', { estimateId, error: String(err.message) }, 'error');
+    return false;
+  }
+}
+
+/** Closed converted estimates stay on All Sales until the Invoice.LinkedTxn is cleared. */
+async function unlinkEstimateFromInvoice(invoiceQboId, estimateId) {
+  if (!liveInvoiceId(invoiceQboId) || !liveInvoiceId(estimateId)) return false;
+  try {
+    const data = await qboFetch(`/invoice/${invoiceQboId}`);
+    const inv = data?.Invoice;
+    if (!inv?.Id) return false;
+    const links = Array.isArray(inv.LinkedTxn) ? inv.LinkedTxn : [];
+    const without = links.filter((link) => !(
+      String(link.TxnId) === String(estimateId)
+      && String(link.TxnType || '').toLowerCase() === 'estimate'
+    ));
+    if (without.length === links.length) return false;
+    await qboFetch('/invoice', {
+      method: 'POST',
+      body: JSON.stringify({
+        Id: inv.Id,
+        SyncToken: inv.SyncToken,
+        sparse: true,
+        LinkedTxn: without,
+      }),
+    });
+    await logEvent('out', 'estimate.unlinked', { invoiceQboId, estimateId });
+    return true;
+  } catch (err) {
+    await logEvent('out', 'estimate.unlink_failed', {
+      invoiceQboId,
+      estimateId,
+      error: String(err.message),
+    }, 'error');
+    return false;
+  }
+}
+
+/** Last resort so All Sales does not keep the quote amount after the invoice is paid. */
+async function tryZeroEstimate(estimateId) {
+  try {
+    const current = await qboFetch(`/estimate/${estimateId}`);
+    const est = current?.Estimate;
+    if (!est?.Id) return true;
+    const lines = (Array.isArray(est.Line) ? est.Line : []).map((line) => {
+      if (line.DetailType !== 'SalesItemLineDetail') return line;
+      return {
+        ...line,
+        Amount: 0,
+        SalesItemLineDetail: {
+          ...(line.SalesItemLineDetail || {}),
+          Qty: 0,
+          UnitPrice: 0,
+        },
+      };
+    });
+    await qboFetch('/estimate', {
+      method: 'POST',
+      body: JSON.stringify({
+        Id: est.Id,
+        SyncToken: est.SyncToken,
+        sparse: true,
+        Line: lines,
+      }),
+    });
+    await logEvent('out', 'estimate.zeroed', { estimateId: est.Id });
+    return true;
+  } catch (err) {
+    if (isMissingQboObject(err)) return true;
+    await logEvent('out', 'estimate.zero_failed', { estimateId, error: String(err.message) }, 'error');
+    return false;
+  }
+}
+
+async function removeQuoteEstimate({ quoteId, estimateId, invoiceQboId }) {
+  if (!liveInvoiceId(estimateId)) return false;
+  if (invoiceQboId) await unlinkEstimateFromInvoice(invoiceQboId, estimateId);
+  let deleted = await tryDeleteEstimate(estimateId);
+  if (!deleted && invoiceQboId) {
+    await unlinkEstimateFromInvoice(invoiceQboId, estimateId);
+    deleted = await tryDeleteEstimate(estimateId);
+  }
+  if (!deleted) await tryZeroEstimate(estimateId);
+  if (deleted && quoteId) {
+    await Quote.update(
+      { qbo_id: null, qbo_sync_token: null, qbo_attachable_id: null },
+      { where: { id: quoteId } },
+    );
+  }
+  return deleted;
+}
+
+/**
+ * Create or update the QuickBooks invoice for a CRM invoice.
+ * @returns {{ qboId: string, syncToken?: string, simulated: boolean }}
  */
 async function pushInvoice(invoice, customer) {
-  if (!isConfigured() || !(await isConnected())) {
+  if (!(await isLive())) {
     await logEvent('out', 'invoice.simulated', { ref: invoice.ref, total: invoice.total }, 'simulated');
     return { qboId: `SIM-${invoice.ref}`, simulated: true };
   }
   const qboCustomerId = await ensureQboCustomer(customer);
-  const items = Array.isArray(invoice.items) ? invoice.items : [];
-  const body = {
-    CustomerRef: { value: qboCustomerId },
-    DocNumber: invoice.ref,
-    TxnDate: invoice.issue_date,
-    DueDate: invoice.due_date,
-    GlobalTaxCalculation: 'TaxExcluded',
-    Line: items.map((it) => ({
-      DetailType: 'SalesItemLineDetail',
-      Amount: Number(it.qty) * Number(it.unit_price),
-      Description: it.description,
-      SalesItemLineDetail: {
-        Qty: Number(it.qty),
-        UnitPrice: Number(it.unit_price),
-        TaxCodeRef: { value: invoice.vat_rate > 0 ? '3' : 'NON' },
-      },
-    })),
+  const itemId = await ensureServiceItemId();
+  const taxCode = await taxCodeForInvoice(invoice);
+  const existingId = liveInvoiceId(invoice.qbo_id);
+  let data;
+  if (existingId) {
+    const current = await qboFetch(`/invoice/${existingId}`);
+    const syncToken = current?.Invoice?.SyncToken || invoice.qbo_sync_token;
+    data = await qboFetch('/invoice', {
+      method: 'POST',
+      body: JSON.stringify(invoiceBody(invoice, qboCustomerId, itemId, taxCode, {
+        Id: existingId,
+        SyncToken: syncToken,
+        sparse: true,
+      })),
+    });
+    await logEvent('out', 'invoice.updated', { ref: invoice.ref, qboId: existingId });
+  } else {
+    const fromEstimate = await quoteEstimateForInvoice(invoice);
+    const extra = {};
+    if (fromEstimate) {
+      extra.PrivateNote = invoice.notes
+        || `PDR invoice ${invoice.ref} (from estimate ${fromEstimate.quoteRef})`;
+      await removeQuoteEstimate({
+        quoteId: fromEstimate.quoteId,
+        estimateId: fromEstimate.TxnId,
+      });
+    }
+    data = await qboFetch('/invoice', {
+      method: 'POST',
+      body: JSON.stringify(invoiceBody(invoice, qboCustomerId, itemId, taxCode, extra)),
+    });
+    await logEvent('out', 'invoice.pushed', {
+      ref: invoice.ref,
+      qboId: data?.Invoice?.Id,
+      fromEstimate: fromEstimate?.TxnId || null,
+    });
+  }
+  const qboId = data?.Invoice?.Id;
+  const leftoverEstimate = await quoteEstimateForInvoice(invoice);
+  if (leftoverEstimate) {
+    await removeQuoteEstimate({
+      quoteId: leftoverEstimate.quoteId,
+      estimateId: leftoverEstimate.TxnId,
+      invoiceQboId: qboId,
+    });
+  }
+  let attachableId = liveInvoiceId(invoice.qbo_attachable_id);
+  try {
+    const attached = await attachPdf({
+      entityType: 'Invoice',
+      entityId: qboId,
+      fileName: `${invoice.ref}.pdf`,
+      filePath: pdfPathFor(invoice.pdf_file),
+      existingId: attachableId,
+    });
+    attachableId = attached.attachableId || attachableId;
+  } catch (err) {
+    await logEvent('out', 'attachable.error', { ref: invoice.ref, error: String(err.message) }, 'error');
+  }
+  return {
+    qboId,
+    syncToken: data?.Invoice?.SyncToken,
+    attachableId,
+    simulated: false,
   };
-  const data = await qboFetch('/invoice', { method: 'POST', body: JSON.stringify(body) });
-  await logEvent('out', 'invoice.pushed', { ref: invoice.ref, qboId: data.Invoice.Id });
-  return { qboId: data.Invoice.Id, simulated: false };
+}
+
+function estimateBody(quote, qboCustomerId, itemId, taxCode, extra = {}) {
+  const txnDate = quote.sent_at
+    ? String(quote.sent_at).slice(0, 10)
+    : (todayStr() || undefined);
+  return {
+    ...extra,
+    CustomerRef: { value: String(qboCustomerId) },
+    DocNumber: String(quote.ref || '').slice(0, 21),
+    TxnDate: txnDate,
+    ExpirationDate: quote.valid_until || undefined,
+    PrivateNote: quote.notes || `PDR quote ${quote.ref}${quote.title ? ` — ${quote.title}` : ''}`,
+    GlobalTaxCalculation: Number(quote.vat_amount) > 0 ? 'TaxExcluded' : 'NotApplicable',
+    Line: salesLines(quote, itemId, taxCode, quote.title || quote.ref || 'Quote'),
+  };
+}
+
+/**
+ * Create or update a QuickBooks Estimate when a CRM quote is sent.
+ */
+async function pushEstimate(quote, customer) {
+  if (!(await isLive())) {
+    await logEvent('out', 'estimate.simulated', { ref: quote.ref, total: quote.total }, 'simulated');
+    return { qboId: `SIM-${quote.ref}`, simulated: true };
+  }
+  const qboCustomerId = await ensureQboCustomer(customer);
+  const itemId = await ensureServiceItemId();
+  const taxCode = await taxCodeForInvoice(quote);
+  const existingId = liveInvoiceId(quote.qbo_id);
+  let data;
+  if (existingId) {
+    const current = await qboFetch(`/estimate/${existingId}`);
+    const syncToken = current?.Estimate?.SyncToken || quote.qbo_sync_token;
+    data = await qboFetch('/estimate', {
+      method: 'POST',
+      body: JSON.stringify(estimateBody(quote, qboCustomerId, itemId, taxCode, {
+        Id: existingId,
+        SyncToken: syncToken,
+        sparse: true,
+      })),
+    });
+    await logEvent('out', 'estimate.updated', { ref: quote.ref, qboId: existingId });
+  } else {
+    data = await qboFetch('/estimate', {
+      method: 'POST',
+      body: JSON.stringify(estimateBody(quote, qboCustomerId, itemId, taxCode)),
+    });
+    await logEvent('out', 'estimate.pushed', { ref: quote.ref, qboId: data?.Estimate?.Id });
+  }
+  const qboId = data?.Estimate?.Id;
+  let attachableId = liveInvoiceId(quote.qbo_attachable_id);
+  try {
+    const attached = await attachPdf({
+      entityType: 'Estimate',
+      entityId: qboId,
+      fileName: `${quote.ref}.pdf`,
+      filePath: pdfPathFor(quote.pdf_file),
+      existingId: attachableId,
+    });
+    attachableId = attached.attachableId || attachableId;
+  } catch (err) {
+    await logEvent('out', 'attachable.error', { ref: quote.ref, error: String(err.message) }, 'error');
+  }
+  return {
+    qboId,
+    syncToken: data?.Estimate?.SyncToken,
+    attachableId,
+    simulated: false,
+  };
+}
+
+async function pushPayment(invoice, payment, customer) {
+  const invoiceQboId = liveInvoiceId(invoice?.qbo_id);
+  if (!(await isLive()) || !invoiceQboId) {
+    return { qboId: null, simulated: true };
+  }
+  const amount = roundMoney(payment.amount);
+  if (!(amount > 0)) return { qboId: null, simulated: true };
+  const qboCustomerId = await ensureQboCustomer(customer);
+  const data = await qboFetch('/payment', {
+    method: 'POST',
+    body: JSON.stringify({
+      CustomerRef: { value: String(qboCustomerId) },
+      TotalAmt: amount,
+      TxnDate: payment.paid_at || undefined,
+      PrivateNote: payment.note || `PDR payment on ${invoice.ref}`,
+      Line: [{
+        Amount: amount,
+        LinkedTxn: [{ TxnId: invoiceQboId, TxnType: 'Invoice' }],
+      }],
+    }),
+  });
+  const qboId = data?.Payment?.Id;
+  await logEvent('out', 'payment.pushed', { ref: invoice.ref, qboId, amount });
+  const leftoverEstimate = await quoteEstimateForInvoice(invoice);
+  if (leftoverEstimate) {
+    await removeQuoteEstimate({
+      quoteId: leftoverEstimate.quoteId,
+      estimateId: leftoverEstimate.TxnId,
+      invoiceQboId: invoiceQboId,
+    });
+  }
+  return { qboId, simulated: false };
+}
+
+async function markInvoicePaidInCrm(inv, cols) {
+  await inv.update(cols);
+  if (cols.status !== 'paid') return;
+  if (inv.job_id) await Job.update({ status: 'PAID' }, { where: { id: inv.job_id } });
+  try {
+    const job = inv.job_id ? await Job.findByPk(inv.job_id, { attributes: ['lead_id'] }) : null;
+    const { setStage, logActivity } = require('../services/pipeline');
+    const { resolveRule } = require('../services/taskEngine');
+    await setStage(inv.customer_id, 'PAID', null, `Invoice ${inv.ref} paid in QuickBooks`, { leadId: job?.lead_id });
+    await resolveRule(`chase_payment:invoice:${inv.id}`);
+    await logActivity(inv.customer_id, null, 'payment_recorded', `QuickBooks marked ${inv.ref} paid`, 'invoice', inv.id);
+  } catch { /* CRM side-effects must not fail the poll */ }
+}
+
+async function applyQboBalance(inv, paidOnQbo) {
+  const invoicePayments = require('../invoicePayments');
+  const remaining = invoicePayments.outstanding(inv);
+  const already = roundMoney(Number(inv.amount_paid) || 0);
+  const delta = roundMoney(Math.min(remaining, Math.max(0, paidOnQbo - already)));
+  if (!(delta > 0)) return false;
+  const stamp = `qbo-paid-${inv.qbo_id}-${Math.round(paidOnQbo * 100)}`;
+  const applied = await invoicePayments.recordPayment(inv, {
+    amount: delta,
+    paid_at: todayStr(),
+    note: 'Synced from QuickBooks',
+  }, { userId: null, today: todayStr(), source: 'qbo', qboId: stamp });
+  if (applied.error) return false;
+  await markInvoicePaidInCrm(inv, applied.cols);
+  return true;
 }
 
 async function pollPayments() {
-  if (!isConfigured() || !(await isConnected())) return 0;
+  if (!(await isLive())) return 0;
   const rows = await Invoice.findAll({
     where: {
       qbo_id: { [Op.ne]: null, [Op.notLike]: 'SIM-%' },
@@ -172,31 +775,58 @@ async function pollPayments() {
   for (const inv of rows) {
     try {
       const data = await qboFetch(`/invoice/${inv.qbo_id}`);
-      const balance = Number(data.Invoice.Balance);
-      const total = Number(data.Invoice.TotalAmt);
-      const paid = total - balance;
-      if (balance === 0 && inv.status !== 'paid') {
-        inv.status = 'paid';
-        inv.amount_paid = total;
-        inv.paid_at = new Date();
-        await inv.save();
-        updated++;
-      } else if (paid > 0 && paid !== inv.amount_paid) {
-        inv.status = 'part_paid';
-        inv.amount_paid = paid;
-        await inv.save();
-        updated++;
+      const qboInv = data?.Invoice;
+      if (!qboInv) continue;
+      if (qboInv.SyncToken && qboInv.SyncToken !== inv.qbo_sync_token) {
+        await inv.update({ qbo_sync_token: qboInv.SyncToken, qbo_synced_at: new Date() });
       }
+      const total = Number(qboInv.TotalAmt);
+      const balance = Number(qboInv.Balance);
+      const paid = roundMoney(total - balance);
+      if (await applyQboBalance(inv, paid)) updated += 1;
     } catch (err) {
       await logEvent('in', 'payment_poll.error', { invoice: inv.ref, error: String(err.message) }, 'error');
     }
   }
   if (updated) await logEvent('in', 'payment_poll.synced', { updated });
+  try {
+    await sweepEstimatesReplacedByInvoices();
+  } catch (err) {
+    await logEvent('in', 'estimate.sweep_error', { error: String(err.message) }, 'error');
+  }
   return updated;
+}
+
+/**
+ * Paid invoices that still have a Closed quote Estimate keep that amount on
+ * All Sales. Unlink and delete (or zero) those leftovers on each poll.
+ */
+async function sweepEstimatesReplacedByInvoices() {
+  const quotes = (await Quote.findAll({
+    where: { qbo_id: { [Op.ne]: null, [Op.notLike]: 'SIM-%' } },
+    attributes: ['id', 'qbo_id'],
+  })) || [];
+  for (const quote of quotes) {
+    const estimateId = liveInvoiceId(quote.qbo_id);
+    if (!estimateId) continue;
+    const job = await Job.findOne({ where: { quote_id: quote.id }, attributes: ['id'] });
+    if (!job) continue;
+    const inv = await Invoice.findOne({
+      where: { job_id: job.id, qbo_id: { [Op.ne]: null, [Op.notLike]: 'SIM-%' } },
+      attributes: ['qbo_id'],
+    });
+    if (!liveInvoiceId(inv?.qbo_id)) continue;
+    await removeQuoteEstimate({
+      quoteId: quote.id,
+      estimateId,
+      invoiceQboId: inv.qbo_id,
+    });
+  }
 }
 
 async function status() {
   const connected = await isConnected();
+  const env = process.env.QBO_ENVIRONMENT === 'production' ? 'production' : 'sandbox';
   return {
     id: 'quickbooks',
     name: 'QuickBooks Online (UK)',
@@ -206,11 +836,28 @@ async function status() {
     env_needed: ['QBO_CLIENT_ID', 'QBO_CLIENT_SECRET', 'QBO_REDIRECT_URI', 'QBO_ENVIRONMENT'],
     connect_url: '/api/integrations/quickbooks/connect',
     detail: !isConfigured()
-      ? 'Simulated — invoices tracked in-app only. Add Intuit app keys, then Paul clicks Connect.'
+      ? 'Simulated — invoices stay in the CRM. Add Intuit app keys, then the owner clicks Connect.'
       : connected
-        ? `Live (${process.env.QBO_ENVIRONMENT || 'sandbox'}) — invoices push to QuickBooks, payments sync back`
-        : 'Keys present — waiting for Paul to click "Connect QuickBooks" in Settings.',
+        ? `Live (${env}) — sent quotes become Estimates, sent invoices (with PDF) become Invoices, and payments sync both ways.`
+        : 'Keys present — the owner must click Connect in Settings so quotes and invoices can go to the sandbox company.',
   };
 }
 
-module.exports = { isConfigured, isConnected, authUrl, exchangeCode, pushInvoice, pollPayments, status };
+module.exports = {
+  isConfigured,
+  isConnected,
+  isLive,
+  authUrl,
+  signOauthState,
+  parseOauthState,
+  exchangeCode,
+  disconnect,
+  pushInvoice,
+  pushEstimate,
+  pushPayment,
+  attachPdf,
+  pollPayments,
+  status,
+  pickTaxCodeId,
+  liveInvoiceId,
+};

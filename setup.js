@@ -159,13 +159,12 @@ async function yesNo(question, defaultYes = true) {
   }
 
   // ---------- Email ----------
-  await section('5. Email (SMTP)', 'Sends quotes and follow-ups by email. Recommended even if WhatsApp is the main channel — it is the fallback.');
-  if (await yesNo('Configure email sending now?', false)) {
-    env.SMTP_HOST = await prompt(env, 'SMTP_HOST', 'SMTP host (e.g. smtp.sendgrid.net)');
-    env.SMTP_PORT = (await prompt(env, 'SMTP_PORT', 'SMTP port (Enter for 587)')) || '587';
-    env.SMTP_USER = await prompt(env, 'SMTP_USER', 'SMTP username');
-    env.SMTP_PASS = await prompt(env, 'SMTP_PASS', 'SMTP password / API key', { secret: true });
-    env.SMTP_FROM = (await prompt(env, 'SMTP_FROM', 'From address')) || 'Paul Douglas Roofing <office@pauldouglasroofing.co.uk>';
+  await section('5. Email (Mailgun)', 'Sends quotes and follow-ups by email. Recommended even if WhatsApp is the main channel — it is the fallback.');
+  if (await yesNo('Configure Mailgun sending now?', false)) {
+    env.MAILGUN_API_KEY = await prompt(env, 'MAILGUN_API_KEY', 'Mailgun private API key', { secret: true });
+    env.MAILGUN_DOMAIN = await prompt(env, 'MAILGUN_DOMAIN', 'Mailgun sending domain (e.g. mg.pauldouglasroofing.co.uk)');
+    env.MAILGUN_FROM = (await prompt(env, 'MAILGUN_FROM', 'From address')) || 'Paul Douglas Roofing <office@pauldouglasroofing.co.uk>';
+    env.MAILGUN_REGION = (await prompt(env, 'MAILGUN_REGION', 'Region (us or eu, Enter for us)')) || 'us';
   }
   env.EMAIL_INBOUND_SECRET = env.EMAIL_INBOUND_SECRET && env.EMAIL_INBOUND_SECRET !== 'change-me'
     ? env.EMAIL_INBOUND_SECRET
@@ -208,7 +207,7 @@ async function yesNo(question, defaultYes = true) {
     ['AI assistant', env.ANTHROPIC_API_KEY || env.OPENAI_API_KEY],
     ['WhatsApp', env.WHATSAPP_ACCESS_TOKEN && env.WHATSAPP_PHONE_NUMBER_ID],
     ['Facebook', env.FB_PAGE_ACCESS_TOKEN],
-    ['Email (SMTP)', env.SMTP_HOST && env.SMTP_USER],
+    ['Email (Mailgun)', env.MAILGUN_API_KEY && env.MAILGUN_DOMAIN],
     ['Google Calendar', env.GOOGLE_CLIENT_ID && env.GOOGLE_CLIENT_SECRET],
     ['QuickBooks', env.QBO_CLIENT_ID && env.QBO_CLIENT_SECRET],
     ['Twilio', env.TWILIO_ACCOUNT_SID],
@@ -221,7 +220,7 @@ async function yesNo(question, defaultYes = true) {
   const webhooks = [];
   if (env.WHATSAPP_ACCESS_TOKEN) webhooks.push(['WhatsApp', `${env.APP_URL}/api/webhooks/whatsapp`]);
   if (env.FB_PAGE_ACCESS_TOKEN) webhooks.push(['Facebook', `${env.APP_URL}/api/webhooks/facebook`]);
-  if (env.SMTP_HOST) webhooks.push(['Inbound email', `${env.APP_URL}/api/webhooks/email?secret=${env.EMAIL_INBOUND_SECRET}`]);
+  if (env.MAILGUN_API_KEY) webhooks.push(['Inbound email', `${env.APP_URL}/api/webhooks/email?secret=${env.EMAIL_INBOUND_SECRET}`]);
   if (env.TWILIO_ACCOUNT_SID) webhooks.push(['Twilio voice', `${env.APP_URL}/api/webhooks/twilio/voice`], ['Twilio SMS', `${env.APP_URL}/api/webhooks/twilio/sms`]);
   if (webhooks.length) {
     console.log(`\n  ${C.bold}Webhook URLs to paste into each provider${C.reset}`);

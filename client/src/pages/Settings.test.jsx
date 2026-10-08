@@ -448,6 +448,61 @@ describe('Settings Google Calendar (requirement 5.2)', () => {
     expect(await screen.findByText(/disconnected/i)).toBeInTheDocument();
   });
 
+  it('lets an owner Connect QuickBooks', async () => {
+    authState.user = { id: 1, name: 'Paul', role: 'ADMIN' };
+    api.get.mockImplementation(async (path) => {
+      if (path === '/settings/integrations') {
+        return {
+          integrations: [{
+            id: 'quickbooks',
+            name: 'QuickBooks Online (UK)',
+            configured: true,
+            connected: false,
+            mode: 'simulated',
+            detail: 'Keys present — connect QuickBooks.',
+          }],
+          events: [],
+        };
+      }
+      if (path === '/integrations/quickbooks/connect') return { url: 'https://appcenter.intuit.com/connect/oauth2' };
+      return { users: [], events: [] };
+    });
+    const user = userEvent.setup();
+    render(<Settings />);
+    await user.click(await screen.findByRole('button', { name: /^integrations$/i }));
+    await user.click(await screen.findByRole('button', { name: /^connect$/i }));
+    expect(api.get).toHaveBeenCalledWith('/integrations/quickbooks/connect');
+    expect(window.open).toHaveBeenCalledWith('https://appcenter.intuit.com/connect/oauth2', '_blank');
+  });
+
+  it('lets an owner Disconnect QuickBooks', async () => {
+    authState.user = { id: 1, name: 'Paul', role: 'ADMIN' };
+    api.get.mockImplementation(async (path) => {
+      if (path === '/settings/integrations') {
+        return {
+          integrations: [{
+            id: 'quickbooks',
+            name: 'QuickBooks Online (UK)',
+            configured: true,
+            connected: true,
+            mode: 'live',
+            detail: 'Live (sandbox).',
+          }],
+          events: [],
+        };
+      }
+      return { users: [], events: [] };
+    });
+    api.post.mockResolvedValue({ ok: true, connected: false });
+    const user = userEvent.setup();
+    render(<Settings />);
+    await user.click(await screen.findByRole('button', { name: /^integrations$/i }));
+    await user.click(await screen.findByRole('button', { name: /^disconnect$/i }));
+    await user.click(await screen.findByRole('button', { name: /yes, disconnect/i }));
+    expect(api.post).toHaveBeenCalledWith('/integrations/quickbooks/disconnect');
+    expect(await screen.findByText(/quickbooks disconnected/i)).toBeInTheDocument();
+  });
+
   it('keeps the calendar connected when disconnect is cancelled', async () => {
     api.get.mockImplementation(async (path) => {
       if (path === '/settings/integrations') {
@@ -472,6 +527,41 @@ describe('Settings Google Calendar (requirement 5.2)', () => {
     await user.click(await screen.findByRole('button', { name: /^cancel$/i }));
     expect(screen.queryByText(/disconnect google calendar\?/i)).toBeNull();
     expect(api.post).not.toHaveBeenCalledWith('/integrations/google/disconnect');
+  });
+});
+
+describe('Settings Mailgun email', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    authState.user = { id: 1, name: 'Paul', role: 'ADMIN' };
+    api.get.mockImplementation(async (path) => {
+      if (path === '/settings/integrations') {
+        return {
+          integrations: [{
+            id: 'email',
+            name: 'Email (Mailgun + inbound parse)',
+            configured: false,
+            connected: false,
+            mode: 'simulated',
+            detail: 'Simulated — emails are recorded in the CRM but not delivered. Add MAILGUN_API_KEY and MAILGUN_DOMAIN in .env to go live.',
+            env_needed: ['MAILGUN_API_KEY', 'MAILGUN_DOMAIN', 'MAILGUN_FROM', 'MAILGUN_REGION', 'EMAIL_INBOUND_SECRET'],
+            webhook_url: 'http://localhost:4000/api/webhooks/email?secret=change-me',
+          }],
+          events: [],
+        };
+      }
+      return { users: [], events: [] };
+    });
+  });
+
+  it('shows Mailgun status and env keys on the integrations tab', async () => {
+    const user = userEvent.setup();
+    render(<Settings />);
+    await user.click(await screen.findByRole('button', { name: /^integrations$/i }));
+    expect(await screen.findByText('Email (Mailgun + inbound parse)')).toBeInTheDocument();
+    expect(screen.getByText(/Add MAILGUN_API_KEY and MAILGUN_DOMAIN/)).toBeInTheDocument();
+    expect(screen.getByText(/Needs: MAILGUN_API_KEY/)).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /^connect$/i })).toBeNull();
   });
 });
 

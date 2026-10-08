@@ -154,14 +154,27 @@ router.get('/google/callback', async (req, res) => {
 
 router.get('/quickbooks/connect', requireAuth, requireAdmin, (req, res) => {
   if (!quickbooks.isConfigured()) return res.status(400).json({ error: 'QBO_CLIENT_ID/SECRET not set in .env yet' });
-  res.json({ url: quickbooks.authUrl('pdr') });
+  res.json({ url: quickbooks.authUrl(quickbooks.signOauthState(req.user.id)) });
 });
+router.post('/quickbooks/disconnect', requireAuth, requireAdmin, asyncHandler(async (req, res) => {
+  const ok = await quickbooks.disconnect();
+  res.json({ ok, connected: false });
+}));
 router.get('/quickbooks/callback', async (req, res) => {
   try {
-    await quickbooks.exchangeCode(req.query.code, req.query.realmId);
-    res.send('<html><body style="font-family:sans-serif;padding:40px"><h2>QuickBooks connected ✅</h2><p>You can close this tab and return to the app.</p></body></html>');
+    const userId = quickbooks.parseOauthState(req.query.state);
+    await quickbooks.exchangeCode(req.query.code, req.query.realmId, userId);
+    res.send(renderOauthResultPage({
+      ok: true,
+      heading: 'QuickBooks connected',
+      body: 'Invoices you send from the CRM will now be created in QuickBooks, and payments will sync both ways. You can close this tab and return to Settings.',
+    }));
   } catch (err) {
-    res.status(400).send(`<html><body style="font-family:sans-serif;padding:40px"><h2>Connection failed</h2><p>${err.message}</p></body></html>`);
+    res.status(400).send(renderOauthResultPage({
+      ok: false,
+      heading: 'Connection failed',
+      body: err.message || 'Something went wrong connecting QuickBooks. Please try again from Settings.',
+    }));
   }
 });
 

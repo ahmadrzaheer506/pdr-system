@@ -6,6 +6,7 @@ import { PageLoading, StatusBadge, EmptyState, useToast, Toast } from '../compon
 import InvoiceTaxDetail from '../components/InvoiceTaxDetail.jsx';
 import { InvoicePaymentModal } from '../components/InvoicePaymentForm.jsx';
 import { canEmailInvoice, downloadInvoicePdf } from '../lib/invoicePdf';
+import { invoiceSentMessage, isLiveQboId } from '../lib/quickbooks';
 import { canRecordPayment } from '../lib/invoicePayments';
 import { Receipt } from 'lucide-react';
 import { leadPath } from '../lib/customerRoutes.js';
@@ -50,8 +51,8 @@ export default function Invoices() {
   const sendInvoice = async (inv) => {
     setSendingId(inv.id);
     try {
-      await api.post(`/invoices/${inv.id}/send`);
-      show('Invoice sent & pushed to QuickBooks');
+      const result = await api.post(`/invoices/${inv.id}/send`);
+      show(invoiceSentMessage(result));
       load();
     } catch (err) {
       show(err.message, 'error');
@@ -179,7 +180,14 @@ export default function Invoices() {
                   <td className="px-4 py-3 text-right text-slate-600">{money(inv.due_now)}</td>
                   <td className="px-4 py-3 text-right text-slate-500">{money(inv.amount_paid)}</td>
                   <td className="px-4 py-3 text-slate-500">{fmtDate(inv.due_date)}</td>
-                  <td className="px-4 py-3"><StatusBadge status={inv.status} /></td>
+                  <td className="px-4 py-3">
+                    <div className="flex flex-col gap-0.5">
+                      <StatusBadge status={inv.status} />
+                      {isLiveQboId(inv.qbo_id) && (
+                        <span className="text-[10px] uppercase tracking-wide text-emerald-700">QuickBooks</span>
+                      )}
+                    </div>
+                  </td>
                   <td className="px-4 py-3 text-right whitespace-nowrap">
                     <button type="button" onClick={() => downloadPdf(inv)} className="btn-ghost !py-1 !px-2 text-xs mr-1" aria-label={`Download PDF for ${inv.ref}`}>
                       <Download size={12} /> PDF
@@ -220,9 +228,9 @@ export default function Invoices() {
           load();
           show('VAT and CIS saved');
         }}
-        onSent={() => {
+        onSent={(result) => {
           load();
-          show('Invoice sent & pushed to QuickBooks');
+          show(invoiceSentMessage(result));
           setOpenInvoice((inv) => (inv ? { ...inv, status: 'sent' } : null));
         }}
         onPaid={(updated) => {

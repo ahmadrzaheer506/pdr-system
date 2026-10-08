@@ -66,8 +66,8 @@ export default function InvoiceTaxDetail({ invoice, onClose, onSaved, onError, o
   const sendEmail = async () => {
     setSending(true);
     try {
-      await api.post(`/invoices/${invoice.id}/send`);
-      onSent?.();
+      const result = await api.post(`/invoices/${invoice.id}/send`);
+      onSent?.(result);
     } catch (err) { onError(err.message); }
     finally { setSending(false); }
   };

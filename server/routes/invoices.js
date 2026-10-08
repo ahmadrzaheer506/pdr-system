@@ -230,7 +230,14 @@ router.post('/:id/send', asyncHandler(async (req, res) => {
   let qbo = { simulated: true };
   try {
     qbo = await quickbooks.pushInvoice({ ...plain(invoice), pdf_file: filename }, customer);
-    await invoice.update({ qbo_id: qbo.qboId, qbo_synced_at: new Date() });
+    if (qbo?.qboId) {
+      await invoice.update({
+        qbo_id: qbo.qboId,
+        qbo_sync_token: qbo.syncToken || invoice.qbo_sync_token || null,
+        qbo_attachable_id: qbo.attachableId || invoice.qbo_attachable_id || null,
+        qbo_synced_at: new Date(),
+      });
+    }
   } catch (err) {
     await logActivity(invoice.customer_id, req.user.id, 'qbo_error', `QuickBooks push failed: ${String(err.message).slice(0, 150)}`);
   }
@@ -264,6 +271,15 @@ router.post('/:id/payment', asyncHandler(async (req, res) => {
   if (applied.error) return res.status(applied.status || 400).json({ error: applied.error });
 
   await invoice.update(applied.cols);
+  try {
+    const customer = await contacts.loadCustomerWithContacts(invoice.customer_id);
+    const qboPay = await quickbooks.pushPayment(plain(invoice), plain(applied.payment), customer || { id: invoice.customer_id });
+    if (qboPay?.qboId && !qboPay.simulated && applied.payment?.id) {
+      await InvoicePayment.update({ qbo_id: qboPay.qboId }, { where: { id: applied.payment.id } });
+    }
+  } catch (err) {
+    await logActivity(invoice.customer_id, req.user.id, 'qbo_error', `QuickBooks payment push failed: ${String(err.message).slice(0, 150)}`);
+  }
   const payments = plain(await invoicePayments.paymentsForInvoice(invoice.id));
   if (applied.cols.status === 'paid') {
     if (invoice.job_id) await Job.update({ status: 'PAID' }, { where: { id: invoice.job_id } });

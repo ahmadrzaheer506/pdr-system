@@ -16,7 +16,7 @@ const { CATALOGUE, lineFromCatalogue, findCatalogueItem } = require('./catalogue
 const ukTax = require('./services/ukTax');
 const { publicTemplates, findChecklistTemplate } = require('./jobChecklists');
 const { defaultFollowups, stepBody } = require('./quoteFollowups');
-const { jobValueFromQuote } = require('./quoteExtras');
+const { jobValueFromQuote, normaliseExtras } = require('./quoteExtras');
 const { OFFICE_IN_APP_KINDS, STAFF_IN_APP_KINDS } = require('./notificationPrefs');
 const {
   User, Customer, CustomerSite, CustomerPhone, CustomerEmail, CustomerNote, Lead, Message,
@@ -285,6 +285,12 @@ async function addLead(customerId, {
     updated_at: updatedAt || createdAt,
     ...ids,
   });
+  const customerPatch = {
+    stage,
+    updated_at: updatedAt || createdAt,
+  };
+  if (lostReason != null) customerPatch.lost_reason = lostReason;
+  await Customer.update(customerPatch, { where: { id: customerId } });
   return row;
 }
 
@@ -319,15 +325,17 @@ async function addQuote({
   optionalExtras = [], provisionalSums = [], acceptedOptionalExtras = [],
   durationEstimate = null, accessRequirements = null, leadId = null,
 }) {
+  const extras = normaliseExtras(optionalExtras);
   const { calc, cols } = ukTax.documentTotals(items, {
     payment_schedule: quoteDefaults.payment_schedule || [],
-    optional_extras: optionalExtras,
+    optional_extras: extras,
     provisional_sums: provisionalSums,
     provisional_sums_in_total: false,
   }, customer, ukSettings);
   const ref = await nextRef('quote');
   const ids = await contactIdsFor(customer.id, leadId || await latestLeadId(customer.id));
   const isDomestic = (customer.customer_type || 'domestic') === 'domestic';
+  const vatRate = Number((await getSetting('vat_rate')) || 20);
   const row = await Quote.create({
     customer_id: customer.id,
     lead_id: leadId || await latestLeadId(customer.id),
@@ -343,7 +351,7 @@ async function addQuote({
     created_by: lisa,
     created_at: createdAt,
     updated_at: decidedAt || sentAt || createdAt,
-    vat_rate: 20,
+    vat_rate: vatRate,
     subtotal: cols.subtotal,
     vat_amount: cols.vat_amount,
     total: cols.total,
@@ -366,9 +374,9 @@ async function addQuote({
     duration_estimate: durationEstimate,
     access_requirements: accessRequirements,
     provisional_sums: provisionalSums,
-    provisional_sums_in_total: false,
-    optional_extras: optionalExtras,
-    accepted_optional_extras: acceptedOptionalExtras,
+    provisional_sums_in_total: !!cols.provisional_sums_in_total,
+    optional_extras: extras,
+    accepted_optional_extras: normaliseExtras(acceptedOptionalExtras),
     cancellation_rights_apply: isDomestic,
     ...ids,
   });
@@ -457,7 +465,21 @@ async function addInvoice({
   customer, jobId, items, status, issueDate, dueDate, sentAt, paidAt, createdAt, qboId, notes,
   payments = null,
 }) {
-  const { cols } = ukTax.documentTotals(items, { payment_schedule: [] }, customer, ukSettings);
+  let quote = null;
+  if (jobId) {
+    const job = await Job.findByPk(jobId, { attributes: ['quote_id'] });
+    if (job?.quote_id) quote = await Quote.findByPk(job.quote_id);
+  }
+  const provisionalSums = quote?.provisional_sums || [];
+  const { cols } = ukTax.documentTotals(items, {
+    vat_treatment: quote?.vat_treatment,
+    cis_applies: quote?.cis_applies,
+    cis_rate: quote?.cis_rate,
+    retention_percent: quote?.retention_percent,
+    provisional_sums: provisionalSums,
+    provisional_sums_in_total: quote?.provisional_sums_in_total,
+  }, customer, ukSettings);
+  const vatRate = Number((await getSetting('vat_rate')) || 20);
   const ref = await nextRef('invoice');
   const row = await Invoice.create({
     customer_id: customer.id,
@@ -466,7 +488,7 @@ async function addInvoice({
     items,
     notes: notes || null,
     subtotal: cols.subtotal,
-    vat_rate: 20,
+    vat_rate: vatRate,
     vat_amount: cols.vat_amount,
     total: cols.grand_total,
     amount_paid: 0,
@@ -487,8 +509,8 @@ async function addInvoice({
     retention_percent: cols.retention_percent,
     retention_amount: cols.retention_amount,
     due_now: cols.due_now,
-    provisional_sums: [],
-    provisional_sums_in_total: false,
+    provisional_sums: provisionalSums,
+    provisional_sums_in_total: !!cols.provisional_sums_in_total,
   });
   const ledger = payments || (status === 'paid' && cols.due_now > 0
     ? [{
@@ -509,11 +531,13 @@ async function addInvoice({
         paid_at: paidDay,
         note: p.note || 'Bank transfer',
         recorded_by: lisa,
+        source: 'crm',
         created_at: p.paidAt || createdAt,
       });
       paid += Number(p.amount) || 0;
     }
-    await row.update({ amount_paid: Math.round(paid * 100) / 100 });
+    const amountPaid = Math.round(Math.min(cols.due_now, paid) * 100) / 100;
+    await row.update({ amount_paid: amountPaid });
   }
   return { id: row.id, ref, total: cols.grand_total, due_now: cols.due_now };
 }
@@ -898,8 +922,8 @@ async function main() {
       type: 'system',
       rule_key: `quote_followup:quote:${q.id}`,
       title: `Follow up quote ${q.ref}`,
-      detail: `Automatic follow-up sequence is running. First step due ${dateOnly(1)}.`,
-      due_date: dateOnly(1),
+      detail: `Automatic follow-up sequence is running. First step due ${dateOnly(-2)}.`,
+      due_date: dateOnly(-2),
       priority: 'normal',
       status: 'open',
       entity_type: 'quote',
@@ -1300,7 +1324,7 @@ async function main() {
     await addAppointment(
       id, 'Site visit — Bracknell Retail Park', at(-38, 9, 0), at(-38, 11, 0), 'Unit 12, Bracknell Retail Park',
       'done', 'simulated', paul, at(-40, 9, 15), true, 'site_visit', [],
-      'Membrane splits around two outlets. Commercial reverse-charge quote.',
+      'Membrane splits around two outlets. Commercial CIS quote.',
     );
     await addStageHistory(id, 'SITE_VISIT_BOOKED', 'QUOTE_PENDING', null, at(-38, 11, 0));
     const q = await addQuote({
@@ -1591,6 +1615,7 @@ async function main() {
         createdAt: at(offset - 12, 9, 0), sentAt: at(offset - 11, 9, 0), sentVia: 'email',
         validUntil: dateOnly(offset - 1),
       });
+      await addActivity(customer.id, null, 'quote_expired', `Quote ${expired.ref} passed its valid-until date`, at(offset - 1, 9, 0), 'quote', expired.id);
       await addTask({
         type: 'system',
         rule_key: `quote_expired:quote:${expired.id}`,
@@ -1790,7 +1815,9 @@ async function main() {
   const events = [
     ['whatsapp', 'in', 'message.received', 'simulated'], ['whatsapp', 'out', 'template.simulated', 'simulated'],
     ['email', 'out', 'email.simulated', 'simulated'], ['facebook', 'in', 'leadgen.received', 'simulated'],
-    ['google', 'out', 'event.simulated', 'simulated'], ['quickbooks', 'out', 'invoice.simulated', 'simulated'],
+    ['google', 'out', 'event.simulated', 'simulated'],
+    ['quickbooks', 'out', 'estimate.simulated', 'simulated'],
+    ['quickbooks', 'out', 'invoice.simulated', 'simulated'],
     ['ai', 'out', 'schedule.proposed', 'ok'],
   ];
   for (let i = 0; i < events.length; i++) {

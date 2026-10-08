@@ -120,6 +120,7 @@ module.exports = {
   MAX_BYTES,
   FALLBACK_PATHS,
   resolveLogoPath,
+  mimeForPath,
   hasUploadedLogo,
   validateUpload,
   saveLogo,

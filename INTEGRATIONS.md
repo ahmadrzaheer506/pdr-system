@@ -16,7 +16,7 @@ The software is fully built and runs today **without any of these keys** — eve
 | 4 | Facebook Page | Page ID + Page Access Token (same Meta app as WhatsApp) | developers.facebook.com | **Days–weeks** (Meta App Review for `pages_messaging` + `leadgen`) |
 | 5 | Google Calendar | OAuth Client ID + Secret; then Paul clicks "Connect" once | console.cloud.google.com | Same day (verification only needed later for production status) |
 | 6 | QuickBooks Online UK | OAuth Client ID + Secret; active QBO UK subscription; Paul clicks "Connect" once | developer.intuit.com | Same day for sandbox; production keys need a short Intuit review |
-| 7 | Outbound email (SMTP) | SMTP host/port/user/pass | Their email provider, or SendGrid/Mailgun/Postmark | Minutes–1 day (domain DNS records for deliverability) |
+| 7 | Outbound email (Mailgun) | Mailgun API key + sending domain | Mailgun (US or EU) | Minutes–1 day (domain DNS records for deliverability) |
 | 8 | Inbound email | A forwarding rule from their enquiry addresses → parse address | SendGrid Inbound Parse or Mailgun Routes (free tiers fine) | ~1 hour |
 | 9 | Phone/SMS capture (optional) | Twilio SID + Auth Token + a UK number (or call-forwarding setup) | twilio.com | 1 day (UK number regulatory bundle) |
 
@@ -104,13 +104,14 @@ What I need:
 3. Start with `QBO_ENVIRONMENT=sandbox` (Intuit gives a free fake company for testing), then switch to `production` after Intuit's production-key questionnaire (~1 day).
 4. Then **Paul clicks "Connect QuickBooks" once** in Settings → Integrations. The company (realm) ID is captured automatically during that handshake.
 
-## 7. Outbound email (SMTP)
+## 7. Outbound email (Mailgun)
 
 **Powers:** quotes by email, the email leg of follow-ups, holiday/task notifications.
 
-What I need — standard SMTP credentials from wherever their email lives:
-- `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASS`, `SMTP_FROM`
-- If they're on Microsoft 365 or Google Workspace, an app password / SMTP relay works but has daily caps — for automated follow-ups I recommend a transactional provider (SendGrid/Mailgun/Postmark free tier) with their domain's SPF+DKIM DNS records set (I'll supply the exact records once the provider is chosen).
+What I need — a Mailgun account and verified sending domain:
+- `MAILGUN_API_KEY`, `MAILGUN_DOMAIN`, `MAILGUN_FROM`
+- `MAILGUN_REGION=us` (default) or `eu` if the Mailgun account is in the EU
+- Domain SPF + DKIM DNS records from the Mailgun dashboard (required for deliverability)
 
 ## 8. Inbound email → lead inbox
 
@@ -140,7 +141,7 @@ If wanted: a **Twilio** account (`TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN`, `TWI
 ## Suggested order
 
 1. Hosting + domain + JWT secret → deploy (day 1)
-2. AI key + SMTP → live quotes by email, live AI scheduling (day 1)
+2. AI key + Mailgun → live quotes by email, live AI scheduling (day 1)
 3. WhatsApp: business verification + templates submitted (start immediately — the only real waiting line)
 4. Google Calendar + QuickBooks sandbox (day 1–2, then Paul clicks Connect)
 5. Facebook app review (start early, arrives when it arrives)

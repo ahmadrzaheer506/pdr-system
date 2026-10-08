@@ -24,14 +24,17 @@ jest.mock('../models', () => ({
   Customer: { findByPk: jest.fn() },
   Quote: { findByPk: jest.fn() },
   JobVariation: { findAll: jest.fn() },
-  InvoicePayment: { create: jest.fn(), findAll: jest.fn() },
+  InvoicePayment: { create: jest.fn(), findAll: jest.fn(), findOne: jest.fn(), update: jest.fn() },
 }));
 
 jest.mock('../services/pipeline', () => ({ setStage: jest.fn(), logActivity: jest.fn(), resolveLeadForCustomer: jest.fn(async () => null) }));
 jest.mock('../services/messenger', () => ({ sendToCustomer: jest.fn() }));
 jest.mock('../services/taskEngine', () => ({ resolveRule: jest.fn() }));
 jest.mock('../services/pdf', () => ({ invoicePdf: jest.fn(async () => 'inv.pdf') }));
-jest.mock('../integrations/quickbooks', () => ({ pushInvoice: jest.fn() }));
+jest.mock('../integrations/quickbooks', () => ({
+  pushInvoice: jest.fn(),
+  pushPayment: jest.fn(async () => ({ simulated: true })),
+}));
 jest.mock('../customerContacts', () => ({
   loadCustomerWithContacts: jest.fn(),
   applySelectedContacts: jest.fn((c) => c),
@@ -425,7 +428,7 @@ describe('POST /api/invoices/:id/send (requirement 11.3)', () => {
       name: 'Fiona',
       email: 'fiona@example.com',
     });
-    sendToCustomer.mockRejectedValue(new Error('SMTP down'));
+    sendToCustomer.mockRejectedValue(new Error('Mailgun down'));
 
     const res = await request(app).post('/api/invoices/12/send');
     expect(res.status).toBe(400);

@@ -67,6 +67,9 @@ jest.mock('../services/taskEngine', () => ({
   resolveQuoteFollowupTask: jest.fn(),
 }));
 jest.mock('../services/pdf', () => ({ quotePdf: jest.fn(async () => 'quote-Q-2026-0001.pdf') }));
+jest.mock('../integrations/quickbooks', () => ({
+  pushEstimate: jest.fn(async () => ({ simulated: true, qboId: 'SIM-Q' })),
+}));
 jest.mock('../notifications', () => ({
   safeNotify: jest.fn(async () => []),
   notifyOffice: jest.fn(async () => []),
@@ -515,6 +518,8 @@ describe('POST /api/quotes/:id/send (requirement 6.7)', () => {
       status: 'sent',
       sent_via: 'whatsapp',
     }));
+    const quickbooks = require('../integrations/quickbooks');
+    expect(quickbooks.pushEstimate).toHaveBeenCalled();
   });
 
   test('does not mark the quote sent when WhatsApp keys are missing', async () => {
@@ -538,6 +543,8 @@ describe('POST /api/quotes/:id/send (requirement 6.7)', () => {
     expect(res.status).toBe(400);
     expect(res.body.error).toBe(NOT_CONNECTED_ERROR);
     expect(quoteRow.update).not.toHaveBeenCalledWith(expect.objectContaining({ status: 'sent' }));
+    const quickbooks = require('../integrations/quickbooks');
+    expect(quickbooks.pushEstimate).not.toHaveBeenCalled();
   });
 
   test('allows resend on an already sent quote', async () => {

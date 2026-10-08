@@ -76,9 +76,17 @@ function parsePaymentBody(body, invoice, today) {
  * Insert a ledger row and recompute amount_paid from the ledger, capped at due_now.
  * @returns {Promise<{ error: string, status: number }|{ payment: object, cols: object }>}
  */
-async function recordPayment(invoice, body, { userId, today }) {
+async function recordPayment(invoice, body, opts = {}) {
+  const { userId, today } = opts;
   const parsed = parsePaymentBody(body, invoice, today);
   if (parsed.error) return parsed;
+
+  const source = opts.source || 'crm';
+  const qboId = opts.qboId || null;
+  if (qboId) {
+    const dup = await InvoicePayment.findOne({ where: { qbo_id: qboId } });
+    if (dup) return { error: 'This QuickBooks payment is already on the ledger', status: 409 };
+  }
 
   const payment = await InvoicePayment.create({
     invoice_id: invoice.id,
@@ -86,6 +94,8 @@ async function recordPayment(invoice, body, { userId, today }) {
     paid_at: parsed.paid_at,
     note: parsed.note,
     recorded_by: userId || null,
+    source,
+    qbo_id: qboId,
   });
 
   const rows = await InvoicePayment.findAll({ where: { invoice_id: invoice.id } });

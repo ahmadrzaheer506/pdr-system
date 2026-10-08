@@ -688,3 +688,42 @@ describe('calendar_sync_links migration (requirement 16.3)', () => {
     expect(sql.join('\n')).toMatch(/appointment.*job.*holiday.*task/);
   });
 });
+
+describe('QuickBooks sync ids migration', () => {
+  test('adds customer, invoice, and payment QuickBooks columns', async () => {
+    const added = [];
+    const sql = [];
+    const queryInterface = {
+      addColumn: async (table, col) => { added.push(`${table}.${col}`); },
+      sequelize: { query: async (q) => { sql.push(q); } },
+    };
+    const Sequelize = { TEXT: 'TEXT' };
+    const migration = require('../migrations/20261008010000-quickbooks-sync-ids');
+    await migration.up(queryInterface, Sequelize);
+    expect(added).toEqual(expect.arrayContaining([
+      'customers.qbo_id',
+      'invoices.qbo_sync_token',
+      'invoice_payments.qbo_id',
+      'invoice_payments.source',
+    ]));
+    expect(sql.join('\n')).toMatch(/idx_invoice_payments_qbo_id/);
+  });
+});
+
+describe('QuickBooks estimates and attachables migration', () => {
+  test('adds quote estimate ids and PDF attachable columns', async () => {
+    const added = [];
+    const queryInterface = {
+      addColumn: async (table, col) => { added.push(`${table}.${col}`); },
+    };
+    const Sequelize = { TEXT: 'TEXT', DATE: 'DATE' };
+    const migration = require('../migrations/20261008020000-quickbooks-estimates-attachables');
+    await migration.up(queryInterface, Sequelize);
+    expect(added).toEqual(expect.arrayContaining([
+      'quotes.qbo_id',
+      'quotes.qbo_sync_token',
+      'quotes.qbo_attachable_id',
+      'invoices.qbo_attachable_id',
+    ]));
+  });
+});

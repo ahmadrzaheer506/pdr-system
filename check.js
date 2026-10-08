@@ -159,28 +159,24 @@ async function main() {
 
   // ---------- Email ----------
   console.log(`\n${C.bold}  Email${C.reset}`);
-  if (process.env.SMTP_HOST && process.env.SMTP_USER) {
+  if (process.env.MAILGUN_API_KEY && process.env.MAILGUN_DOMAIN) {
     try {
-      const nodemailer = require('./server/node_modules/nodemailer');
-      const t = nodemailer.createTransport({
-        host: process.env.SMTP_HOST,
-        port: Number(process.env.SMTP_PORT || 587),
-        secure: Number(process.env.SMTP_PORT) === 465,
-        auth: {
-          user: String(process.env.SMTP_USER || '').trim(),
-          pass: String(process.env.SMTP_PASS || '').replace(/\s+/g, ''),
-        },
+      const region = String(process.env.MAILGUN_REGION || 'us').toLowerCase();
+      const base = process.env.MAILGUN_API_URL
+        || (region === 'eu' ? 'https://api.eu.mailgun.net' : 'https://api.mailgun.net');
+      const domain = String(process.env.MAILGUN_DOMAIN).trim();
+      const auth = Buffer.from(`api:${String(process.env.MAILGUN_API_KEY).trim()}`).toString('base64');
+      const res = await fetch(`${base.replace(/\/$/, '')}/v3/domains/${encodeURIComponent(domain)}`, {
+        headers: { Authorization: `Basic ${auth}` },
       });
-      await t.verify();
-      line(OK, 'SMTP', `${process.env.SMTP_HOST} accepted the login`);
+      const data = await res.json().catch(() => ({}));
+      if (res.ok) line(OK, 'Mailgun', `domain ${domain} accepted the API key`);
+      else if (res.status === 401 || res.status === 403) fail('Mailgun', 'API key rejected.', 'Use the private API key from Mailgun → Settings → API keys.');
+      else fail('Mailgun', scrub(data.message || `HTTP ${res.status}`));
     } catch (e) {
-      const m = String(e.message);
-      if (/auth|credentials|535|password/i.test(m)) fail('SMTP', 'Username or password rejected.', 'For Gmail/Microsoft 365 you need an app password, not the normal one.');
-      else if (/ENOTFOUND|EAI_AGAIN/i.test(m)) fail('SMTP', 'Host not found.', 'Check SMTP_HOST is spelled correctly.');
-      else if (/ETIMEDOUT|ECONNREFUSED/i.test(m)) fail('SMTP', 'Could not connect.', 'Check the port (587 usually, 465 for SSL) and that your network allows it.');
-      else fail('SMTP', scrub(m));
+      fail('Mailgun', scrub(e.message));
     }
-  } else line(SKIP, 'Email', 'Emails are recorded in the CRM but not delivered.');
+  } else line(SKIP, 'Email', 'Emails are recorded in the CRM but not delivered. Add MAILGUN_API_KEY and MAILGUN_DOMAIN.');
 
   // ---------- Google ----------
   console.log(`\n${C.bold}  Google Calendar${C.reset}`);

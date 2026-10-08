@@ -113,7 +113,7 @@ router.post('/email', express.urlencoded({ extended: true, limit: '10mb' }), exp
     const emailAddr = emailMatch ? emailMatch[1] : from.split(' ')[0];
     const name = from.replace(/<[^>]+>/, '').trim() || emailAddr;
     const subject = b.subject || b.Subject || '(no subject)';
-    const text = b.text || b['body-plain'] || b.TextBody || '';
+    const text = b['stripped-text'] || b.text || b['body-plain'] || b.TextBody || '';
     await ingestInbound({ source: 'email', channel: 'email', name, email: emailAddr, subject, body: text });
     await logEvent('email', 'message.received', { from: emailAddr, subject });
   } catch (err) {

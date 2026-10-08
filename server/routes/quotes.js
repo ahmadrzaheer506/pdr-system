@@ -12,6 +12,7 @@ const { resolveRule, ensureTask, resolveQuoteFollowupTask } = require('../servic
 const { quotePdf } = require('../services/pdf');
 const contacts = require('../customerContacts');
 const geocode = require('../geocode');
+const quickbooks = require('../integrations/quickbooks');
 
 const router = express.Router();
 router.use(requireAuth, requireOffice);
@@ -423,6 +424,19 @@ router.post('/:id/send', asyncHandler(async (req, res) => {
   }
 
   await quote.update({ status: 'sent', sent_at: new Date(), sent_via: Object.keys(results).join('+') });
+  try {
+    const qbo = await quickbooks.pushEstimate({ ...plain(quote), pdf_file: filename }, customer);
+    if (qbo?.qboId) {
+      await quote.update({
+        qbo_id: qbo.qboId,
+        qbo_sync_token: qbo.syncToken || quote.qbo_sync_token || null,
+        qbo_attachable_id: qbo.attachableId || quote.qbo_attachable_id || null,
+        qbo_synced_at: new Date(),
+      });
+    }
+  } catch (err) {
+    await logActivity(customer.id, req.user.id, 'qbo_error', `QuickBooks estimate failed: ${String(err.message).slice(0, 150)}`, 'quote', quote.id);
+  }
   const fresh = await Quote.findByPk(quote.id);
   await scheduleForQuote(plain(fresh));
   await setStage(customer.id, 'QUOTED', req.user.id, `Quote ${quote.ref} sent (${Object.keys(results).join(', ')})`, { leadId: quote.lead_id });

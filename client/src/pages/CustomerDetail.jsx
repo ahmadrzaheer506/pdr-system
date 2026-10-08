@@ -24,6 +24,7 @@ import { ROLES } from '../lib/roles';
 import { canChangeVisit, canCompleteVisit, visitTypeLabel } from '../lib/visitTypes';
 import VisitCompleteTick, { VisitCompleteRemarks } from '../components/VisitCompleteTick.jsx';
 import { canEmailInvoice, downloadInvoicePdf } from '../lib/invoicePdf';
+import { invoiceSentMessage } from '../lib/quickbooks';
 import { canRecordPayment, invoiceOutstanding } from '../lib/invoicePayments';
 import { InvoicePaymentModal } from '../components/InvoicePaymentForm.jsx';
 import SelectMenu from '../components/SelectMenu.jsx';
@@ -287,9 +288,9 @@ export default function CustomerDetail() {
           load();
           show('VAT and CIS saved');
         }}
-        onSent={() => {
+        onSent={(result) => {
           load();
-          show('Invoice sent & pushed to QuickBooks');
+          show(invoiceSentMessage(result));
           setOpenInvoice((inv) => (inv ? { ...inv, status: 'sent' } : null));
         }}
         onPaid={(updated) => {
@@ -872,8 +873,8 @@ function InvoicesCard({ invoices, onOpen, onPay, onChanged, show }) {
   const send = async (inv) => {
     setSendingId(inv.id);
     try {
-      await api.post(`/invoices/${inv.id}/send`);
-      show('Invoice sent & pushed to QuickBooks');
+      const result = await api.post(`/invoices/${inv.id}/send`);
+      show(invoiceSentMessage(result));
       onChanged();
     } catch (err) { show(err.message, 'error'); }
     finally { setSendingId(null); }

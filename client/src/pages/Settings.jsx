@@ -157,8 +157,9 @@ export default function Settings() {
 }
 
 function IntegrationsTab() {
+  const { user } = useAuth();
   const [data, setData] = useState(null);
-  const [confirmDisconnect, setConfirmDisconnect] = useState(false);
+  const [confirmDisconnect, setConfirmDisconnect] = useState(null);
   const [disconnecting, setDisconnecting] = useState(false);
   const { toast, show } = useToast();
   const load = () => api.get('/settings/integrations').then(setData).catch((err) => {
@@ -179,7 +180,7 @@ function IntegrationsTab() {
     try {
       await api.post('/integrations/google/disconnect');
       show('Google Calendar disconnected');
-      setConfirmDisconnect(false);
+      setConfirmDisconnect(null);
       load();
     } catch (err) {
       show(err.message, 'error');
@@ -187,6 +188,20 @@ function IntegrationsTab() {
       setDisconnecting(false);
     }
   };
+  const disconnectQuickbooks = async () => {
+    setDisconnecting(true);
+    try {
+      await api.post('/integrations/quickbooks/disconnect');
+      show('QuickBooks disconnected');
+      setConfirmDisconnect(null);
+      load();
+    } catch (err) {
+      show(err.message, 'error');
+    } finally {
+      setDisconnecting(false);
+    }
+  };
+  const canConnectQuickbooks = user?.role === ROLES.ADMIN;
   const copy = (text) => { navigator.clipboard?.writeText(text); show('Copied to clipboard'); };
 
   return (
@@ -200,11 +215,17 @@ function IntegrationsTab() {
                 <div className="mt-1"><ModeBadge mode={intg.mode} /></div>
               </div>
               <div className="flex shrink-0 items-center gap-2">
-                {(intg.id === 'google' || intg.id === 'quickbooks') && intg.configured && !intg.connected && (
+                {intg.id === 'google' && intg.configured && !intg.connected && (
+                  <button type="button" onClick={() => connect(intg.id)} className="btn-primary !py-1.5 !px-3 text-xs">Connect</button>
+                )}
+                {intg.id === 'quickbooks' && canConnectQuickbooks && intg.configured && !intg.connected && (
                   <button type="button" onClick={() => connect(intg.id)} className="btn-primary !py-1.5 !px-3 text-xs">Connect</button>
                 )}
                 {intg.id === 'google' && intg.connected && (
-                  <button type="button" onClick={() => setConfirmDisconnect(true)} className="btn-secondary !py-1.5 !px-3 text-xs">Disconnect</button>
+                  <button type="button" onClick={() => setConfirmDisconnect('google')} className="btn-secondary !py-1.5 !px-3 text-xs">Disconnect</button>
+                )}
+                {intg.id === 'quickbooks' && canConnectQuickbooks && intg.connected && (
+                  <button type="button" onClick={() => setConfirmDisconnect('quickbooks')} className="btn-secondary !py-1.5 !px-3 text-xs">Disconnect</button>
                 )}
               </div>
             </div>
@@ -236,7 +257,7 @@ function IntegrationsTab() {
         </div>
       </section>
       <ConfirmModal
-        open={confirmDisconnect}
+        open={confirmDisconnect === 'google'}
         title="Disconnect Google Calendar?"
         message="Site visits, jobs, holidays and tasks will stop syncing to Google Calendar. Nothing already on the calendar is deleted, and you can reconnect any time from here."
         confirmLabel="Yes, disconnect"
@@ -244,7 +265,18 @@ function IntegrationsTab() {
         danger
         busy={disconnecting}
         onConfirm={disconnectGoogle}
-        onCancel={() => setConfirmDisconnect(false)}
+        onCancel={() => setConfirmDisconnect(null)}
+      />
+      <ConfirmModal
+        open={confirmDisconnect === 'quickbooks'}
+        title="Disconnect QuickBooks?"
+        message="New invoices and payments will stay in the CRM only. Existing QuickBooks invoices are not deleted, and you can reconnect any time from here."
+        confirmLabel="Yes, disconnect"
+        busyLabel="Disconnecting…"
+        danger
+        busy={disconnecting}
+        onConfirm={disconnectQuickbooks}
+        onCancel={() => setConfirmDisconnect(null)}
       />
       <Toast {...toast} />
     </div>

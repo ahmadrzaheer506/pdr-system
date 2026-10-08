@@ -137,7 +137,13 @@ describe('inbound webhooks (requirement 3.2)', () => {
     const res = await request(app)
       .post('/email?secret=change-me')
       .type('form')
-      .send({ from: 'Priya Nair <priya@example.co.uk>', subject: 'Roof quote', text: 'Please call' });
+      .send({
+        from: 'Priya Nair <priya@example.co.uk>',
+        sender: 'priya@example.co.uk',
+        subject: 'Roof quote',
+        'stripped-text': 'Please call',
+        'body-plain': 'Please call\n--\nsent from phone',
+      });
     expect(res.status).toBe(200);
     expect(ingestInbound).toHaveBeenCalledWith({
       source: 'email',

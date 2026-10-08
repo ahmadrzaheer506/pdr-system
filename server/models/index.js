@@ -60,6 +60,7 @@ const Customer = sequelize.define('Customer', {
   },
   company_name: { type: DataTypes.TEXT },
   vat_number: { type: DataTypes.TEXT },
+  qbo_id: { type: DataTypes.TEXT },
 }, { tableName: 'customers', timestamps: true, createdAt: 'created_at', updatedAt: 'updated_at' });
 
 /** Site address on a customer record (requirement 2.2). Fields match the previous scalar address + postcode. */
@@ -214,6 +215,10 @@ const Quote = sequelize.define('Quote', {
   provisional_sums_in_total: { type: DataTypes.BOOLEAN, allowNull: false, defaultValue: false },
   optional_extras: jsonDefault([]),
   accepted_optional_extras: jsonDefault([]),
+  qbo_id: { type: DataTypes.TEXT },
+  qbo_sync_token: { type: DataTypes.TEXT },
+  qbo_synced_at: { type: DataTypes.DATE },
+  qbo_attachable_id: { type: DataTypes.TEXT },
   revised_from_id: { type: DataTypes.INTEGER },
   cancellation_rights_apply: { type: DataTypes.BOOLEAN, allowNull: false, defaultValue: true },
   waiver_signed: { type: DataTypes.BOOLEAN, allowNull: false, defaultValue: false },
@@ -357,6 +362,8 @@ const Invoice = sequelize.define('Invoice', {
   due_date: { type: DataTypes.DATEONLY },
   status: { type: DataTypes.TEXT, allowNull: false, defaultValue: 'draft' },
   qbo_id: { type: DataTypes.TEXT },
+  qbo_sync_token: { type: DataTypes.TEXT },
+  qbo_attachable_id: { type: DataTypes.TEXT },
   qbo_synced_at: { type: DataTypes.DATE },
   sent_at: { type: DataTypes.DATE },
   paid_at: { type: DataTypes.DATE },
@@ -383,6 +390,8 @@ const InvoicePayment = sequelize.define('InvoicePayment', {
   paid_at: { type: DataTypes.DATEONLY, allowNull: false },
   note: { type: DataTypes.TEXT },
   recorded_by: { type: DataTypes.INTEGER },
+  qbo_id: { type: DataTypes.TEXT },
+  source: { type: DataTypes.TEXT, allowNull: false, defaultValue: 'crm' },
 }, { tableName: 'invoice_payments', timestamps: true, createdAt: 'created_at', updatedAt: false });
 
 const TaskAssignee = sequelize.define('TaskAssignee', {

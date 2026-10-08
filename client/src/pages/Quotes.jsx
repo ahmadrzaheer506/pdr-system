@@ -5,6 +5,7 @@ import { api, money, fmtDate } from '../lib/api';
 import { PageLoading, StatusBadge, EmptyState } from '../components/ui.jsx';
 import { FileText } from 'lucide-react';
 import { leadPath } from '../lib/customerRoutes.js';
+import { isLiveQboId } from '../lib/quickbooks';
 
 const FILTERS = ['ALL', 'draft', 'sent', 'accepted', 'declined', 'expired'];
 
@@ -63,7 +64,14 @@ export default function Quotes() {
                   <td className="px-4 py-3"><Link to={leadPath(qt.customer_id, 'quotes', qt.lead_id)} className="hover:text-brand-600">{qt.customer_name}</Link></td>
                   <td className="px-4 py-3 text-slate-500">{qt.title}</td>
                   <td className="px-4 py-3 text-right font-medium">{money(qt.total)}</td>
-                  <td className="px-4 py-3"><StatusBadge status={qt.status} /></td>
+                  <td className="px-4 py-3">
+                    <div className="flex flex-col gap-0.5">
+                      <StatusBadge status={qt.status} />
+                      {isLiveQboId(qt.qbo_id) && (
+                        <span className="text-[10px] uppercase tracking-wide text-emerald-700">QuickBooks</span>
+                      )}
+                    </div>
+                  </td>
                   <td className="px-4 py-3 text-slate-400">{qt.sent_at ? fmtDate(qt.sent_at) : '—'}</td>
                 </tr>
               ))}

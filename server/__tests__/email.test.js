@@ -19,28 +19,26 @@ jest.mock('../branding', () => ({
   mimeForPath: () => 'image/png',
 }));
 
-const mockSendMail = jest.fn(async () => ({ messageId: 'test' }));
-jest.mock('nodemailer', () => ({
-  createTransport: jest.fn(() => ({ sendMail: mockSendMail })),
-}));
-
-const nodemailer = require('nodemailer');
+const fs = require('fs');
 const { logIntegrationEvent } = require('../models');
 const branding = require('../branding');
 const email = require('../integrations/email');
 
-describe('SMTP email adapter', () => {
+describe('Mailgun email adapter', () => {
   const prev = {};
+  const keys = ['MAILGUN_API_KEY', 'MAILGUN_DOMAIN', 'MAILGUN_FROM', 'MAILGUN_REGION', 'MAILGUN_API_URL'];
 
   beforeEach(() => {
-    ['SMTP_HOST', 'SMTP_USER', 'SMTP_PASS', 'SMTP_PORT', 'SMTP_FROM'].forEach((k) => {
-      prev[k] = process.env[k];
-    });
-    mockSendMail.mockClear();
-    nodemailer.createTransport.mockClear();
+    keys.forEach((k) => { prev[k] = process.env[k]; });
     logIntegrationEvent.mockClear();
     branding.resolveLogoPath.mockReturnValue('/tmp/brand-logo.png');
-    email.resetTransporter();
+    jest.spyOn(fs, 'existsSync').mockReturnValue(true);
+    jest.spyOn(fs, 'readFileSync').mockReturnValue(Buffer.from('file-bytes'));
+    global.fetch = jest.fn(async () => ({
+      ok: true,
+      status: 200,
+      json: async () => ({ id: '<msg@mg.example.com>', message: 'Queued. Thank you.' }),
+    }));
   });
 
   afterEach(() => {
@@ -48,61 +46,94 @@ describe('SMTP email adapter', () => {
       if (v === undefined) delete process.env[k];
       else process.env[k] = v;
     });
-    email.resetTransporter();
+    fs.existsSync.mockRestore?.();
+    fs.readFileSync.mockRestore?.();
   });
 
-  test('stays simulated until host, user, and password are set', async () => {
-    delete process.env.SMTP_HOST;
-    delete process.env.SMTP_USER;
-    delete process.env.SMTP_PASS;
+  function configure() {
+    process.env.MAILGUN_API_KEY = 'key-test';
+    process.env.MAILGUN_DOMAIN = 'mg.example.com';
+    process.env.MAILGUN_FROM = 'Paul Douglas Roofing <sender@example.com>';
+  }
+
+  test('stays simulated until Mailgun key and domain are set', async () => {
+    delete process.env.MAILGUN_API_KEY;
+    delete process.env.MAILGUN_DOMAIN;
     expect(email.isConfigured()).toBe(false);
     const result = await email.send('a@example.com', 'Hi', 'Body');
     expect(result.simulated).toBe(true);
-    expect(mockSendMail).not.toHaveBeenCalled();
+    expect(global.fetch).not.toHaveBeenCalled();
     expect(logIntegrationEvent).toHaveBeenCalledWith(
       'email', 'out', 'email.simulated', expect.any(Object), 'simulated',
     );
   });
 
-  test('sends branded HTML through nodemailer when SMTP is configured', async () => {
-    process.env.SMTP_HOST = 'smtp.gmail.com';
-    process.env.SMTP_USER = 'sender@example.com';
-    process.env.SMTP_PASS = 'ubie bcpn bhuk pnur';
-    process.env.SMTP_PORT = '587';
-    process.env.SMTP_FROM = 'Paul Douglas Roofing <sender@example.com>';
+  test('sends branded HTML through Mailgun when configured', async () => {
+    configure();
     expect(email.isConfigured()).toBe(true);
     const result = await email.send('customer@example.com', 'Quote', 'Please find attached');
     expect(result.simulated).toBe(false);
-    expect(nodemailer.createTransport).toHaveBeenCalledWith(expect.objectContaining({
-      host: 'smtp.gmail.com',
-      port: 587,
-      auth: { user: 'sender@example.com', pass: 'ubiebcpnbhukpnur' },
-    }));
-    const mail = mockSendMail.mock.calls[0][0];
-    expect(mail.to).toBe('customer@example.com');
-    expect(mail.subject).toBe('Quote');
-    expect(mail.text).toContain('Please find attached');
-    expect(mail.html).toContain('Please find attached');
-    expect(mail.html).toContain('#dc1114');
-    expect(mail.html).toContain('cid:pdr-logo');
-    expect(mail.html).toContain('Paul Douglas Roofing and Building Ltd');
-    expect(mail.attachments[0]).toEqual(expect.objectContaining({
-      cid: 'pdr-logo',
-      path: '/tmp/brand-logo.png',
-    }));
+    expect(global.fetch).toHaveBeenCalledWith(
+      'https://api.mailgun.net/v3/mg.example.com/messages',
+      expect.objectContaining({
+        method: 'POST',
+        headers: expect.objectContaining({
+          Authorization: `Basic ${Buffer.from('api:key-test').toString('base64')}`,
+        }),
+      }),
+    );
+    const form = global.fetch.mock.calls[0][1].body;
+    expect(form.get('to')).toBe('customer@example.com');
+    expect(form.get('from')).toBe('Paul Douglas Roofing <sender@example.com>');
+    expect(form.get('subject')).toBe('Quote');
+    expect(form.get('text')).toContain('Please find attached');
+    expect(form.get('html')).toContain('Please find attached');
+    expect(form.get('html')).toContain('#dc1114');
+    expect(form.get('html')).toContain('cid:pdr-logo.png');
+    expect(form.get('html')).toContain('Paul Douglas Roofing and Building Ltd');
+    expect(form.get('inline')).toBeTruthy();
   });
 
-  test('keeps caller attachments after the inline logo', async () => {
-    process.env.SMTP_HOST = 'smtp.gmail.com';
-    process.env.SMTP_USER = 'sender@example.com';
-    process.env.SMTP_PASS = 'secret';
+  test('keeps caller attachments as Mailgun files', async () => {
+    configure();
     await email.send('customer@example.com', 'Invoice INV-1', 'Please find attached', [
       { filename: 'INV-1.pdf', path: '/tmp/INV-1.pdf' },
     ]);
-    const mail = mockSendMail.mock.calls[0][0];
-    expect(mail.attachments).toEqual([
-      expect.objectContaining({ cid: 'pdr-logo' }),
-      { filename: 'INV-1.pdf', path: '/tmp/INV-1.pdf' },
-    ]);
+    const form = global.fetch.mock.calls[0][1].body;
+    expect(form.get('inline')).toBeTruthy();
+    expect(form.get('attachment')).toBeTruthy();
+  });
+
+  test('uses the EU API host when MAILGUN_REGION=eu', async () => {
+    configure();
+    process.env.MAILGUN_REGION = 'eu';
+    await email.send('customer@example.com', 'Hi', 'Body');
+    expect(global.fetch.mock.calls[0][0]).toBe('https://api.eu.mailgun.net/v3/mg.example.com/messages');
+  });
+
+  test('still sends if branding.mimeForPath is missing', async () => {
+    configure();
+    const prev = branding.mimeForPath;
+    branding.mimeForPath = undefined;
+    try {
+      await expect(email.send('a@example.com', 'Hi', 'Body')).resolves.toEqual(
+        expect.objectContaining({ simulated: false }),
+      );
+    } finally {
+      branding.mimeForPath = prev;
+    }
+  });
+
+  test('surfaces Mailgun API errors to the caller', async () => {
+    configure();
+    global.fetch = jest.fn(async () => ({
+      ok: false,
+      status: 401,
+      json: async () => ({ message: 'Forbidden' }),
+    }));
+    await expect(email.send('a@example.com', 'Hi', 'Body')).rejects.toThrow(/Mailgun 401/);
+    expect(logIntegrationEvent).toHaveBeenCalledWith(
+      'email', 'out', 'email.error', expect.objectContaining({ error: expect.stringMatching(/Forbidden/) }), 'error',
+    );
   });
 });

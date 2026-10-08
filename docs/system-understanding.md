@@ -250,7 +250,7 @@ Status key: **Done** = core requirement met · **Partial** = working but incompl
 
 | Req | Status | Implementation |
 |-----|--------|----------------|
-| 13.1 In-app notification centre + email alerts | **Done** | Bell drawer lists the signed-in user's rows (mark one / mark all as read; click opens the linked record). Events: crew add/remove, new enquiry, quote accepted, site visit booked, invoice overdue, task due today, holiday submitted / approved / declined. In-app for everyone involved **who opted in**. Email only to **STAFF** on crew add/remove **when that email switch is on** (SMTP simulated when unset). Unread count on the bell (13.1 poll; muted kinds are never written). |
+| 13.1 In-app notification centre + email alerts | **Done** | Bell drawer lists the signed-in user's rows (mark one / mark all as read; click opens the linked record). Events: crew add/remove, new enquiry, quote accepted, site visit booked, invoice overdue, task due today, holiday submitted / approved / declined. In-app for everyone involved **who opted in**. Email only to **STAFF** on crew add/remove **when that email switch is on** (Mailgun simulated when unset). Unread count on the bell (13.1 poll; muted kinds are never written). |
 | 13.2 Per-user preferences + unread badges | **Done** | Settings → Notifications (office); staff Account modal (Change password). In-app on/off per kind the user can receive; email on/off only for crew add/remove on field staff. Default **off** until opt-in. Badge stays the 13.1 unread count + 60s poll. |
 
 ### 5.14 Reporting (REP)
@@ -277,7 +277,7 @@ Status key: **Done** = core requirement met · **Partial** = working but incompl
 | 16.1 WhatsApp Business | **Done** | `server/integrations/whatsapp.js` — live or simulated |
 | 16.2 Meta (Facebook + Lead Ads) | **Done** | `server/integrations/meta.js` |
 | 16.3 Google Calendar OAuth | **Done** | `server/integrations/gcal.js` |
-| 16.4 SMTP + webhook verification + simulated mode | **Done** | `server/integrations/email.js`, `registry.js` |
+| 16.4 Mailgun email + webhook verification + simulated mode | **Done** | `server/integrations/email.js`, `registry.js` |
 
 **Also implemented (beyond requirements):** QuickBooks Online UK (`server/integrations/quickbooks.js`), Twilio SMS/voice webhooks.
 
@@ -401,7 +401,7 @@ All inbound paths funnel through `server/services/messenger.js` → `ingestInbou
 ### 7.2 Outbound channels (from CRM)
 
 - WhatsApp document messages (quote PDFs)
-- SMTP email (quotes, invoices, follow-ups)
+- Mailgun email (quotes, invoices, follow-ups)
 - Google Calendar events (site visits)
 - QuickBooks Online UK (invoices + payment sync)
 
