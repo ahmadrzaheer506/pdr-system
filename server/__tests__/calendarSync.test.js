@@ -5,6 +5,7 @@ jest.mock('../integrations/gcal', () => ({
   updateEvent: jest.fn(async () => ({ simulated: false })),
   cancelEvent: jest.fn(async () => ({ simulated: false })),
   calFetch: jest.fn(),
+  getEvent: jest.fn(),
 }));
 
 jest.mock('../models', () => ({
@@ -19,12 +20,15 @@ jest.mock('../models', () => ({
   CalendarSyncLink: { findOne: jest.fn(), findAll: jest.fn(), create: jest.fn() },
   OauthToken: { findAll: jest.fn() },
   Customer: { findByPk: jest.fn() },
+  Lead: { findByPk: jest.fn() },
+  Quote: { findByPk: jest.fn() },
 }));
 
 const gcal = require('../integrations/gcal');
 const {
   User, Appointment, AppointmentAssignee, Job, JobDayAssignment,
   HolidayRequest, Task, TaskAssignee, CalendarSyncLink, OauthToken, Customer,
+  Lead, Quote,
 } = require('../models');
 const calendarSync = require('../calendarSync');
 
@@ -44,6 +48,9 @@ describe('calendarSync (requirement 16.3)', () => {
     CalendarSyncLink.findOne.mockResolvedValue(null);
     CalendarSyncLink.create.mockImplementation(async (row) => ({ ...row, destroy: jest.fn() }));
     Customer.findByPk.mockResolvedValue({ name: 'Dave Whitfield' });
+    Lead.findByPk.mockResolvedValue({ ref: 'L-0042' });
+    Quote.findByPk.mockResolvedValue(null);
+    User.findByPk.mockResolvedValue({ name: 'Lisa Grant' });
     gcal.isConnected.mockResolvedValue(true);
     gcal.isConfigured.mockReturnValue(true);
   });
@@ -63,13 +70,22 @@ describe('calendarSync (requirement 16.3)', () => {
     Appointment.findByPk.mockResolvedValue({
       id: 50, title: 'Site visit — Dave', start: new Date('2026-10-08T09:00:00Z'),
       end: new Date('2026-10-08T10:00:00Z'), status: 'booked', created_by: LISA,
-      customer_id: 9, address: '14 Elm', notes: null, gcal_status: 'not_synced',
+      customer_id: 9, lead_id: 12, visit_type: 'site_visit', address: '14 Elm', notes: null,
+      gcal_status: 'not_synced',
       update: jest.fn(),
     });
     await calendarSync.syncAppointment(50);
     const userIds = gcal.createEvent.mock.calls.map((c) => c[0].userId).sort();
     expect(userIds).toEqual([PAUL, JAMIE]);
     expect(userIds).not.toContain(LISA);
+    const payload = gcal.createEvent.mock.calls[0][0];
+    expect(payload.colorId).toBe('11');
+    expect(payload.allDay).toBe(true);
+    expect(payload.startDate).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+    expect(payload.title).toMatch(/Site visit/);
+    expect(payload.notes).toMatch(/Synced from Paul Douglas Roofing/);
+    expect(payload.notes).toMatch(/Reference: L-0042/);
+    expect(payload.notes).toMatch(/Customer: Dave Whitfield/);
   });
 
   test('drops Google events when a visit is cancelled', async () => {
@@ -89,6 +105,23 @@ describe('calendarSync (requirement 16.3)', () => {
     expect(gcal.createEvent).not.toHaveBeenCalled();
   });
 
+  test('jobs are all-day chips with the job clock in the title', async () => {
+    Job.findByPk.mockResolvedValue({
+      id: 9, title: 'Full re-roof — semi-detached', start_date: '2026-10-07',
+      end_date: '2026-10-08', start_time: '08:00', end_time: '16:30',
+      status: 'IN_PROGRESS', customer_id: 4, quote_id: null, address: '19 Hawthorn Drive',
+      notes: null, description: null,
+    });
+    await calendarSync.syncJob(9);
+    expect(gcal.createEvent).toHaveBeenCalledWith(expect.objectContaining({
+      allDay: true,
+      startDate: '2026-10-07',
+      endDateExclusive: '2026-10-09',
+      colorId: '9',
+      title: '8:00 AM – 4:30 PM · Job · Full re-roof — semi-detached',
+    }));
+  });
+
   test('field staff only receive holidays they requested', async () => {
     OauthToken.findAll.mockResolvedValue([{ user_id: JAMIE }]);
     User.findAll.mockResolvedValue([{ id: PAUL }]);
@@ -101,7 +134,8 @@ describe('calendarSync (requirement 16.3)', () => {
     expect(gcal.createEvent).toHaveBeenCalledWith(expect.objectContaining({
       userId: JAMIE,
       allDay: true,
-      title: 'Holiday — Jamie Fisher',
+      title: 'Holiday · Jamie Fisher',
+      colorId: '6',
     }));
   });
 

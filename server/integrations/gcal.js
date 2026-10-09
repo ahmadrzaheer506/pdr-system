@@ -10,12 +10,14 @@ const jwt = require('jsonwebtoken');
 const { Op } = require('sequelize');
 const { OauthToken, Appointment, logIntegrationEvent } = require('../models');
 const { plain } = require('../db');
+const { SOURCE_NAME } = require('../gcalEventFormat');
 
 const AUTH_URL = 'https://accounts.google.com/o/oauth2/v2/auth';
 const TOKEN_URL = 'https://oauth2.googleapis.com/token';
 const CAL_API = 'https://www.googleapis.com/calendar/v3';
-const SCOPE = 'https://www.googleapis.com/auth/calendar.events';
+const SCOPE = 'https://www.googleapis.com/auth/calendar';
 const JWT_SECRET = process.env.JWT_SECRET || 'dev-secret-change-me';
+const CRM_CALENDAR_SUMMARY = SOURCE_NAME;
 
 function isConfigured() {
   return !!(process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET);
@@ -91,12 +93,21 @@ async function disconnect(userId) {
   return n > 0;
 }
 
-function eventBody({ title, start, end, address, notes, allDay, startDate, endDateExclusive }) {
+function sourceUrl() {
+  const app = String(process.env.APP_URL || '').replace(/\/$/, '');
+  if (app && /^https:\/\//i.test(app) && !/localhost|127\.0\.0\.1/i.test(app)) return app;
+  return 'https://www.pauldouglasroofing.co.uk';
+}
+
+function eventBody({ title, start, end, address, notes, allDay, startDate, endDateExclusive, colorId }) {
   const body = {
     summary: title,
     location: address || undefined,
     description: notes || undefined,
+    colorId: colorId ? String(colorId) : undefined,
+    transparency: 'opaque',
     reminders: { useDefault: true },
+    source: { title: SOURCE_NAME, url: sourceUrl() },
   };
   if (allDay) {
     body.start = { date: startDate };
@@ -168,11 +179,124 @@ function shouldSimulate(userId) {
   return !userId || !isConfigured();
 }
 
+async function saveCalendarId(userId, calendarId) {
+  const row = await OauthToken.findOne({ where: { provider: 'google', user_id: userId } });
+  if (!row) return;
+  const meta = { ...(plain(row).meta || {}), gcal_calendar_id: calendarId };
+  await row.update({ meta });
+}
+
+/**
+ * Only write to a named CRM calendar when it is on the user's calendar list
+ * and selected. A calendar that was created but never inserted into
+ * calendarList is invisible — events "succeed" and never show in the UI.
+ */
+async function ensureCrmCalendar(userId) {
+  let list;
+  try {
+    list = await calFetch(userId, '/users/me/calendarList?maxResults=250');
+  } catch {
+    return 'primary';
+  }
+  const items = list.items || [];
+  const existing = items.find((cal) => cal.summary === CRM_CALENDAR_SUMMARY);
+  if (existing?.id) {
+    if (existing.selected === false) {
+      try {
+        await calFetch(userId, `/users/me/calendarList/${encodeURIComponent(existing.id)}`, {
+          method: 'PUT',
+          body: JSON.stringify({
+            ...existing,
+            selected: true,
+            hidden: false,
+            colorRgbFormat: true,
+            backgroundColor: '#dc1114',
+          }),
+        });
+      } catch { /* still listed — user can tick it */ }
+    }
+    await saveCalendarId(userId, existing.id);
+    return existing.id;
+  }
+  try {
+    const created = await calFetch(userId, '/calendars', {
+      method: 'POST',
+      body: JSON.stringify({ summary: CRM_CALENDAR_SUMMARY, timeZone: 'Europe/London' }),
+    });
+    if (!created?.id) return 'primary';
+    await calFetch(userId, '/users/me/calendarList', {
+      method: 'POST',
+      body: JSON.stringify({
+        id: created.id,
+        selected: true,
+        hidden: false,
+        colorRgbFormat: true,
+        backgroundColor: '#dc1114',
+      }),
+    });
+    await saveCalendarId(userId, created.id);
+    return created.id;
+  } catch {
+    return 'primary';
+  }
+}
+
+async function calendarsToTry(userId) {
+  const tokens = await getTokens(userId);
+  const stored = tokens?.meta?.gcal_calendar_id;
+  const ids = ['primary'];
+  if (stored && stored !== 'primary') ids.push(stored);
+  return ids;
+}
+
+function calendarEventsPath(calendarId, eventId) {
+  const cal = encodeURIComponent(calendarId);
+  if (!eventId) return `/calendars/${cal}/events`;
+  return `/calendars/${cal}/events/${encodeURIComponent(eventId)}`;
+}
+
+async function getEvent(userId, eventId) {
+  let lastErr;
+  for (const calendarId of await calendarsToTry(userId)) {
+    try {
+      return await calFetch(userId, calendarEventsPath(calendarId, eventId));
+    } catch (err) {
+      lastErr = err;
+      if (!String(err.message).includes('Google Calendar API 404')) throw err;
+    }
+  }
+  throw lastErr || new Error('Google Calendar API 404');
+}
+
+async function postEvent(userId, body) {
+  const calendarId = await ensureCrmCalendar(userId);
+  try {
+    return await calFetch(userId, calendarEventsPath(calendarId), { method: 'POST', body: JSON.stringify(body) });
+  } catch (err) {
+    if (calendarId !== 'primary') {
+      return calFetch(userId, calendarEventsPath('primary'), { method: 'POST', body: JSON.stringify(body) });
+    }
+    throw err;
+  }
+}
+
+async function writeEvent(userId, eventId, options) {
+  let lastErr;
+  for (const calendarId of await calendarsToTry(userId)) {
+    try {
+      return await calFetch(userId, calendarEventsPath(calendarId, eventId), options);
+    } catch (err) {
+      lastErr = err;
+      if (!String(err.message).includes('Google Calendar API 404')) throw err;
+    }
+  }
+  throw lastErr || new Error('Google Calendar API 404');
+}
+
 /** Create a calendar event on the user's primary calendar, or simulate if they are not connected. */
-async function createEvent({ title, start, end, address, notes, customerName, userId, allDay, startDate, endDateExclusive }) {
-  const description = customerName
-    ? `Customer: ${customerName}\n${notes || ''}\n\n(Booked from PDR Business OS)`
-    : (notes || '(From PDR Business OS)');
+async function createEvent({
+  title, start, end, address, notes, userId, allDay, startDate, endDateExclusive, colorId,
+}) {
   if (shouldSimulate(userId) || !(await isConnected(userId))) {
     await logEvent('out', 'event.simulated', { title, start, userId: userId || null }, 'simulated');
     return { eventId: `sim-${Date.now()}`, simulated: true };
@@ -182,12 +306,20 @@ async function createEvent({ title, start, end, address, notes, customerName, us
     start,
     end,
     address,
-    notes: description,
+    notes,
+    colorId,
     allDay,
     startDate,
     endDateExclusive,
   });
-  const data = await calFetch(userId, '/calendars/primary/events', { method: 'POST', body: JSON.stringify(body) });
+  let data;
+  try {
+    data = await postEvent(userId, body);
+  } catch (err) {
+    const { source, ...withoutSource } = body;
+    if (!source) throw err;
+    data = await postEvent(userId, withoutSource);
+  }
   await logEvent('out', 'event.created', { id: data.id, title, userId });
   return { eventId: data.id, simulated: false };
 }
@@ -198,7 +330,7 @@ async function updateEvent(eventId, payload, userId) {
     return { simulated: true };
   }
   const body = eventBody(payload);
-  await calFetch(userId, `/calendars/primary/events/${eventId}`, { method: 'PATCH', body: JSON.stringify(body) });
+  await writeEvent(userId, eventId, { method: 'PATCH', body: JSON.stringify(body) });
   await logEvent('out', 'event.updated', { eventId, userId });
   return { simulated: false };
 }
@@ -207,7 +339,7 @@ async function cancelEvent(eventId, userId) {
   if (shouldSimulate(userId) || !(await isConnected(userId)) || String(eventId).startsWith('sim-')) {
     return { simulated: true };
   }
-  await calFetch(userId, `/calendars/primary/events/${eventId}`, { method: 'DELETE' });
+  await writeEvent(userId, eventId, { method: 'DELETE' });
   await logEvent('out', 'event.cancelled', { eventId, userId });
   return { simulated: false };
 }
@@ -232,7 +364,7 @@ async function pollChanges() {
     const userId = a.created_by;
     if (!userId || !(await isConnected(userId))) continue;
     try {
-      const ev = await calFetch(userId, `/calendars/primary/events/${a.gcal_event_id}`);
+      const ev = await getEvent(userId, a.gcal_event_id);
       if (!ev) continue;
       if (ev.status === 'cancelled') {
         a.status = 'cancelled';
@@ -240,13 +372,15 @@ async function pollChanges() {
         changed++;
         continue;
       }
-      const newStart = ev.start?.dateTime || ev.start?.date;
-      const newEnd = ev.end?.dateTime || ev.end?.date;
-      if (newStart && new Date(newStart).getTime() !== new Date(a.start).getTime()) {
-        a.start = new Date(newStart);
-        a.end = new Date(newEnd);
-        await a.save();
-        changed++;
+      if (ev.start?.dateTime) {
+        const newStart = ev.start.dateTime;
+        const newEnd = ev.end?.dateTime;
+        if (newStart && new Date(newStart).getTime() !== new Date(a.start).getTime()) {
+          a.start = new Date(newStart);
+          if (newEnd) a.end = new Date(newEnd);
+          await a.save();
+          changed++;
+        }
       }
     } catch (err) {
       await logEvent('in', 'poll.error', { appointment: a.id, error: String(err.message) }, 'error');
@@ -274,7 +408,7 @@ async function status(userId) {
     detail: !isConfigured()
       ? 'Simulated — events stay in-app until OAuth client keys are set, then each user connects their own calendar from Profile.'
       : connected
-        ? 'Live — site visits, jobs, holidays and tasks you can see in the CRM go on your Google Calendar'
+        ? 'Live — visits, jobs, holidays and tasks sync onto your Paul Douglas Roofing Google Calendar'
         : 'Keys present — connect Google Calendar from Profile. Nothing is pushed until you connect.',
   };
 }
@@ -287,9 +421,11 @@ module.exports = {
   parseOauthState,
   exchangeCode,
   disconnect,
+  eventBody,
   createEvent,
   updateEvent,
   cancelEvent,
+  getEvent,
   pollChanges,
   status,
   calFetch,

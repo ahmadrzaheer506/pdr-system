@@ -9,10 +9,15 @@ const { Op } = require('sequelize');
 const {
   User, Appointment, AppointmentAssignee, Job, JobDayAssignment,
   HolidayRequest, Task, TaskAssignee, CalendarSyncLink, OauthToken, Customer,
+  Lead, Quote,
 } = require('./models');
 const { ROLES } = require('./roles');
 const gcal = require('./integrations/gcal');
-const { addCalendarDays } = require('./ukTime');
+const { addCalendarDays, ymdInZone, zonedWallTime, partsInZone } = require('./ukTime');
+const {
+  GCAL_COLOR, formatTimeRange, formatTimeRangeFromHhmm, formatDayRange, prettyStatus,
+  eventTitle, eventDescription, appointmentTypeLabel, joinNames,
+} = require('./gcalEventFormat');
 
 const ENTITY = Object.freeze({
   APPOINTMENT: 'appointment',
@@ -86,42 +91,91 @@ async function audienceForTask(task) {
 
 function isoDay(value) {
   if (!value) return null;
-  if (value instanceof Date) return value.toISOString().slice(0, 10);
+  if (value instanceof Date) return ymdInZone(value);
   const text = String(value).slice(0, 10);
   return /^\d{4}-\d{2}-\d{2}$/.test(text) ? text : null;
 }
 
-function londonDateTime(date, time) {
-  const day = isoDay(date);
-  const hhmm = String(time || '08:00').slice(0, 5);
-  if (!day) return null;
-  return new Date(`${day}T${hhmm}:00`);
+function exclusiveEnd(startDate, endDate) {
+  const last = endDate && endDate >= startDate ? endDate : startDate;
+  return addCalendarDays(last, 1);
 }
 
 async function appointmentPayload(appt) {
   const customer = appt.Customer || (appt.customer_id
     ? await Customer.findByPk(appt.customer_id, { attributes: ['name'] })
     : null);
+  const lead = appt.Lead || (appt.lead_id
+    ? await Lead.findByPk(appt.lead_id, { attributes: ['ref'] })
+    : null);
+  const assigneeRows = await AppointmentAssignee.findAll({
+    where: { appointment_id: appt.id },
+    include: [{ model: User, attributes: ['name'] }],
+  });
+  const booker = appt.creator || (appt.created_by
+    ? await User.findByPk(appt.created_by, { attributes: ['name'] })
+    : null);
+  const type = appointmentTypeLabel(appt.visit_type);
+  const time = formatTimeRange(appt.start, appt.end);
+  const reference = lead?.ref || `VISIT-${appt.id}`;
+  const customerName = customer?.name || null;
+  const startDate = isoDay(appt.start);
+  const endDate = isoDay(appt.end) || startDate;
+  if (!startDate) return null;
   return {
-    title: appt.title,
-    start: appt.start,
-    end: appt.end,
+    title: eventTitle({ timeRange: time, typeLabel: type, reference: customerName || reference }),
+    allDay: true,
+    startDate,
+    endDateExclusive: exclusiveEnd(startDate, endDate),
     address: appt.address || null,
-    notes: appt.notes || null,
-    customerName: customer?.name || null,
+    colorId: GCAL_COLOR.appointment,
+    notes: eventDescription({
+      time,
+      type,
+      status: prettyStatus(appt.status) || 'Booked',
+      reference,
+      customer: customerName,
+      assignees: joinNames(assigneeRows.map((row) => row.User?.name)),
+      location: appt.address,
+      notes: [appt.complete_note, appt.notes].filter(Boolean).join('\n'),
+      bookedBy: booker?.name,
+    }),
   };
 }
 
-function jobPayload(job) {
-  const start = londonDateTime(job.start_date, job.start_time || '08:00');
-  const end = londonDateTime(job.end_date || job.start_date, job.end_time || '16:30');
-  if (!start || !end) return null;
+async function jobPayload(job) {
+  const startDate = isoDay(job.start_date);
+  if (!startDate) return null;
+  const endDate = isoDay(job.end_date) || startDate;
+  const customer = job.Customer || (job.customer_id
+    ? await Customer.findByPk(job.customer_id, { attributes: ['name'] })
+    : null);
+  const quote = job.Quote || (job.quote_id
+    ? await Quote.findByPk(job.quote_id, { attributes: ['ref'] })
+    : null);
+  const crewRows = await JobDayAssignment.findAll({
+    where: { job_id: job.id },
+    include: [{ model: User, attributes: ['name'] }],
+  });
+  const time = formatTimeRangeFromHhmm(job.start_time || '08:00', job.end_time || '16:30');
+  const reference = quote?.ref || `JOB-${job.id}`;
   return {
-    title: `Job — ${job.title}`,
-    start,
-    end,
+    title: eventTitle({ timeRange: time, typeLabel: 'Job', reference: job.title }),
+    allDay: true,
+    startDate,
+    endDateExclusive: exclusiveEnd(startDate, endDate),
     address: job.address || null,
-    notes: job.notes || null,
+    colorId: GCAL_COLOR.job,
+    notes: eventDescription({
+      time,
+      type: 'Job',
+      status: prettyStatus(job.status),
+      reference,
+      customer: customer?.name,
+      assignees: joinNames(crewRows.map((row) => row.User?.name)),
+      location: job.address,
+      notes: job.notes || job.description || null,
+    }),
   };
 }
 
@@ -129,24 +183,41 @@ function holidayPayload(row, userName) {
   const startDate = isoDay(row.start_date);
   const endDate = isoDay(row.end_date);
   if (!startDate || !endDate) return null;
+  const time = formatDayRange(startDate, endDate);
   return {
-    title: userName ? `Holiday — ${userName}` : 'Holiday',
+    title: eventTitle({ typeLabel: 'Holiday', reference: userName }),
     allDay: true,
     startDate,
     endDateExclusive: addCalendarDays(endDate, 1),
-    notes: row.reason || 'Holiday',
+    colorId: GCAL_COLOR.holiday,
+    notes: eventDescription({
+      time,
+      type: 'Holiday',
+      status: prettyStatus(row.status),
+      reference: userName,
+      notes: row.reason || null,
+    }),
   };
 }
 
 function taskPayload(task) {
   const due = isoDay(task.due_date);
   if (!due) return null;
+  const time = formatDayRange(due, due);
+  const reference = `TASK-${task.id}`;
   return {
-    title: `Task — ${task.title}`,
+    title: eventTitle({ typeLabel: 'Task', reference: task.title }),
     allDay: true,
     startDate: due,
     endDateExclusive: addCalendarDays(due, 1),
-    notes: task.detail || null,
+    colorId: GCAL_COLOR.task,
+    notes: eventDescription({
+      time,
+      type: 'Task',
+      status: prettyStatus(task.status) || 'Open',
+      reference,
+      notes: task.detail || null,
+    }),
   };
 }
 
@@ -238,7 +309,7 @@ async function syncJob(jobId) {
   try {
     const job = await Job.findByPk(jobId);
     if (!job) return;
-    const payload = jobPayload(job);
+    const payload = await jobPayload(job);
     await pushToAudience(await audienceForJob(job), ENTITY.JOB, job.id, payload);
   } catch { /* non-fatal */ }
 }
@@ -297,7 +368,7 @@ async function backfillUser(userId) {
   for (const job of jobs) {
     const audience = await audienceForJob(job);
     if (!audience.includes(userId)) continue;
-    const payload = jobPayload(job);
+    const payload = await jobPayload(job);
     if (!payload) continue;
     await upsertLink(userId, ENTITY.JOB, job.id, payload);
     jobCount += 1;
@@ -351,8 +422,24 @@ async function applyInboundChange(link, ev) {
   if (link.entity_type === ENTITY.APPOINTMENT) {
     const appt = await Appointment.findByPk(link.entity_id);
     if (!appt || appt.status !== 'booked') return false;
-    const newStart = ev.start?.dateTime || ev.start?.date;
-    const newEnd = ev.end?.dateTime || ev.end?.date;
+    if (ev.start?.date) {
+      const newDay = ev.start.date;
+      const oldDay = isoDay(appt.start);
+      if (newDay && newDay !== oldDay) {
+        const clock = partsInZone(new Date(appt.start));
+        const duration = new Date(appt.end) - new Date(appt.start);
+        const nextStart = zonedWallTime(newDay, Number(clock.hour), Number(clock.minute), Number(clock.second) || 0, 0);
+        if (nextStart) {
+          appt.start = nextStart;
+          appt.end = new Date(nextStart.getTime() + Math.max(duration, 30 * 60 * 1000));
+          await appt.save();
+          return true;
+        }
+      }
+      return false;
+    }
+    const newStart = ev.start?.dateTime;
+    const newEnd = ev.end?.dateTime;
     if (newStart && new Date(newStart).getTime() !== new Date(appt.start).getTime()) {
       appt.start = new Date(newStart);
       if (newEnd) appt.end = new Date(newEnd);
@@ -363,13 +450,12 @@ async function applyInboundChange(link, ev) {
   if (link.entity_type === ENTITY.JOB) {
     const job = await Job.findByPk(link.entity_id);
     if (!job) return false;
-    const newStart = ev.start?.dateTime || ev.start?.date;
-    const newEnd = ev.end?.dateTime || ev.end?.date;
+    const newStart = ev.start?.date || isoDay(ev.start?.dateTime);
+    const rawEnd = ev.end?.date || isoDay(ev.end?.dateTime);
     if (!newStart) return false;
-    const startDay = isoDay(new Date(newStart));
-    const endDay = isoDay(newEnd ? new Date(newEnd) : new Date(newStart));
-    if (startDay && startDay !== isoDay(job.start_date)) {
-      await job.update({ start_date: startDay, end_date: endDay || startDay });
+    const newEnd = ev.start?.date && rawEnd ? addCalendarDays(rawEnd, -1) : (rawEnd || newStart);
+    if (newStart !== isoDay(job.start_date) || newEnd !== isoDay(job.end_date || job.start_date)) {
+      await job.update({ start_date: newStart, end_date: newEnd || newStart });
       return true;
     }
   }
@@ -400,6 +486,28 @@ async function applyInboundChange(link, ev) {
   return false;
 }
 
+async function payloadForLink(link) {
+  if (link.entity_type === ENTITY.APPOINTMENT) {
+    const appt = await Appointment.findByPk(link.entity_id);
+    return appt && appt.status !== 'cancelled' ? appointmentPayload(appt) : null;
+  }
+  if (link.entity_type === ENTITY.JOB) {
+    const job = await Job.findByPk(link.entity_id);
+    return job ? jobPayload(job) : null;
+  }
+  if (link.entity_type === ENTITY.HOLIDAY) {
+    const row = await HolidayRequest.findByPk(link.entity_id);
+    if (!row || row.status === 'declined') return null;
+    const holder = await User.findByPk(row.user_id, { attributes: ['name'] });
+    return holidayPayload(row, holder?.name);
+  }
+  if (link.entity_type === ENTITY.TASK) {
+    const task = await Task.findByPk(link.entity_id);
+    return task && task.status === 'open' ? taskPayload(task) : null;
+  }
+  return null;
+}
+
 async function pollInbound() {
   if (!gcal.isConfigured()) return 0;
   const links = await CalendarSyncLink.findAll();
@@ -407,8 +515,14 @@ async function pollInbound() {
   for (const link of links) {
     if (!(await gcal.isConnected(link.user_id))) continue;
     try {
-      const ev = await gcal.calFetch(link.user_id, `/calendars/primary/events/${link.gcal_event_id}`);
-      if (await applyInboundChange(link, ev)) changed += 1;
+      const ev = await gcal.getEvent(link.user_id, link.gcal_event_id);
+      const inbound = await applyInboundChange(link, ev);
+      if (inbound) changed += 1;
+      if (ev?.status === 'cancelled') continue;
+      const payload = await payloadForLink(link);
+      try {
+        if (payload) await gcal.updateEvent(link.gcal_event_id, payload, link.user_id);
+      } catch { /* Google write is best-effort; never drop the CRM row */ }
     } catch (err) {
       // Missing event on Google is treated as a cancel for visits only.
       if (String(err.message).includes('Google Calendar API 404') && link.entity_type === ENTITY.APPOINTMENT) {

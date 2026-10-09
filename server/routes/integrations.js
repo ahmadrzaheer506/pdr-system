@@ -13,8 +13,8 @@ const router = express.Router();
  * No build step runs here, so styling is inlined — kept in sync with the
  * app's look (Inter font, brand red, rounded cards) by hand.
  */
-function renderOauthResultPage({ ok, heading, body, settingsPath = '/settings' }) {
-  const settingsUrl = `${spaOrigin()}${settingsPath}`;
+function renderOauthResultPage({ ok, heading, body }) {
+  const homeUrl = `${spaOrigin()}/`;
   const accent = ok ? '#059669' : '#dc1114';
   const accentSoft = ok ? '#ecfdf5' : '#fef2f2';
   const accentRing = ok ? '#a7f3d0' : '#fecaca';
@@ -113,7 +113,7 @@ function renderOauthResultPage({ ok, heading, body, settingsPath = '/settings' }
     </div>
     <h1>${heading}</h1>
     <p>${body}</p>
-    <a class="cta" href="${settingsUrl}">Go to Settings</a>
+    <a class="cta" href="${homeUrl}">Go Back</a>
     <div class="brand">Paul Douglas Roofing <strong>&middot; Business OS</strong></div>
   </div>
 </body>
@@ -141,7 +141,7 @@ router.get('/google/callback', async (req, res) => {
     res.send(renderOauthResultPage({
       ok: true,
       heading: 'Google Calendar connected',
-      body: 'Your site visits, jobs, holidays and tasks are now synced to Google Calendar. Head back to Settings to see the connection.',
+      body: 'Your site visits, jobs, holidays and tasks are now synced to Google Calendar.',
     }));
   } catch (err) {
     res.status(400).send(renderOauthResultPage({
@@ -167,7 +167,7 @@ router.get('/quickbooks/callback', async (req, res) => {
     res.send(renderOauthResultPage({
       ok: true,
       heading: 'QuickBooks connected',
-      body: 'Invoices you send from the CRM will now be created in QuickBooks, and payments will sync both ways. You can close this tab and return to Settings.',
+      body: 'Invoices you send from the CRM will now be created in QuickBooks, and payments will sync both ways.',
     }));
   } catch (err) {
     res.status(400).send(renderOauthResultPage({

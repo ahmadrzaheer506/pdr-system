@@ -124,9 +124,39 @@ describe('Google Calendar per-user tokens (requirement 5.2)', () => {
     });
   });
 
+  test('event body sets Busy plus a Google colour id', () => {
+    const body = gcal.eventBody({
+      title: '8:00 AM – 11:00 AM · Site visit · Tom Ellery',
+      start: '2026-10-08T09:00:00.000Z',
+      end: '2026-10-08T10:00:00.000Z',
+      address: '9 Mill Lane',
+      notes: 'Synced from Paul Douglas Roofing',
+      colorId: '11',
+    });
+    expect(body.colorId).toBe('11');
+    expect(body.transparency).toBe('opaque');
+    expect(body.source.title).toBe('Paul Douglas Roofing');
+    expect(body.description).toMatch(/Synced from Paul Douglas Roofing/);
+    expect(body.location).toBe('9 Mill Lane');
+  });
+
   test('oauth state round-trips the office user id', () => {
     const state = gcal.signOauthState(LISA);
     expect(gcal.parseOauthState(state)).toBe(LISA);
     expect(() => gcal.parseOauthState('')).toThrow(/Missing OAuth state/);
+  });
+
+  test('all-day event body uses dates so month view shows a filled chip', () => {
+    const body = gcal.eventBody({
+      title: '10:00 AM – 11:00 AM · Site visit · Tom Ellery',
+      allDay: true,
+      startDate: '2026-10-08',
+      endDateExclusive: '2026-10-09',
+      colorId: '11',
+      notes: 'Synced from Paul Douglas Roofing',
+    });
+    expect(body.start).toEqual({ date: '2026-10-08' });
+    expect(body.end).toEqual({ date: '2026-10-09' });
+    expect(body.source.title).toBe('Paul Douglas Roofing');
   });
 });

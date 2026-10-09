@@ -91,8 +91,8 @@ describe('GET /api/integrations/google/callback (requirement 5.2)', () => {
     expect(gcal.parseOauthState).toHaveBeenCalledWith('state-for-2');
     expect(gcal.exchangeCode).toHaveBeenCalledWith('auth-code', 2);
     expect(res.text).toMatch(/connected/i);
-    expect(res.text).toMatch(/Go to Settings/i);
-    expect(res.text).toContain(`href="${spaOrigin()}/settings"`);
+    expect(res.text).toMatch(/Go Back/i);
+    expect(res.text).toContain(`href="${spaOrigin()}/"`);
     const calendarSync = require('../calendarSync');
     expect(calendarSync.backfillUser).toHaveBeenCalledWith(2);
   });
@@ -102,7 +102,7 @@ describe('GET /api/integrations/google/callback (requirement 5.2)', () => {
     const res = await request(app).get('/api/integrations/google/callback').query({ code: 'auth-code' });
     expect(res.status).toBe(400);
     expect(gcal.exchangeCode).not.toHaveBeenCalled();
-    expect(res.text).toMatch(/Go to Settings/i);
+    expect(res.text).toMatch(/Go Back/i);
   });
 });
 

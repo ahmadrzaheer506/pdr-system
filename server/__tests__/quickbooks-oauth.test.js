@@ -35,6 +35,7 @@ const express = require('express');
 const { __setUser } = require('../auth');
 const qbo = require('../integrations/quickbooks');
 const integrations = require('../routes/integrations');
+const { spaOrigin } = require('../passwordReset');
 
 const app = express();
 app.use(express.json());
@@ -70,6 +71,8 @@ describe('QuickBooks OAuth routes', () => {
     expect(res.status).toBe(200);
     expect(qbo.exchangeCode).toHaveBeenCalledWith('auth-code', '934145000000', 1);
     expect(res.text).toMatch(/QuickBooks connected/i);
+    expect(res.text).toMatch(/Go Back/i);
+    expect(res.text).toContain(`href="${spaOrigin()}/"`);
   });
 
   test('owner can disconnect', async () => {
