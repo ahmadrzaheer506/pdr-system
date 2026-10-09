@@ -5,6 +5,8 @@ describe('QuickBooks client helpers', () => {
   it('explains simulated vs live send', () => {
     expect(invoiceSentMessage({ qbo: { simulated: true } })).toMatch(/not connected/i);
     expect(invoiceSentMessage({ qbo: { qboId: '88', simulated: false } })).toMatch(/pushed to QuickBooks/i);
+    expect(invoiceSentMessage({ qbo: { simulated: false, error: 'Invalid TxnDate' } })).toMatch(/did not create the invoice/i);
+    expect(invoiceSentMessage({ qbo: { simulated: false, error: 'Invalid TxnDate' } })).not.toMatch(/not connected/i);
   });
 
   it('treats SIM ids as not live', () => {

@@ -87,6 +87,175 @@ describe('QuickBooks adapter', () => {
     expect(Customer.update).toHaveBeenCalledWith({ qbo_id: 'C1' }, { where: { id: 5 } });
   });
 
+  test('toQboDate strips ISO time so QBO does not reject TxnDate', () => {
+    expect(qbo.toQboDate('2026-10-09T00:00:00.000Z')).toBe('2026-10-09');
+    expect(qbo.toQboDate(new Date(Date.UTC(2026, 9, 21)))).toBe('2026-10-21');
+    expect(qbo.toQboDate(null)).toBeUndefined();
+  });
+
+  test('invoicePrivateNote keeps the quote number after the estimate is deleted', () => {
+    expect(qbo.invoicePrivateNote({ ref: 'INV-2026-0009' }, 'Q-2026-0020'))
+      .toBe('PDR invoice INV-2026-0009 (from estimate Q-2026-0020)');
+    expect(qbo.invoicePrivateNote({ ref: 'INV-2026-0009', notes: 'PDR invoice INV-2026-0009' }, 'Q-2026-0020'))
+      .toBe('PDR invoice INV-2026-0009 (from estimate Q-2026-0020)');
+  });
+
+  test('pushInvoice posts YYYY-MM-DD dates when Sequelize gives Date objects', async () => {
+    OauthToken.findOne.mockResolvedValue({
+      access_token: 'tok',
+      expires_at: new Date(Date.now() + 3600_000),
+      meta: { realmId: '123', itemId: '9', taxCodeStandard: '3' },
+      update: jest.fn(),
+    });
+    let invoicePayload = null;
+    global.fetch = jest.fn(async (url, opts) => {
+      const path = String(url);
+      if (opts?.method === 'POST' && path.includes('/invoice') && !path.includes('operation')) {
+        invoicePayload = JSON.parse(opts.body);
+        return { ok: true, status: 200, json: async () => ({ Invoice: { Id: '88', SyncToken: '0' } }) };
+      }
+      return { ok: true, status: 200, json: async () => ({}) };
+    });
+
+    await qbo.pushInvoice({
+      id: 12,
+      ref: 'INV-2026-0007',
+      items: [{ description: 'PDR quote', qty: 1, unit_price: 58 }],
+      vat_amount: 11.6,
+      issue_date: new Date('2026-10-09T00:00:00.000Z'),
+      due_date: new Date('2026-10-23T00:00:00.000Z'),
+    }, { id: 5, name: 'sahilmubeen1', qbo_id: 'C1' });
+
+    expect(invoicePayload.TxnDate).toBe('2026-10-09');
+    expect(invoicePayload.DueDate).toBe('2026-10-23');
+    expect(String(invoicePayload.TxnDate)).not.toMatch(/T/);
+  });
+
+  test('pushInvoice updates the existing QBO invoice when DocNumber already exists', async () => {
+    OauthToken.findOne.mockResolvedValue({
+      access_token: 'tok',
+      expires_at: new Date(Date.now() + 3600_000),
+      meta: { realmId: '123', itemId: '9', taxCodeStandard: '3' },
+      update: jest.fn(),
+    });
+    const invoicePosts = [];
+    global.fetch = jest.fn(async (url, opts) => {
+      const path = decodeURIComponent(String(url));
+      if (path.includes('/query') && path.includes("DocNumber = 'INV-2026-0008'")) {
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({ QueryResponse: { Invoice: [{ Id: '99', SyncToken: '4', DocNumber: 'INV-2026-0008' }] } }),
+        };
+      }
+      if (path.includes('/invoice/99') && !opts?.method) {
+        return { ok: true, status: 200, json: async () => ({ Invoice: { Id: '99', SyncToken: '4' } }) };
+      }
+      if (opts?.method === 'POST' && path.includes('/invoice')) {
+        invoicePosts.push(JSON.parse(opts.body));
+        return { ok: true, status: 200, json: async () => ({ Invoice: { Id: '99', SyncToken: '5' } }) };
+      }
+      return { ok: true, status: 200, json: async () => ({}) };
+    });
+
+    const result = await qbo.pushInvoice({
+      ref: 'INV-2026-0008',
+      items: [{ description: 'Work', qty: 1, unit_price: 38 }],
+      vat_amount: 7.6,
+      issue_date: '2026-10-09',
+      due_date: '2026-10-23',
+    }, { id: 5, name: 'sahilmubeen1', qbo_id: 'C1' });
+
+    expect(result).toEqual(expect.objectContaining({ qboId: '99', syncToken: '5', simulated: false }));
+    expect(invoicePosts[0]).toEqual(expect.objectContaining({ Id: '99', sparse: true }));
+  });
+
+  test('updating an existing QBO invoice still writes the quote number on the memo', async () => {
+    OauthToken.findOne.mockResolvedValue({
+      access_token: 'tok',
+      expires_at: new Date(Date.now() + 3600_000),
+      meta: { realmId: '123', itemId: '9', taxCodeStandard: '3' },
+      update: jest.fn(),
+    });
+    Job.findByPk.mockResolvedValue({ quote_id: 20 });
+    Quote.findByPk.mockResolvedValue({ id: 20, ref: 'Q-2026-0020', qbo_id: null });
+    let payload = null;
+    global.fetch = jest.fn(async (url, opts) => {
+      const path = String(url);
+      if (path.includes('/invoice/88') && !opts?.method) {
+        return { ok: true, status: 200, json: async () => ({ Invoice: { Id: '88', SyncToken: '2' } }) };
+      }
+      if (opts?.method === 'POST' && path.includes('/invoice')) {
+        payload = JSON.parse(opts.body);
+        return { ok: true, status: 200, json: async () => ({ Invoice: { Id: '88', SyncToken: '3' } }) };
+      }
+      return { ok: true, status: 200, json: async () => ({}) };
+    });
+
+    await qbo.pushInvoice({
+      qbo_id: '88',
+      job_id: 7,
+      ref: 'INV-2026-0009',
+      notes: 'PDR invoice INV-2026-0009',
+      items: [{ description: 'Work', qty: 1, unit_price: 45 }],
+      vat_amount: 9,
+      issue_date: '2026-10-09',
+      due_date: '2026-10-23',
+    }, { id: 5, name: 'sahilmubeen3', qbo_id: 'C1' });
+
+    expect(payload.PrivateNote).toBe('PDR invoice INV-2026-0009 (from estimate Q-2026-0020)');
+    expect(payload.LinkedTxn).toBeUndefined();
+  });
+
+  test('pushInvoice recovers from Duplicate Document Number by updating the existing invoice', async () => {
+    OauthToken.findOne.mockResolvedValue({
+      access_token: 'tok',
+      expires_at: new Date(Date.now() + 3600_000),
+      meta: { realmId: '123', itemId: '9', taxCodeStandard: '3' },
+      update: jest.fn(),
+    });
+    let docQueries = 0;
+    global.fetch = jest.fn(async (url, opts) => {
+      const path = decodeURIComponent(String(url));
+      if (path.includes('/query') && path.includes("DocNumber = 'INV-2026-0008'")) {
+        docQueries += 1;
+        if (docQueries === 1) {
+          return { ok: true, status: 200, json: async () => ({ QueryResponse: {} }) };
+        }
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({ QueryResponse: { Invoice: [{ Id: '99', SyncToken: '4' }] } }),
+        };
+      }
+      if (opts?.method === 'POST' && path.includes('/invoice')) {
+        const body = JSON.parse(opts.body);
+        if (!body.Id) {
+          return {
+            ok: false,
+            status: 400,
+            json: async () => ({
+              Fault: { Error: [{ Message: 'Duplicate Document Number Error', Detail: 'You must specify a different number.' }] },
+            }),
+          };
+        }
+        return { ok: true, status: 200, json: async () => ({ Invoice: { Id: '99', SyncToken: '5' } }) };
+      }
+      return { ok: true, status: 200, json: async () => ({}) };
+    });
+
+    const result = await qbo.pushInvoice({
+      ref: 'INV-2026-0008',
+      items: [{ description: 'Work', qty: 1, unit_price: 38 }],
+      vat_amount: 7.6,
+      issue_date: '2026-10-09',
+      due_date: '2026-10-23',
+    }, { id: 5, name: 'sahilmubeen1', qbo_id: 'C1' });
+
+    expect(result.qboId).toBe('99');
+    expect(result.simulated).toBe(false);
+  });
+
   test('pushInvoice deletes the quote Estimate (operation=delete) instead of converting it', async () => {
     OauthToken.findOne.mockResolvedValue({
       access_token: 'tok',
@@ -129,6 +298,10 @@ describe('QuickBooks adapter', () => {
     expect(body.PrivateNote).toMatch(/from estimate Q-2026-0018/);
     const deletePost = global.fetch.mock.calls.find((c) => c[1]?.method === 'POST' && String(c[0]).includes('operation=delete'));
     expect(JSON.parse(deletePost[1].body)).toEqual({ Id: '77', SyncToken: '0' });
+    const invoiceIdx = global.fetch.mock.calls.findIndex((c) => c[1]?.method === 'POST' && String(c[0]).includes('/invoice') && !String(c[0]).includes('operation='));
+    const deleteIdx = global.fetch.mock.calls.findIndex((c) => c[1]?.method === 'POST' && String(c[0]).includes('operation=delete'));
+    expect(invoiceIdx).toBeGreaterThanOrEqual(0);
+    expect(invoiceIdx).toBeLessThan(deleteIdx);
     expect(global.fetch.mock.calls.some((c) => c[1]?.method === 'DELETE')).toBe(false);
     expect(Quote.update).toHaveBeenCalledWith(
       expect.objectContaining({ qbo_id: null }),

@@ -434,6 +434,23 @@ describe('POST /api/invoices/:id/send (requirement 11.3)', () => {
     expect(res.status).toBe(400);
     expect(row.update).not.toHaveBeenCalledWith(expect.objectContaining({ status: 'sent' }));
   });
+
+  test('still emails when QuickBooks push fails and does not claim QBO is disconnected', async () => {
+    const row = invoicePdfRow();
+    Invoice.findByPk.mockResolvedValue(row);
+    contacts.loadCustomerWithContacts.mockResolvedValue({
+      id: 5,
+      name: 'Fiona',
+      email: 'fiona@example.com',
+    });
+    quickbooks.pushInvoice.mockRejectedValue(new Error('QuickBooks API 400: Invalid TxnDate'));
+
+    const res = await request(app).post('/api/invoices/12/send');
+    expect(res.status).toBe(200);
+    expect(sendToCustomer).toHaveBeenCalled();
+    expect(res.body.qbo).toEqual({ simulated: false, error: expect.stringMatching(/Invalid TxnDate/) });
+    expect(res.body.qbo.simulated).toBe(false);
+  });
 });
 
 describe('GET /api/invoices/summary (requirement 11.4)', () => {

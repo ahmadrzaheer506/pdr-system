@@ -230,7 +230,7 @@ router.post('/:id/send', asyncHandler(async (req, res) => {
   let qbo = { simulated: true };
   try {
     qbo = await quickbooks.pushInvoice({ ...plain(invoice), pdf_file: filename }, customer);
-    if (qbo?.qboId) {
+    if (qbo?.qboId && !qbo.simulated) {
       await invoice.update({
         qbo_id: qbo.qboId,
         qbo_sync_token: qbo.syncToken || invoice.qbo_sync_token || null,
@@ -239,7 +239,9 @@ router.post('/:id/send', asyncHandler(async (req, res) => {
       });
     }
   } catch (err) {
-    await logActivity(invoice.customer_id, req.user.id, 'qbo_error', `QuickBooks push failed: ${String(err.message).slice(0, 150)}`);
+    const detail = String(err.message || 'QuickBooks push failed').slice(0, 180);
+    await logActivity(invoice.customer_id, req.user.id, 'qbo_error', `QuickBooks push failed: ${detail}`);
+    qbo = { simulated: false, error: detail };
   }
 
   const templates = await getSetting('templates');
@@ -257,7 +259,12 @@ router.post('/:id/send', asyncHandler(async (req, res) => {
   }
 
   await invoice.update({ status: 'sent', sent_at: new Date() });
-  await logActivity(invoice.customer_id, req.user.id, 'invoice_sent', `Invoice ${invoice.ref} sent${qbo.simulated ? ' (QuickBooks simulated)' : ' and pushed to QuickBooks'}`, 'invoice', invoice.id);
+  const qboNote = qbo.error
+    ? ` (QuickBooks error: ${qbo.error})`
+    : qbo.simulated
+      ? ' (QuickBooks simulated)'
+      : ' and pushed to QuickBooks';
+  await logActivity(invoice.customer_id, req.user.id, 'invoice_sent', `Invoice ${invoice.ref} sent${qboNote}`, 'invoice', invoice.id);
   res.json({ ok: true, qbo, email: emailResult, pdf: filename });
 }));
 

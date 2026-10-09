@@ -1,5 +1,8 @@
 /** Toast copy after emailing an invoice (QuickBooks push is best-effort). */
 export function invoiceSentMessage(result) {
+  if (result?.qbo?.error) {
+    return `Invoice emailed. QuickBooks did not create the invoice: ${result.qbo.error}`;
+  }
   if (result?.qbo?.simulated) {
     return 'Invoice emailed. QuickBooks is not connected, so it stayed in the CRM only.';
   }

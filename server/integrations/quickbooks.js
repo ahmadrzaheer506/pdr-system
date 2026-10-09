@@ -40,6 +40,24 @@ function liveInvoiceId(id) {
   return text.startsWith('SIM-') ? null : text;
 }
 
+/** QBO TxnDate / DueDate must be YYYY-MM-DD — ISO datetimes are rejected. */
+function toQboDate(value) {
+  if (value == null || value === '') return undefined;
+  if (typeof value === 'string') {
+    const match = value.match(/^(\d{4}-\d{2}-\d{2})/);
+    if (match) return match[1];
+  }
+  const d = value instanceof Date ? value : new Date(value);
+  if (Number.isNaN(d.getTime())) return undefined;
+  if (d.getUTCHours() === 0 && d.getUTCMinutes() === 0 && d.getUTCSeconds() === 0) {
+    return d.toISOString().slice(0, 10);
+  }
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`;
+}
+
 function roundMoney(n) {
   return Math.round((Number(n) + Number.EPSILON) * 100) / 100;
 }
@@ -360,7 +378,13 @@ async function ensureQboCustomer(customer) {
 }
 
 function salesLines(doc, itemId, taxCode, fallbackDescription) {
-  const items = Array.isArray(doc.items) ? doc.items : [];
+  let items = Array.isArray(doc.items) ? doc.items : [];
+  if (!items.length && typeof doc.items === 'string') {
+    try {
+      const parsed = JSON.parse(doc.items);
+      if (Array.isArray(parsed)) items = parsed;
+    } catch { /* keep empty and fall through to the total line */ }
+  }
   const lines = items.map((it, index) => ({
     LineNum: index + 1,
     DetailType: 'SalesItemLineDetail',
@@ -407,37 +431,77 @@ function invoiceLines(invoice, itemId, taxCode) {
   return salesLines(invoice, itemId, taxCode, invoice.ref || 'Invoice');
 }
 
+function invoicePrivateNote(invoice, quoteRef) {
+  const base = String(invoice?.notes || '').trim() || `PDR invoice ${invoice?.ref || ''}`.trim();
+  if (!quoteRef) return base;
+  if (base.includes(quoteRef)) return base;
+  return `${base} (from estimate ${quoteRef})`;
+}
+
 function invoiceBody(invoice, qboCustomerId, itemId, taxCode, extra = {}) {
   return {
     ...extra,
     CustomerRef: { value: String(qboCustomerId) },
     DocNumber: String(invoice.ref || '').slice(0, 21),
-    TxnDate: invoice.issue_date || undefined,
-    DueDate: invoice.due_date || undefined,
-    PrivateNote: extra.PrivateNote || invoice.notes || `PDR invoice ${invoice.ref}`,
+    TxnDate: toQboDate(invoice.issue_date),
+    DueDate: toQboDate(invoice.due_date),
+    PrivateNote: extra.PrivateNote || invoicePrivateNote(invoice),
     GlobalTaxCalculation: Number(invoice.vat_amount) > 0 ? 'TaxExcluded' : 'NotApplicable',
     Line: invoiceLines(invoice, itemId, taxCode),
   };
 }
 
 /**
- * Job invoices come from an accepted quote that may already be an Estimate.
- * We look it up so we can remove it from All Sales — not so we can convert it.
- * Converting via LinkedTxn closes the estimate but still adds it to the total.
+ * Job invoices come from an accepted quote. The quote ref always goes on the
+ * invoice memo; the Estimate is deleted so All Sales is not double-counted.
  */
-async function quoteEstimateForInvoice(invoice) {
+async function sourceQuoteForInvoice(invoice) {
   if (!invoice?.job_id) return null;
   const job = await Job.findByPk(invoice.job_id, { attributes: ['quote_id'] });
   if (!job?.quote_id) return null;
   const quote = await Quote.findByPk(job.quote_id, { attributes: ['id', 'ref', 'qbo_id'] });
-  const estimateId = liveInvoiceId(quote?.qbo_id);
-  if (!estimateId) return null;
-  return { TxnId: estimateId, quoteRef: quote.ref, quoteId: quote.id };
+  if (!quote) return null;
+  return {
+    quoteId: quote.id,
+    quoteRef: quote.ref,
+    TxnId: liveInvoiceId(quote.qbo_id),
+  };
+}
+
+async function quoteEstimateForInvoice(invoice) {
+  const source = await sourceQuoteForInvoice(invoice);
+  if (!source?.TxnId) return null;
+  return source;
 }
 
 function isMissingQboObject(err) {
   const text = String(err?.message || '');
   return /\b404\b/.test(text) || /object not found/i.test(text);
+}
+
+function isDuplicateDocNumber(err) {
+  return /Duplicate Document Number/i.test(String(err?.message || ''));
+}
+
+function firstQueryRow(response, entity) {
+  const raw = response?.[entity];
+  if (!raw) return null;
+  return Array.isArray(raw) ? raw[0] : raw;
+}
+
+/** CRM seed/resend can reuse a ref that already exists in the QBO company. */
+async function findTxnByDocNumber(entity, docNumber) {
+  const ref = String(docNumber || '').slice(0, 21);
+  if (!ref) return null;
+  const q = await qboQuery(`select * from ${entity} where DocNumber = '${escapeQbo(ref)}' maxresults 1`);
+  return firstQueryRow(q, entity);
+}
+
+async function resolveExistingTxnId(entity, storedId, docNumber) {
+  const fromCrm = liveInvoiceId(storedId);
+  if (fromCrm) return fromCrm;
+  const found = await findTxnByDocNumber(entity, docNumber);
+  return liveInvoiceId(found?.Id) || null;
 }
 
 /**
@@ -561,16 +625,23 @@ async function pushInvoice(invoice, customer) {
     return { qboId: `SIM-${invoice.ref}`, simulated: true };
   }
   const qboCustomerId = await ensureQboCustomer(customer);
+  if (!qboCustomerId) throw new Error('QuickBooks customer could not be created');
   const itemId = await ensureServiceItemId();
+  if (!itemId) throw new Error('QuickBooks service item could not be created');
   const taxCode = await taxCodeForInvoice(invoice);
-  const existingId = liveInvoiceId(invoice.qbo_id);
+  const sourceQuote = await sourceQuoteForInvoice(invoice);
+  const extra = {
+    PrivateNote: invoicePrivateNote(invoice, sourceQuote?.quoteRef),
+  };
+  let existingId = await resolveExistingTxnId('Invoice', invoice.qbo_id, invoice.ref);
   let data;
   if (existingId) {
     const current = await qboFetch(`/invoice/${existingId}`);
-    const syncToken = current?.Invoice?.SyncToken || invoice.qbo_sync_token;
+    const syncToken = current?.Invoice?.SyncToken || invoice.qbo_sync_token || '0';
     data = await qboFetch('/invoice', {
       method: 'POST',
       body: JSON.stringify(invoiceBody(invoice, qboCustomerId, itemId, taxCode, {
+        ...extra,
         Id: existingId,
         SyncToken: syncToken,
         sparse: true,
@@ -578,25 +649,41 @@ async function pushInvoice(invoice, customer) {
     });
     await logEvent('out', 'invoice.updated', { ref: invoice.ref, qboId: existingId });
   } else {
-    const fromEstimate = await quoteEstimateForInvoice(invoice);
-    const extra = {};
-    if (fromEstimate) {
-      extra.PrivateNote = invoice.notes
-        || `PDR invoice ${invoice.ref} (from estimate ${fromEstimate.quoteRef})`;
+    try {
+      data = await qboFetch('/invoice', {
+        method: 'POST',
+        body: JSON.stringify(invoiceBody(invoice, qboCustomerId, itemId, taxCode, extra)),
+      });
+    } catch (err) {
+      if (!isDuplicateDocNumber(err)) throw err;
+      const found = await findTxnByDocNumber('Invoice', invoice.ref);
+      if (!found?.Id) throw err;
+      existingId = found.Id;
+      data = await qboFetch('/invoice', {
+        method: 'POST',
+        body: JSON.stringify(invoiceBody(invoice, qboCustomerId, itemId, taxCode, {
+          ...extra,
+          Id: found.Id,
+          SyncToken: String(found.SyncToken || '0'),
+          sparse: true,
+        })),
+      });
+      await logEvent('out', 'invoice.reused', { ref: invoice.ref, qboId: found.Id });
+    }
+    if (sourceQuote?.TxnId) {
       await removeQuoteEstimate({
-        quoteId: fromEstimate.quoteId,
-        estimateId: fromEstimate.TxnId,
+        quoteId: sourceQuote.quoteId,
+        estimateId: sourceQuote.TxnId,
+        invoiceQboId: data?.Invoice?.Id,
       });
     }
-    data = await qboFetch('/invoice', {
-      method: 'POST',
-      body: JSON.stringify(invoiceBody(invoice, qboCustomerId, itemId, taxCode, extra)),
-    });
-    await logEvent('out', 'invoice.pushed', {
-      ref: invoice.ref,
-      qboId: data?.Invoice?.Id,
-      fromEstimate: fromEstimate?.TxnId || null,
-    });
+    if (!existingId) {
+      await logEvent('out', 'invoice.pushed', {
+        ref: invoice.ref,
+        qboId: data?.Invoice?.Id,
+        fromEstimate: sourceQuote?.TxnId || null,
+      });
+    }
   }
   const qboId = data?.Invoice?.Id;
   const leftoverEstimate = await quoteEstimateForInvoice(invoice);
@@ -636,8 +723,8 @@ function estimateBody(quote, qboCustomerId, itemId, taxCode, extra = {}) {
     ...extra,
     CustomerRef: { value: String(qboCustomerId) },
     DocNumber: String(quote.ref || '').slice(0, 21),
-    TxnDate: txnDate,
-    ExpirationDate: quote.valid_until || undefined,
+    TxnDate: toQboDate(txnDate),
+    ExpirationDate: toQboDate(quote.valid_until),
     PrivateNote: quote.notes || `PDR quote ${quote.ref}${quote.title ? ` — ${quote.title}` : ''}`,
     GlobalTaxCalculation: Number(quote.vat_amount) > 0 ? 'TaxExcluded' : 'NotApplicable',
     Line: salesLines(quote, itemId, taxCode, quote.title || quote.ref || 'Quote'),
@@ -655,11 +742,11 @@ async function pushEstimate(quote, customer) {
   const qboCustomerId = await ensureQboCustomer(customer);
   const itemId = await ensureServiceItemId();
   const taxCode = await taxCodeForInvoice(quote);
-  const existingId = liveInvoiceId(quote.qbo_id);
+  let existingId = await resolveExistingTxnId('Estimate', quote.qbo_id, quote.ref);
   let data;
   if (existingId) {
     const current = await qboFetch(`/estimate/${existingId}`);
-    const syncToken = current?.Estimate?.SyncToken || quote.qbo_sync_token;
+    const syncToken = current?.Estimate?.SyncToken || quote.qbo_sync_token || '0';
     data = await qboFetch('/estimate', {
       method: 'POST',
       body: JSON.stringify(estimateBody(quote, qboCustomerId, itemId, taxCode, {
@@ -670,11 +757,29 @@ async function pushEstimate(quote, customer) {
     });
     await logEvent('out', 'estimate.updated', { ref: quote.ref, qboId: existingId });
   } else {
-    data = await qboFetch('/estimate', {
-      method: 'POST',
-      body: JSON.stringify(estimateBody(quote, qboCustomerId, itemId, taxCode)),
-    });
-    await logEvent('out', 'estimate.pushed', { ref: quote.ref, qboId: data?.Estimate?.Id });
+    try {
+      data = await qboFetch('/estimate', {
+        method: 'POST',
+        body: JSON.stringify(estimateBody(quote, qboCustomerId, itemId, taxCode)),
+      });
+    } catch (err) {
+      if (!isDuplicateDocNumber(err)) throw err;
+      const found = await findTxnByDocNumber('Estimate', quote.ref);
+      if (!found?.Id) throw err;
+      existingId = found.Id;
+      data = await qboFetch('/estimate', {
+        method: 'POST',
+        body: JSON.stringify(estimateBody(quote, qboCustomerId, itemId, taxCode, {
+          Id: found.Id,
+          SyncToken: String(found.SyncToken || '0'),
+          sparse: true,
+        })),
+      });
+      await logEvent('out', 'estimate.reused', { ref: quote.ref, qboId: found.Id });
+    }
+    if (!existingId) {
+      await logEvent('out', 'estimate.pushed', { ref: quote.ref, qboId: data?.Estimate?.Id });
+    }
   }
   const qboId = data?.Estimate?.Id;
   let attachableId = liveInvoiceId(quote.qbo_attachable_id);
@@ -711,7 +816,7 @@ async function pushPayment(invoice, payment, customer) {
     body: JSON.stringify({
       CustomerRef: { value: String(qboCustomerId) },
       TotalAmt: amount,
-      TxnDate: payment.paid_at || undefined,
+      TxnDate: toQboDate(payment.paid_at),
       PrivateNote: payment.note || `PDR payment on ${invoice.ref}`,
       Line: [{
         Amount: amount,
@@ -860,4 +965,6 @@ module.exports = {
   status,
   pickTaxCodeId,
   liveInvoiceId,
+  toQboDate,
+  invoicePrivateNote,
 };
