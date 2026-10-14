@@ -42,6 +42,13 @@ jest.mock('../models', () => ({
   Notification: { bulkCreate: jest.fn().mockResolvedValue([]) },
   Invoice: { findOne: jest.fn().mockResolvedValue(null) },
   AiProposal: {},
+  Skill: {
+    findAll: jest.fn(async () => [
+      { id: 1, slug: 'roofing', name: 'Roofing', sort_order: 0 },
+      { id: 2, slug: 'flat_roofing', name: 'Flat Roofing', sort_order: 1 },
+    ]),
+  },
+  JobType: { findAll: jest.fn(async () => []) },
 }));
 
 const request = require('supertest');
@@ -138,9 +145,16 @@ describe('PUT /api/jobs/:id required_skills (requirement 7.2)', () => {
   test('stores allowed skills and drops unknown values', async () => {
     const row = { id: 4, title: 'Re-roof', customer_id: 9, update: jest.fn() };
     Job.findByPk.mockResolvedValue(row);
-    const res = await request(app).put('/api/jobs/4').send({ required_skills: ['slate', 'wizard'] });
+    const res = await request(app).put('/api/jobs/4').send({
+      required_skills: [
+        { skill_id: 1, level: 'advanced' },
+        { skill_id: 99, level: 'trainee' },
+      ],
+    });
     expect(res.status).toBe(200);
-    expect(row.update).toHaveBeenCalledWith({ required_skills: ['slate'] });
+    expect(row.update).toHaveBeenCalledWith({
+      required_skills: [{ skill_id: 1, level: 'advanced' }],
+    });
   });
 });
 
@@ -281,13 +295,13 @@ describe('PUT /api/jobs/:id/assignments (requirement 8.1)', () => {
     Job.findByPk.mockResolvedValue({
       id: 4, title: 'Re-roof', customer_id: 9,
       start_date: '2026-09-24', end_date: '2026-09-24',
-      required_skills: ['slate'], needs_driver: true,
+      required_skills: [{ skill_id: 1, level: 'advanced' }], needs_driver: true,
     });
     JobDayAssignment.findAll.mockResolvedValueOnce([]).mockResolvedValueOnce([]);
     JobDayAssignment.destroy.mockResolvedValue(0);
     JobDayAssignment.findOrCreate.mockResolvedValue([{}, true]);
     User.findAll.mockResolvedValue([{
-      id: 4, name: 'Liam Ozturk', skills: ['labourer'], is_driver: false, role: 'STAFF',
+      id: 4, name: 'Liam Ozturk', skills: [{ skill_id: 15, level: 'competent' }], is_driver: false, role: 'STAFF',
       notification_prefs: { in_app: { crew_added: true, crew_removed: true }, email: {} },
     }]);
     HolidayRequest.findAll.mockResolvedValue([]);

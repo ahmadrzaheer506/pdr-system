@@ -7,6 +7,7 @@ const { Op } = require('sequelize');
 const { HolidayRequest, JobDayAssignment, Job, User } = require('./models');
 const { parseIsoDate, parseUserIds } = require('./jobDays');
 const { JOB_STATUSES } = require('./jobStatus');
+const skillsLib = require('./skills');
 
 /** Any dated job on the board occupies crew — same rule as week-view “Already booked”. */
 const BUSY_JOB_STATUSES = [...JOB_STATUSES];
@@ -79,10 +80,10 @@ async function overlay(from, to) {
 }
 
 function teamSkills(users) {
-  const have = new Set();
+  const have = [];
   for (const user of users || []) {
     const list = Array.isArray(user.skills) ? user.skills : [];
-    for (const skill of list) have.add(skill);
+    have.push(...list);
   }
   return have;
 }
@@ -191,12 +192,14 @@ async function assignmentWarnings(job, workDate, userIds) {
 
   const required = Array.isArray(job.required_skills) ? job.required_skills : [];
   const covered = teamSkills(users);
+  const catalogue = await skillsLib.listSkillRows().catch(() => []);
   for (const skill of required) {
-    if (!covered.has(skill)) {
+    if (!skillsLib.staffCoversRequirement(covered, skill)) {
+      const label = skillsLib.requiredSkillLabel(skill, catalogue);
       warnings.push({
         type: 'skill',
         skill,
-        message: `Nobody on this day's crew has required skill "${skill}"`,
+        message: `Nobody on this day's crew has required skill "${label}"`,
       });
     }
   }

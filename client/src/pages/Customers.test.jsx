@@ -8,7 +8,7 @@ import { pickSelectOption } from '../test/selectMenu.js';
 import { pickDate } from '../test/datePicker.js';
 
 vi.mock('../lib/api', () => ({
-  api: { get: vi.fn(), post: vi.fn() },
+    api: { get: vi.fn(), post: vi.fn(), del: vi.fn() },
   money: (n) => `£${Number(n || 0).toFixed(2)}`,
   fmtTimeAgo: () => '1h ago',
 }));
@@ -102,6 +102,27 @@ describe('Customers list', () => {
     });
     expect(api.get.mock.calls.every(([path]) => !String(path).includes('company_name='))).toBe(true);
     expect(api.get.mock.calls.every(([path]) => !String(path).includes('stage='))).toBe(true);
+  });
+
+  it('warns about leads and related records before deleting', async () => {
+    const user = userEvent.setup();
+    api.get.mockImplementation(async (path) => {
+      if (String(path).includes('/delete-preview')) {
+        return {
+          warning: 'This customer has 1 lead. Deleting this customer also deletes related records (2 messages). This cannot be undone.',
+        };
+      }
+      return LIST;
+    });
+    api.del.mockResolvedValue({ ok: true });
+    render(<MemoryRouter><Customers /></MemoryRouter>);
+    await user.click(await screen.findByRole('button', { name: 'Delete Dave Whitfield' }));
+    expect(await screen.findByText(/this customer has 1 lead/i)).toBeInTheDocument();
+    expect(screen.getByText(/2 messages/i)).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Delete customer' }));
+    await waitFor(() => {
+      expect(api.del).toHaveBeenCalledWith('/customers/9');
+    });
   });
 
   it('opens the new customer modal', async () => {

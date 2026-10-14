@@ -6,6 +6,7 @@ import JobModal from './JobModal.jsx';
 import { api } from '../lib/api';
 import { localIsoDate } from '../lib/schedule';
 import { pickDate } from '../test/datePicker';
+import { resetSkillCatalogueCache } from '../lib/useSkillCatalogue';
 
 vi.mock('../lib/api', () => ({
   api: { get: vi.fn(), post: vi.fn(), put: vi.fn(), del: vi.fn(), upload: vi.fn() },
@@ -14,9 +15,17 @@ vi.mock('../lib/api', () => ({
   fmtDateTime: () => '24 Sep 10:00',
 }));
 
+const CATALOGUE = [
+  { id: 1, slug: 'roofing', name: 'Roofing', sort_order: 0 },
+  { id: 2, slug: 'flat_roofing', name: 'Flat Roofing', sort_order: 1 },
+];
+const JOB_TYPES = [
+  { id: 7, name: 'Re-roof', required_skills: [{ skill_id: 1, level: 'advanced' }] },
+];
+
 const STAFF = [
-  { id: 3, name: 'Jamie Fisher', color: '#16a34a', skills: ['roofer', 'slate'] },
-  { id: 4, name: 'Liam Ozturk', color: '#d97706', skills: ['labourer'] },
+  { id: 3, name: 'Jamie Fisher', color: '#16a34a', skills: [{ skill_id: 1, level: 'advanced' }] },
+  { id: 4, name: 'Liam Ozturk', color: '#d97706', skills: [{ skill_id: 15, level: 'competent' }] },
 ];
 
 const JOB = {
@@ -32,7 +41,7 @@ const JOB = {
   end_date: '2026-09-22',
   day_assignments: [],
   crew: [],
-  required_skills: ['slate'],
+  required_skills: [{ skill_id: 1, level: 'competent' }],
   sites: [],
   phones: [],
   emails: [],
@@ -45,7 +54,10 @@ function renderJob(ui) {
 describe('JobModal (requirement 7.2)', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    resetSkillCatalogueCache();
     api.get.mockImplementation(async (path) => {
+      if (path === '/skills') return { skills: CATALOGUE };
+      if (path === '/job-types') return { job_types: JOB_TYPES };
       if (path === '/jobs/checklist-templates') {
         return { templates: [{ id: 'generic', label: 'Generic', items: ['PPE on'] }] };
       }
@@ -83,6 +95,8 @@ describe('JobModal (requirement 7.2)', () => {
 
   it('hides unschedule once the job is completed', async () => {
     api.get.mockImplementation(async (path) => {
+      if (path === '/skills') return { skills: CATALOGUE };
+      if (path === '/job-types') return { job_types: JOB_TYPES };
       if (path === '/jobs/checklist-templates') {
         return { templates: [{ id: 'generic', label: 'Generic', items: ['PPE on'] }] };
       }
@@ -107,9 +121,15 @@ describe('JobModal (requirement 7.2)', () => {
     renderJob(<JobModal jobId={8} onClose={() => {}} onChanged={() => {}} staff={STAFF} />);
     expect(await screen.findByLabelText(/Jamie Fisher matches required skills/i)).toBeInTheDocument();
     expect(screen.getByText('match')).toBeInTheDocument();
-    await user.click(screen.getByRole('button', { name: /^felt$/i }));
+    await user.click(screen.getByRole('button', { name: /^flat roofing$/i }));
     await user.click(screen.getByRole('button', { name: /save skills/i }));
-    expect(api.put).toHaveBeenCalledWith('/jobs/8', { required_skills: ['slate', 'felt'] });
+    expect(api.put).toHaveBeenCalledWith('/jobs/8', {
+      required_skills: [
+        { skill_id: 1, level: 'competent' },
+        { skill_id: 2, level: 'competent' },
+      ],
+      job_type_id: null,
+    });
   });
 
   it('still lets office assign crew who do not match', async () => {
@@ -127,6 +147,8 @@ describe('JobModal (requirement 7.2)', () => {
   it('lets office pick a day chip then save crew', async () => {
     const user = userEvent.setup();
     api.get.mockImplementation(async (path) => {
+      if (path === '/skills') return { skills: CATALOGUE };
+      if (path === '/job-types') return { job_types: JOB_TYPES };
       if (path === '/jobs/checklist-templates') {
         return { templates: [{ id: 'generic', label: 'Generic', items: ['PPE on'] }] };
       }
@@ -159,6 +181,8 @@ describe('JobModal (requirement 7.2)', () => {
   it('shows an empty end date when none is stored and lets office set it', async () => {
     const user = userEvent.setup();
     api.get.mockImplementation(async (path) => {
+      if (path === '/skills') return { skills: CATALOGUE };
+      if (path === '/job-types') return { job_types: JOB_TYPES };
       if (path === '/jobs/checklist-templates') {
         return { templates: [{ id: 'generic', label: 'Generic', items: ['PPE on'] }] };
       }
@@ -211,6 +235,8 @@ describe('JobModal (requirement 7.2)', () => {
 
   it('shows office variations (requirement 7.5)', async () => {
     api.get.mockImplementation(async (path) => {
+      if (path === '/skills') return { skills: CATALOGUE };
+      if (path === '/job-types') return { job_types: JOB_TYPES };
       if (path === '/jobs/checklist-templates') {
         return { templates: [{ id: 'generic', label: 'Generic', items: ['PPE on'] }] };
       }
@@ -235,6 +261,8 @@ describe('JobModal (requirement 7.2)', () => {
   it('asks to confirm before saving crew on holiday or already booked', async () => {
     const user = userEvent.setup();
     api.get.mockImplementation(async (path) => {
+      if (path === '/skills') return { skills: CATALOGUE };
+      if (path === '/job-types') return { job_types: JOB_TYPES };
       if (path === '/jobs/checklist-templates') {
         return { templates: [{ id: 'generic', label: 'Generic', items: ['PPE on'] }] };
       }
@@ -268,6 +296,8 @@ describe('JobModal (requirement 7.2)', () => {
 
   it('names assigned crew who are already booked on another job', async () => {
     api.get.mockImplementation(async (path) => {
+      if (path === '/skills') return { skills: CATALOGUE };
+      if (path === '/job-types') return { job_types: JOB_TYPES };
       if (path === '/jobs/checklist-templates') {
         return { templates: [{ id: 'generic', label: 'Generic', items: ['PPE on'] }] };
       }
@@ -297,6 +327,8 @@ describe('JobModal (requirement 7.2)', () => {
 
   it('names assigned crew booked on an invoiced job the calendar already flags', async () => {
     api.get.mockImplementation(async (path) => {
+      if (path === '/skills') return { skills: CATALOGUE };
+      if (path === '/job-types') return { job_types: JOB_TYPES };
       if (path === '/jobs/checklist-templates') {
         return { templates: [{ id: 'generic', label: 'Generic', items: ['PPE on'] }] };
       }
@@ -343,6 +375,8 @@ describe('JobModal (requirement 7.2)', () => {
   it('checks every day of a multi-day job for booked crew', async () => {
     const user = userEvent.setup();
     api.get.mockImplementation(async (path) => {
+      if (path === '/skills') return { skills: CATALOGUE };
+      if (path === '/job-types') return { job_types: JOB_TYPES };
       if (path === '/jobs/checklist-templates') {
         return { templates: [{ id: 'generic', label: 'Generic', items: ['PPE on'] }] };
       }
@@ -394,6 +428,8 @@ describe('JobModal (requirement 7.2)', () => {
   it('toggles needs a driver and warns when skills or a driver are missing (requirement 8.3)', async () => {
     const user = userEvent.setup();
     api.get.mockImplementation(async (path) => {
+      if (path === '/skills') return { skills: CATALOGUE };
+      if (path === '/job-types') return { job_types: JOB_TYPES };
       if (path === '/jobs/checklist-templates') {
         return { templates: [{ id: 'generic', label: 'Generic', items: ['PPE on'] }] };
       }
@@ -403,7 +439,7 @@ describe('JobModal (requirement 7.2)', () => {
       return {
         job: {
           ...JOB,
-          required_skills: ['slate'],
+          required_skills: [{ skill_id: 1, level: 'advanced' }],
           needs_driver: true,
           material_lines: [],
           checklist_items: [],
@@ -416,7 +452,7 @@ describe('JobModal (requirement 7.2)', () => {
     });
     renderJob(<JobModal jobId={8} onClose={() => {}} onChanged={() => {}} staff={STAFF} />);
     expect(await screen.findByLabelText(/needs a driver/i)).toBeChecked();
-    expect(screen.getByText(/nobody covering: slate/i)).toBeInTheDocument();
+    expect(screen.getByText(/nobody covering: roofing — advanced/i)).toBeInTheDocument();
     expect(screen.getByText(/needs a driver — nobody assigned can drive/i)).toBeInTheDocument();
     await user.click(screen.getByLabelText(/needs a driver/i));
     expect(api.put).toHaveBeenCalledWith('/jobs/8', { needs_driver: false });
@@ -443,6 +479,8 @@ describe('JobModal (requirement 7.2)', () => {
     const user = userEvent.setup();
     let invoiced = false;
     api.get.mockImplementation(async (path) => {
+      if (path === '/skills') return { skills: CATALOGUE };
+      if (path === '/job-types') return { job_types: JOB_TYPES };
       if (path === '/jobs/checklist-templates') {
         return { templates: [{ id: 'generic', label: 'Generic', items: ['PPE on'] }] };
       }
@@ -476,6 +514,8 @@ describe('JobModal (requirement 7.2)', () => {
 
   it('does not offer a second Create when the job already has an invoice (requirement 11.1)', async () => {
     api.get.mockImplementation(async (path) => {
+      if (path === '/skills') return { skills: CATALOGUE };
+      if (path === '/job-types') return { job_types: JOB_TYPES };
       if (path === '/jobs/checklist-templates') {
         return { templates: [{ id: 'generic', label: 'Generic', items: ['PPE on'] }] };
       }
@@ -508,6 +548,8 @@ describe('JobModal (requirement 7.2)', () => {
 
   it('selects the crew-day chip that matches the calendar card that opened the modal', async () => {
     api.get.mockImplementation(async (path) => {
+      if (path === '/skills') return { skills: CATALOGUE };
+      if (path === '/job-types') return { job_types: JOB_TYPES };
       if (path === '/jobs/checklist-templates') {
         return { templates: [{ id: 'generic', label: 'Generic', items: ['PPE on'] }] };
       }

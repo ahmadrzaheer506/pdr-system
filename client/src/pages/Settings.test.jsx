@@ -13,6 +13,8 @@ vi.mock('../lib/auth.jsx', () => ({
 vi.mock('../lib/api', () => ({
   api: {
     get: vi.fn(async (path) => {
+      if (path === '/skills') return { skills: [{ id: 1, slug: 'roofing', name: 'Roofing' }, { id: 3, slug: 'lead_work', name: 'Lead Work' }] };
+      if (path === '/job-types') return { job_types: [] };
       if (path === '/settings/integrations') return { integrations: [], events: [] };
       if (path === '/settings/users') return { users: [] };
       if (String(path).startsWith('/settings/security-events')) return { events: [], total: 0, page: 1, limit: 20 };
@@ -32,7 +34,7 @@ vi.mock('../lib/api', () => ({
 const STAFF_USERS = [
   {
     id: 1, name: 'Paul Douglas', email: 'paul@pauldouglasroofing.co.uk', phone: '1',
-    role: 'ADMIN', skills: [], is_driver: false, active: true, color: '#0f172a', financials_restricted: false,
+    role: 'ADMIN', skills: [], is_driver: false, active: true, protected: true, color: '#0f172a', financials_restricted: false,
   },
   {
     id: 2, name: 'Lisa Office', email: 'lisa@pauldouglasroofing.co.uk', phone: '2',
@@ -51,6 +53,8 @@ describe('Settings staff roles (requirement 1.4)', () => {
     vi.clearAllMocks();
     authState.user = { id: 1, name: 'Paul', role: 'ADMIN' };
     api.get.mockImplementation(async (path) => {
+      if (path === '/skills') return { skills: [{ id: 1, slug: 'roofing', name: 'Roofing' }, { id: 3, slug: 'lead_work', name: 'Lead Work' }] };
+      if (path === '/job-types') return { job_types: [] };
       if (path === '/settings/integrations') return { integrations: [], events: [] };
       if (path === '/settings/users') return { users: [] };
       if (String(path).startsWith('/settings/security-events')) return { events: [], total: 0, page: 1, limit: 20 };
@@ -91,6 +95,8 @@ describe('Settings staff lifecycle (requirement 1.7)', () => {
     vi.clearAllMocks();
     authState.user = { id: 1, name: 'Paul', role: 'ADMIN' };
     api.get.mockImplementation(async (path) => {
+      if (path === '/skills') return { skills: [{ id: 1, slug: 'roofing', name: 'Roofing' }, { id: 3, slug: 'lead_work', name: 'Lead Work' }] };
+      if (path === '/job-types') return { job_types: [] };
       if (path === '/settings/integrations') return { integrations: [], events: [] };
       if (path === '/settings/users') return { users: STAFF_USERS };
       if (String(path).startsWith('/settings/security-events')) return { events: [], total: 0, page: 1, limit: 20 };
@@ -122,6 +128,70 @@ describe('Settings staff lifecycle (requirement 1.7)', () => {
     expect(api.put.mock.calls[0][1].password).toBeUndefined();
   });
 
+  it('warns about pending tasks and visits before deleting a user', async () => {
+    const user = userEvent.setup();
+    api.get.mockImplementation(async (path) => {
+      if (path === '/skills') return { skills: [{ id: 1, slug: 'roofing', name: 'Roofing' }] };
+      if (path === '/job-types') return { job_types: [] };
+      if (path === '/settings/integrations') return { integrations: [], events: [] };
+      if (path === '/settings/users') return { users: STAFF_USERS };
+      if (String(path).includes('/delete-preview')) {
+        return {
+          warning: 'This user has 2 pending tasks. This user has 1 pending site visit. Deleting this account unassigns them from that work. This cannot be undone.',
+        };
+      }
+      return {};
+    });
+    api.del.mockResolvedValue({ ok: true });
+    render(<Settings />);
+    await user.click(screen.getByRole('button', { name: /staff & users/i }));
+    await screen.findByText('Lisa Office');
+    await user.click(screen.getByRole('button', { name: /more actions for lisa office/i }));
+    await user.click(screen.getByRole('button', { name: /^delete$/i }));
+    expect(await screen.findByText(/2 pending tasks/i)).toBeInTheDocument();
+    expect(screen.getByText(/1 pending site visit/i)).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Delete user' }));
+    expect(api.del).toHaveBeenCalledWith('/settings/users/2');
+  });
+
+  it('does not offer delete on your own account', async () => {
+    const user = userEvent.setup();
+    render(<Settings />);
+    await user.click(screen.getByRole('button', { name: /staff & users/i }));
+    await screen.findByText('Paul Douglas');
+    await user.click(screen.getByRole('button', { name: /more actions for paul douglas/i }));
+    expect(screen.queryByRole('button', { name: /^delete$/i })).toBeNull();
+  });
+
+  it('does not offer deactivate or delete on the protected first administrator', async () => {
+    const user = userEvent.setup();
+    authState.user = { id: 3, name: 'Second Admin', role: 'ADMIN' };
+    api.get.mockImplementation(async (path) => {
+      if (path === '/skills') return { skills: [{ id: 1, slug: 'roofing', name: 'Roofing' }] };
+      if (path === '/job-types') return { job_types: [] };
+      if (path === '/settings/integrations') return { integrations: [], events: [] };
+      if (path === '/settings/users') {
+        return {
+          users: [
+            { ...STAFF_USERS[0], protected: true },
+            STAFF_USERS[1],
+            {
+              id: 3, name: 'Second Admin', email: 'second@pauldouglasroofing.co.uk', phone: '3',
+              role: 'ADMIN', skills: [], is_driver: false, active: true, protected: false, color: '#0f172a',
+            },
+          ],
+        };
+      }
+      return {};
+    });
+    render(<Settings />);
+    await user.click(screen.getByRole('button', { name: /staff & users/i }));
+    await screen.findByText('Paul Douglas');
+    expect(screen.getAllByRole('switch', { name: /^deactivate$/i })).toHaveLength(1);
+    await user.click(screen.getByRole('button', { name: /more actions for paul douglas/i }));
+    expect(screen.queryByRole('button', { name: /^delete$/i })).toBeNull();
+  });
+
   it('does not offer deactivate on your own account or the last administrator', async () => {
     const user = userEvent.setup();
     render(<Settings />);
@@ -142,6 +212,8 @@ describe('Settings staff lifecycle (requirement 1.7)', () => {
 
   it('lists people newest first by date added', async () => {
     api.get.mockImplementation(async (path) => {
+      if (path === '/skills') return { skills: [{ id: 1, slug: 'roofing', name: 'Roofing' }, { id: 3, slug: 'lead_work', name: 'Lead Work' }] };
+      if (path === '/job-types') return { job_types: [] };
       if (path === '/settings/integrations') return { integrations: [], events: [] };
       if (path === '/settings/users') {
         return {
@@ -188,6 +260,8 @@ describe('Settings staff skills, driver, and pay rates (requirement 1.8)', () =>
     vi.clearAllMocks();
     authState.user = { id: 1, name: 'Paul', role: 'ADMIN' };
     api.get.mockImplementation(async (path) => {
+      if (path === '/skills') return { skills: [{ id: 1, slug: 'roofing', name: 'Roofing' }, { id: 3, slug: 'lead_work', name: 'Lead Work' }] };
+      if (path === '/job-types') return { job_types: [] };
       if (path === '/settings/integrations') return { integrations: [], events: [] };
       if (path === '/settings/users') {
         return {
@@ -195,7 +269,7 @@ describe('Settings staff skills, driver, and pay rates (requirement 1.8)', () =>
             ...STAFF_USERS,
             {
               id: 3, name: 'Jamie Staff', email: 'jamie@pauldouglasroofing.co.uk', phone: '3',
-              role: 'STAFF', skills: ['roofer'], is_driver: true, active: true, color: '#16a34a',
+              role: 'STAFF', skills: [{ skill_id: 1, level: 'competent' }], is_driver: true, active: true, color: '#16a34a',
               financials_restricted: false, hourly_cost: 24.5, cis_status: 'net20',
             },
           ],
@@ -216,10 +290,10 @@ describe('Settings staff skills, driver, and pay rates (requirement 1.8)', () =>
     expect(screen.getByLabelText(/hourly cost/i)).toBeInTheDocument();
     expect(screen.getByLabelText(/cis status/i)).toBeInTheDocument();
     expect(screen.getByRole('checkbox', { name: /can drive/i })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /^roofer$/i })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /^roofing$/i })).toBeInTheDocument();
     await pickSelectOption(user, /^role$/i, /owner\/admin — full access/i);
     expect(screen.queryByRole('checkbox', { name: /can drive/i })).toBeNull();
-    expect(screen.queryByRole('button', { name: /^roofer$/i })).toBeNull();
+    expect(screen.queryByRole('button', { name: /^roofing$/i })).toBeNull();
     expect(screen.getByLabelText(/hourly cost/i)).toBeInTheDocument();
   });
 
@@ -233,13 +307,16 @@ describe('Settings staff skills, driver, and pay rates (requirement 1.8)', () =>
     await user.click(screen.getByRole('button', { name: /^edit$/i }));
     expect(screen.getByDisplayValue('Jamie Staff')).toBeInTheDocument();
     expect(screen.getByRole('checkbox', { name: /can drive/i })).toBeChecked();
-    await user.click(screen.getByRole('button', { name: /^slate$/i }));
+    await user.click(screen.getByRole('button', { name: /^lead work$/i }));
     await user.clear(screen.getByLabelText(/hourly cost/i));
     await user.type(screen.getByLabelText(/hourly cost/i), '26');
     await pickSelectOption(user, /cis status/i, /gross status \(0%\)/i);
     await user.click(screen.getByRole('button', { name: /save changes/i }));
     expect(api.put).toHaveBeenCalledWith('/settings/users/3', expect.objectContaining({
-      skills: expect.arrayContaining(['roofer', 'slate']),
+      skills: expect.arrayContaining([
+        { skill_id: 1, level: 'competent' },
+        { skill_id: 3, level: 'competent' },
+      ]),
       is_driver: true,
       hourly_cost: 26,
       cis_status: 'gross',
@@ -591,6 +668,8 @@ describe('Settings VAT rates (requirement 6.3)', () => {
     authState.user = { id: 1, name: 'Paul', role: 'ADMIN' };
     api.get.mockImplementation(async (path) => {
       if (path === '/settings') return { settings: COMPANY_SETTINGS };
+      if (path === '/skills') return { skills: [{ id: 1, slug: 'roofing', name: 'Roofing' }, { id: 3, slug: 'lead_work', name: 'Lead Work' }] };
+      if (path === '/job-types') return { job_types: [] };
       if (path === '/settings/integrations') return { integrations: [], events: [] };
       if (path === '/settings/users') return { users: [] };
       return {};
@@ -650,6 +729,8 @@ describe('Settings quote follow-ups (requirement 12.1)', () => {
     authState.user = { id: 1, name: 'Paul', role: 'ADMIN' };
     api.get.mockImplementation(async (path) => {
       if (path === '/settings') return { settings: COMPANY_SETTINGS };
+      if (path === '/skills') return { skills: [{ id: 1, slug: 'roofing', name: 'Roofing' }, { id: 3, slug: 'lead_work', name: 'Lead Work' }] };
+      if (path === '/job-types') return { job_types: [] };
       if (path === '/settings/integrations') return { integrations: [], events: [] };
       if (path === '/settings/users') return { users: [] };
       return {};
@@ -699,6 +780,8 @@ describe('Settings automation interval (requirement 12.3)', () => {
     authState.user = { id: 1, name: 'Paul', role: 'ADMIN' };
     api.get.mockImplementation(async (path) => {
       if (path === '/settings') return { settings: COMPANY_SETTINGS };
+      if (path === '/skills') return { skills: [{ id: 1, slug: 'roofing', name: 'Roofing' }, { id: 3, slug: 'lead_work', name: 'Lead Work' }] };
+      if (path === '/job-types') return { job_types: [] };
       if (path === '/settings/integrations') return { integrations: [], events: [] };
       if (path === '/settings/users') return { users: [] };
       return {};
@@ -754,6 +837,8 @@ describe('Settings company profile, tax, and bank (requirement 17.1)', () => {
     authState.user = { id: 1, name: 'Paul', role: 'ADMIN' };
     api.get.mockImplementation(async (path) => {
       if (path === '/settings') return { settings: COMPANY_SETTINGS };
+      if (path === '/skills') return { skills: [{ id: 1, slug: 'roofing', name: 'Roofing' }, { id: 3, slug: 'lead_work', name: 'Lead Work' }] };
+      if (path === '/job-types') return { job_types: [] };
       if (path === '/settings/integrations') return { integrations: [], events: [] };
       if (path === '/settings/users') return { users: [] };
       return {};
@@ -804,6 +889,8 @@ describe('Settings company profile, tax, and bank (requirement 17.1)', () => {
     delete officeCompany.bank_account_number;
     api.get.mockImplementation(async (path) => {
       if (path === '/settings') return { settings: { ...COMPANY_SETTINGS, company: officeCompany } };
+      if (path === '/skills') return { skills: [{ id: 1, slug: 'roofing', name: 'Roofing' }, { id: 3, slug: 'lead_work', name: 'Lead Work' }] };
+      if (path === '/job-types') return { job_types: [] };
       if (path === '/settings/integrations') return { integrations: [], events: [] };
       if (path === '/settings/users') return { users: [] };
       return {};
@@ -825,6 +912,8 @@ describe('Settings notification preferences (requirement 13.2)', () => {
     vi.clearAllMocks();
     authState.user = { id: 1, name: 'Paul', role: 'ADMIN' };
     api.get.mockImplementation(async (path) => {
+      if (path === '/skills') return { skills: [{ id: 1, slug: 'roofing', name: 'Roofing' }, { id: 3, slug: 'lead_work', name: 'Lead Work' }] };
+      if (path === '/job-types') return { job_types: [] };
       if (path === '/settings/integrations') return { integrations: [], events: [] };
       if (path === '/notifications/preferences') {
         return {
@@ -859,6 +948,8 @@ describe('Settings catalogue and templates tabs (requirement 17.2)', () => {
     vi.clearAllMocks();
     authState.user = { id: 1, name: 'Paul', role: 'ADMIN' };
     api.get.mockImplementation(async (path) => {
+      if (path === '/skills') return { skills: [{ id: 1, slug: 'roofing', name: 'Roofing' }, { id: 3, slug: 'lead_work', name: 'Lead Work' }] };
+      if (path === '/job-types') return { job_types: [] };
       if (path === '/settings/integrations') return { integrations: [], events: [] };
       if (path === '/settings/users') return { users: [] };
       if (path === '/settings') {
@@ -914,6 +1005,8 @@ describe('Settings timesheet rules, holiday allowance, and branding (requirement
     authState.user = { id: 1, name: 'Paul', role: 'ADMIN' };
     api.get.mockImplementation(async (path) => {
       if (path === '/settings') return { settings: RULES_SETTINGS };
+      if (path === '/skills') return { skills: [{ id: 1, slug: 'roofing', name: 'Roofing' }, { id: 3, slug: 'lead_work', name: 'Lead Work' }] };
+      if (path === '/job-types') return { job_types: [] };
       if (path === '/settings/integrations') return { integrations: [], events: [] };
       if (path === '/settings/users') {
         return {

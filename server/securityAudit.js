@@ -9,6 +9,7 @@ const SECURITY_ACTIONS = Object.freeze({
   ROLE_CHANGE: 'role_change',
   DEACTIVATE: 'deactivate',
   REACTIVATE: 'reactivate',
+  USER_DELETE: 'user_delete',
   PASSWORD_CHANGE: 'password_change',
   ADMIN_TEMP_PASSWORD: 'admin_temp_password',
   FORGOT_PASSWORD: 'forgot_password',

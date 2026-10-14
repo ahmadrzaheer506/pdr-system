@@ -3,6 +3,12 @@ jest.mock('../models', () => ({
   JobDayAssignment: { findAll: jest.fn() },
   Job: {},
   User: { findAll: jest.fn() },
+  Skill: {
+    findAll: jest.fn(async () => [
+      { id: 1, slug: 'roofing', name: 'Roofing', sort_order: 0 },
+      { id: 15, slug: 'general_labouring', name: 'General Labouring', sort_order: 14 },
+    ]),
+  },
 }));
 jest.mock('../db', () => ({
   plain: (row) => (row && typeof row.toJSON === 'function' ? row.toJSON() : row),
@@ -72,7 +78,7 @@ describe('crewAvailability (requirement 8.2)', () => {
 
   test('assignmentConflicts lists holiday and double-book for a confirm prompt', async () => {
     HolidayRequest.findAll.mockResolvedValue([{ user_id: 3 }]);
-    User.findAll.mockResolvedValue([{ id: 3, name: 'Jamie Fisher', skills: ['roofer'], is_driver: true }]);
+    User.findAll.mockResolvedValue([{ id: 3, name: 'Jamie Fisher', skills: [{ skill_id: 1, level: 'advanced' }], is_driver: true }]);
     JobDayAssignment.findAll.mockResolvedValue([{
       user_id: 3,
       job_id: 9,
@@ -96,7 +102,7 @@ describe('crewAvailability (requirement 8.2)', () => {
   });
 
   test('assignmentWarnings skips the same job that day', async () => {
-    User.findAll.mockResolvedValue([{ id: 3, name: 'Jamie Fisher', skills: ['slate'], is_driver: true }]);
+    User.findAll.mockResolvedValue([{ id: 3, name: 'Jamie Fisher', skills: [{ skill_id: 1, level: 'advanced' }], is_driver: true }]);
     HolidayRequest.findAll.mockResolvedValue([]);
     JobDayAssignment.findAll.mockResolvedValue([]);
 
@@ -105,17 +111,17 @@ describe('crewAvailability (requirement 8.2)', () => {
   });
 
   test('assignmentWarnings reports missing skills and a missing driver without blocking (requirement 8.3)', async () => {
-    User.findAll.mockResolvedValue([{ id: 4, name: 'Liam Ozturk', skills: ['labourer'], is_driver: false }]);
+    User.findAll.mockResolvedValue([{ id: 4, name: 'Liam Ozturk', skills: [{ skill_id: 15, level: 'competent' }], is_driver: false }]);
     HolidayRequest.findAll.mockResolvedValue([]);
     JobDayAssignment.findAll.mockResolvedValue([]);
 
     const warnings = await crewAvailability.assignmentWarnings(
-      { id: 8, required_skills: ['slate'], needs_driver: true },
+      { id: 8, required_skills: [{ skill_id: 1, level: 'advanced' }], needs_driver: true },
       '2026-09-22',
       [4],
     );
     expect(warnings.map((w) => w.type)).toEqual(['skill', 'driver']);
-    expect(warnings[0].message).toMatch(/slate/);
+    expect(warnings[0].message).toMatch(/Roofing/);
     expect(warnings[1].message).toMatch(/needs a driver/);
   });
 });

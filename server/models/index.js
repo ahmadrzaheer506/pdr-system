@@ -27,6 +27,8 @@ const User = sequelize.define('User', {
   skills: jsonDefault([]),
   is_driver: { type: DataTypes.BOOLEAN, allowNull: false, defaultValue: false },
   active: { type: DataTypes.BOOLEAN, allowNull: false, defaultValue: true },
+  /** Seed / first owner — cannot be deactivated or deleted. */
+  protected: { type: DataTypes.BOOLEAN, allowNull: false, defaultValue: false },
   holiday_allowance: { type: DataTypes.DOUBLE, allowNull: false, defaultValue: 28 },
   color: { type: DataTypes.TEXT, allowNull: false, defaultValue: '#64748b' },
   avatar_file: { type: DataTypes.TEXT },
@@ -242,6 +244,7 @@ const Job = sequelize.define('Job', {
   status: { type: DataTypes.TEXT, allowNull: false, defaultValue: 'PENDING' },
   priority: { type: DataTypes.TEXT, allowNull: false, defaultValue: 'normal' },
   required_skills: jsonDefault([]),
+  job_type_id: { type: DataTypes.INTEGER },
   needs_driver: { type: DataTypes.BOOLEAN, allowNull: false, defaultValue: false },
   materials: { type: DataTypes.TEXT },
   value: { type: DataTypes.DOUBLE },
@@ -462,6 +465,22 @@ const CatalogueItem = sequelize.define('CatalogueItem', {
   kind: { type: DataTypes.TEXT, allowNull: false },
 }, { tableName: 'catalogue_items', timestamps: true, createdAt: 'created_at', updatedAt: 'updated_at' });
 
+/** Settings-managed skill catalogue (requirement 1.8 / 7.2). */
+const Skill = sequelize.define('Skill', {
+  id: { type: DataTypes.INTEGER, primaryKey: true, autoIncrement: true },
+  slug: { type: DataTypes.TEXT, allowNull: false, unique: true },
+  name: { type: DataTypes.TEXT, allowNull: false },
+  sort_order: { type: DataTypes.INTEGER, allowNull: false, defaultValue: 0 },
+}, { tableName: 'skills', timestamps: true, createdAt: 'created_at', updatedAt: 'updated_at' });
+
+/** Standard job types with required skills already attached. */
+const JobType = sequelize.define('JobType', {
+  id: { type: DataTypes.INTEGER, primaryKey: true, autoIncrement: true },
+  name: { type: DataTypes.TEXT, allowNull: false },
+  required_skills: jsonDefault([]),
+  sort_order: { type: DataTypes.INTEGER, allowNull: false, defaultValue: 0 },
+}, { tableName: 'job_types', timestamps: true, createdAt: 'created_at', updatedAt: 'updated_at' });
+
 const SecurityEvent = sequelize.define('SecurityEvent', {
   id: { type: DataTypes.INTEGER, primaryKey: true, autoIncrement: true },
   actor_user_id: { type: DataTypes.INTEGER },
@@ -599,6 +618,8 @@ Customer.hasMany(Quote, { foreignKey: 'customer_id' });
 
 Job.belongsTo(Customer, { foreignKey: 'customer_id' });
 Job.belongsTo(Quote, { foreignKey: 'quote_id' });
+Job.belongsTo(JobType, { foreignKey: 'job_type_id' });
+JobType.hasMany(Job, { foreignKey: 'job_type_id' });
 Job.belongsTo(CustomerSite, { foreignKey: 'site_id', as: 'site' });
 Job.belongsTo(CustomerPhone, { foreignKey: 'phone_id', as: 'selectedPhone' });
 Job.belongsTo(CustomerEmail, { foreignKey: 'email_id', as: 'selectedEmail' });
@@ -719,6 +740,8 @@ module.exports = {
   StageHistory,
   Setting,
   CatalogueItem,
+  Skill,
+  JobType,
   IntegrationEvent,
   SecurityEvent,
   AiProposal,

@@ -2,7 +2,8 @@ import React from 'react';
 import { Check } from 'lucide-react';
 import { Avatar, HoverTooltip } from './ui.jsx';
 import { staffDayFlags, crewConflictLabel, crewSaveConflicts, crewConflictSummaryLine, crewChipHoverHint } from '../lib/schedule';
-import { staffMatchesRequiredSkills, skillLabel } from '../lib/skills';
+import { staffMatchesRequiredSkills, skillLabel, sortStaffForJob } from '../lib/skills';
+import { useSkillCatalogue } from '../lib/useSkillCatalogue';
 
 function chipClass({ selected, onHoliday, busy, matches }) {
   if (onHoliday || busy) {
@@ -15,9 +16,11 @@ function chipClass({ selected, onHoliday, busy, matches }) {
   return 'border-slate-200 text-slate-500';
 }
 
-export function CrewFitNotes({ missingSkills = [], needsDriver = false, hasDriver = false }) {
+export function CrewFitNotes({ missingSkills = [], needsDriver = false, hasDriver = false, catalogue }) {
+  const loaded = useSkillCatalogue();
+  const skills = catalogue || loaded.skills;
   const lines = [];
-  if (missingSkills.length) lines.push(`Nobody covering: ${missingSkills.map(skillLabel).join(', ')}`);
+  if (missingSkills.length) lines.push(`Nobody covering: ${missingSkills.map((s) => skillLabel(s, skills)).join(', ')}`);
   if (needsDriver && !hasDriver) lines.push('Needs a driver — nobody assigned can drive');
   if (!lines.length) return null;
   return (
@@ -89,9 +92,10 @@ export default function CrewChips({
   disabled = false,
 }) {
   const days = Array.isArray(workDates) && workDates.length ? workDates : [workDate];
+  const ranked = sortStaffForJob(staff, requiredSkills);
   return (
     <div className="flex flex-wrap gap-2">
-      {staff.map((s) => {
+      {ranked.map((s) => {
         const selected = selectedIds.some((id) => Number(id) === Number(s.id));
         const matches = staffMatchesRequiredSkills(s.skills, requiredSkills);
         const flags = days.map((iso) => ({

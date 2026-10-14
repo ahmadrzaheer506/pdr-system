@@ -125,6 +125,29 @@ describe('Customer master record', () => {
     expect(await screen.findByText('Lead workspace')).toBeInTheDocument();
   });
 
+  it('loads a delete warning that names leads and related records', async () => {
+    const user = userEvent.setup();
+    api.get.mockImplementation((path) => {
+      if (String(path).includes('/delete-preview')) {
+        return Promise.resolve({
+          warning: 'This customer has 2 leads. Deleting this customer also deletes related records (3 messages). This cannot be undone.',
+        });
+      }
+      if (String(path).includes('/settings/users')) {
+        return Promise.resolve({ users: [] });
+      }
+      return Promise.resolve(DETAIL);
+    });
+    api.del.mockResolvedValue({ ok: true });
+    renderRecord();
+    await user.click(await screen.findByRole('button', { name: /^delete$/i }));
+    expect(await screen.findByText(/this customer has 2 leads/i)).toBeInTheDocument();
+    expect(screen.getByText(/3 messages/i)).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Delete customer' }));
+    expect(api.del).toHaveBeenCalledWith('/customers/37');
+    expect(await screen.findByText('Customers list')).toBeInTheDocument();
+  });
+
   it('shows an empty leads state when the customer has none', async () => {
     api.get.mockImplementation((path) => {
       if (String(path).includes('/settings/users')) {

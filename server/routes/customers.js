@@ -19,6 +19,7 @@ const jobDays = require('../jobDays');
 const invoiceTax = require('../invoiceTax');
 const invoicePayments = require('../invoicePayments');
 const visitAssignees = require('../appointmentAssignees');
+const { customerDeleteImpact, destroyCustomer } = require('../recordDelete');
 
 const router = express.Router();
 router.use(requireAuth, requireOffice);
@@ -157,6 +158,16 @@ router.post('/', asyncHandler(async (req, res) => {
   });
   await logActivity(created.id, req.user.id, 'customer_created', 'Customer created');
   res.json({ id: created.id });
+}));
+
+router.get('/:id/delete-preview', asyncHandler(async (req, res) => {
+  const c = await requireCustomer(req, res);
+  if (!c) return;
+  const impact = await customerDeleteImpact(c.id);
+  res.json({
+    customer: { id: c.id, name: c.name },
+    ...impact,
+  });
 }));
 
 router.get('/:id', asyncHandler(async (req, res) => {
@@ -493,6 +504,13 @@ router.put('/:id/emails/:emailId', asyncHandler(async (req, res) => {
 router.delete('/:id/emails/:emailId', asyncHandler(async (req, res) => {
   if (!(await requireCustomer(req, res))) return;
   sendContactResult(res, await contacts.removeEmail(Number(req.params.id), Number(req.params.emailId)));
+}));
+
+router.delete('/:id', asyncHandler(async (req, res) => {
+  const c = await requireCustomer(req, res);
+  if (!c) return;
+  await destroyCustomer(c.id);
+  res.json({ ok: true });
 }));
 
 module.exports = router;

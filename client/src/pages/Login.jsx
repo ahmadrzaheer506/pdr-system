@@ -1,20 +1,12 @@
 import React, { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { Eye, EyeOff, Lock } from 'lucide-react';
+import { Eye, EyeOff } from 'lucide-react';
 import { useAuth } from '../lib/auth.jsx';
 import { ROLES } from '../lib/roles';
 import { Toast, useToast } from '../components/ui.jsx';
 import BrandLogo from '../components/BrandLogo.jsx';
 
 const MIN_PASSWORD_LENGTH = 8;
-
-const DEMO_ACCOUNTS = [
-  { label: 'Owner', email: 'paul@pauldouglasroofing.co.uk' },
-  { label: 'Office', email: 'lisa@pauldouglasroofing.co.uk' },
-  { label: 'Field', email: 'jamie@pauldouglasroofing.co.uk' },
-];
-
-const DEMO_PASSWORD = 'password123';
 
 const fieldClass =
   'login-field w-full rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-3 text-sm text-slate-900 placeholder:text-slate-400 outline-none transition-[border-color,box-shadow,background-color] focus:border-[#dc1114] focus:bg-white focus:ring-4 focus:ring-[#dc1114]/15';
@@ -32,12 +24,6 @@ export default function Login() {
   React.useEffect(() => {
     if (user) navigate(user.role === ROLES.STAFF ? '/staff' : '/', { replace: true });
   }, [user]);
-
-  const fillDemo = (demoEmail) => {
-    setEmail(demoEmail);
-    setPassword(DEMO_PASSWORD);
-    setError('');
-  };
 
   const submit = async (e) => {
     e.preventDefault();
@@ -157,25 +143,6 @@ export default function Login() {
                 {loading ? 'Signing in…' : 'Sign in'}
               </button>
             </form>
-
-            <div className="mt-7 border-t border-slate-100 pt-5">
-              <p className="mb-2.5 flex items-center gap-1.5 text-[11px] font-medium uppercase tracking-wide text-slate-400">
-                <Lock size={11} /> Demo accounts
-              </p>
-              <div className="flex flex-wrap gap-2">
-                {DEMO_ACCOUNTS.map((account) => (
-                  <button
-                    key={account.email}
-                    type="button"
-                    onClick={() => fillDemo(account.email)}
-                    className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-xs font-medium text-slate-600 hover:border-slate-300 hover:bg-white"
-                  >
-                    {account.label}
-                  </button>
-                ))}
-              </div>
-              <p className="mt-2 text-[11px] text-slate-400">Password for all: {DEMO_PASSWORD}</p>
-            </div>
           </div>
         </div>
       </main>

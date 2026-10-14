@@ -1,6 +1,8 @@
 const express = require('express');
 const { Op } = require('sequelize');
 const { User, SecurityEvent } = require('../models');
+const { staffDeleteImpact, destroyStaffUser } = require('../recordDelete');
+const { protectedDeactivateError, protectedDeleteError } = require('../protectedUser');
 const { allSettings, setSetting, getSetting, plain } = require('../db');
 const { requireAuth, requireOffice, requireAdmin, hashPassword, passwordError, isValidRole, asyncHandler } = require('../auth');
 const { ROLES } = require('../roles');
@@ -13,6 +15,7 @@ const timesheetRules = require('../timesheetRules');
 const branding = require('../branding');
 const registry = require('../integrations/registry');
 const { logSecurityEvent, SECURITY_ACTIONS, nextTokenVersion } = require('../securityAudit');
+const skillsLib = require('../skills');
 const { issueResetEmail, sendWelcomeCredentials } = require('../passwordMail');
 
 /** Keys Company / Templates may persist. Branding is file-upload only. */
@@ -186,7 +189,7 @@ router.get('/integrations', requireOffice, asyncHandler(async (req, res) => {
 
 router.get('/users', requireOffice, asyncHandler(async (req, res) => {
   const rows = await User.findAll({
-    attributes: ['id', 'name', 'email', 'phone', 'role', 'skills', 'is_driver', 'active', 'holiday_allowance', 'color', 'financials_restricted', 'hourly_cost', 'cis_status', 'created_at', 'avatar_file'],
+    attributes: ['id', 'name', 'email', 'phone', 'role', 'skills', 'is_driver', 'active', 'protected', 'holiday_allowance', 'color', 'financials_restricted', 'hourly_cost', 'cis_status', 'created_at', 'avatar_file'],
     order: [['created_at', 'DESC'], ['id', 'DESC']],
   });
   res.json({
@@ -214,6 +217,8 @@ router.post('/users', requireAdmin, asyncHandler(async (req, res) => {
     : parseCisStatus(cis_status);
   if (cis.error) return res.status(400).json({ error: cis.error });
   const isStaff = role === ROLES.STAFF;
+  const catalogue = await skillsLib.listSkillRows();
+  const nextSkills = isStaff ? skillsLib.parseStaffSkills(skills || [], catalogue) : [];
   const allowance = timesheetRules.parseUserHolidayAllowance(holiday_allowance, { allowInherit: true });
   if (allowance.error) return res.status(400).json({ error: allowance.error });
   let nextAllowance = allowance.value;
@@ -228,7 +233,7 @@ router.post('/users', requireAdmin, asyncHandler(async (req, res) => {
       phone: phone || null,
       password_hash: hashPassword(password),
       role,
-      skills: isStaff ? (skills || []) : [],
+      skills: nextSkills,
       is_driver: isStaff && !!is_driver,
       holiday_allowance: nextAllowance,
       color: color || '#64748b',
@@ -267,6 +272,9 @@ router.put('/users/:id', requireAdmin, asyncHandler(async (req, res) => {
   if (u.active && !nextActive && targetId === req.user.id) {
     return res.status(400).json({ error: 'You cannot deactivate your own account' });
   }
+
+  const locked = protectedDeactivateError(u, nextActive, nextRole);
+  if (locked) return res.status(400).json({ error: locked });
 
   const demotingOrDeactivatingAdmin = u.role === ROLES.ADMIN && u.active
     && (nextRole !== ROLES.ADMIN || !nextActive);
@@ -311,7 +319,10 @@ router.put('/users/:id', requireAdmin, asyncHandler(async (req, res) => {
   }
 
   const isStaff = nextRole === ROLES.STAFF;
-  const nextSkills = isStaff ? (skills !== undefined ? skills : u.skills) : [];
+  const catalogue = await skillsLib.listSkillRows();
+  const nextSkills = isStaff
+    ? (skills !== undefined ? skillsLib.parseStaffSkills(skills, catalogue) : (Array.isArray(u.skills) ? u.skills : []))
+    : [];
   const nextDriver = isStaff ? (is_driver !== undefined ? !!is_driver : !!u.is_driver) : false;
 
   const previousRole = u.role;
@@ -378,6 +389,41 @@ router.put('/users/:id', requireAdmin, asyncHandler(async (req, res) => {
       action: SECURITY_ACTIONS.ADMIN_TEMP_PASSWORD,
     });
   }
+  res.json({ ok: true });
+}));
+
+router.get('/users/:id/delete-preview', requireAdmin, asyncHandler(async (req, res) => {
+  const u = await User.findByPk(req.params.id);
+  if (!u) return res.status(404).json({ error: 'User not found' });
+  const impact = await staffDeleteImpact(u.id);
+  res.json({
+    user: { id: u.id, name: u.name, role: u.role, active: u.active },
+    ...impact,
+  });
+}));
+
+router.delete('/users/:id', requireAdmin, asyncHandler(async (req, res) => {
+  const u = await User.findByPk(req.params.id);
+  if (!u) return res.status(404).json({ error: 'User not found' });
+  const targetId = Number(req.params.id);
+  if (targetId === req.user.id) {
+    return res.status(400).json({ error: 'You cannot delete your own account' });
+  }
+  const locked = protectedDeleteError(u);
+  if (locked) return res.status(400).json({ error: locked });
+  if (u.role === ROLES.ADMIN && u.active) {
+    const admins = await User.count({ where: { role: ROLES.ADMIN, active: true } });
+    if (admins <= 1) {
+      return res.status(400).json({ error: 'Cannot delete the last administrator' });
+    }
+  }
+  await destroyStaffUser(u.id);
+  await logSecurityEvent({
+    actorUserId: req.user.id,
+    targetUserId: u.id,
+    action: SECURITY_ACTIONS.USER_DELETE,
+    detail: u.email || u.name,
+  });
   res.json({ ok: true });
 }));
 

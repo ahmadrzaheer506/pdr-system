@@ -1,8 +1,8 @@
 import React, { useCallback, useEffect, useState } from 'react';
-import { Link, Navigate, useParams, useSearchParams } from 'react-router-dom';
-import { ArrowLeft, Mail, Phone, MapPin, User } from 'lucide-react';
+import { Link, Navigate, useNavigate, useParams, useSearchParams } from 'react-router-dom';
+import { ArrowLeft, Mail, Phone, MapPin, Trash2, User } from 'lucide-react';
 import { api } from '../lib/api';
-import { Avatar, PageLoading, LoadError, useToast, Toast } from '../components/ui.jsx';
+import { Avatar, PageLoading, LoadError, ConfirmModal, useToast, Toast } from '../components/ui.jsx';
 import CustomerContacts from '../components/CustomerContacts.jsx';
 import CustomerEditForm from '../components/CustomerEditForm.jsx';
 import LeadCard from '../components/LeadCard.jsx';
@@ -25,8 +25,12 @@ function MetaChip({ icon: Icon, children, href }) {
 
 export default function CustomerRecord() {
   const { id } = useParams();
+  const navigate = useNavigate();
   const [params] = useSearchParams();
   const [data, setData] = useState(null);
+  const [deleteOpen, setDeleteOpen] = useState(false);
+  const [deleteBusy, setDeleteBusy] = useState(false);
+  const [deleteWarning, setDeleteWarning] = useState('');
   const { toast, show } = useToast();
 
   const load = useCallback(() => api.get(`/customers/${id}`).then(setData).catch((err) => {
@@ -83,6 +87,21 @@ export default function CustomerRecord() {
               )}
             </div>
           </div>
+          <button
+            type="button"
+            className="btn-secondary shrink-0 !text-rose-600 hover:!text-rose-700"
+            onClick={async () => {
+              try {
+                const preview = await api.get(`/customers/${id}/delete-preview`);
+                setDeleteWarning(preview.warning || 'Are you sure you want to delete this customer?');
+                setDeleteOpen(true);
+              } catch (err) {
+                show(err.message, 'error');
+              }
+            }}
+          >
+            <Trash2 size={15} /> Delete
+          </button>
         </div>
       </div>
 
@@ -129,6 +148,27 @@ export default function CustomerRecord() {
         )}
       </div>
 
+      <ConfirmModal
+        open={deleteOpen}
+        title="Delete customer"
+        message={deleteWarning}
+        confirmLabel="Delete customer"
+        danger
+        busy={deleteBusy}
+        busyLabel="Deleting…"
+        onCancel={() => { if (!deleteBusy) setDeleteOpen(false); }}
+        onConfirm={async () => {
+          setDeleteBusy(true);
+          try {
+            await api.del(`/customers/${id}`);
+            setDeleteOpen(false);
+            navigate('/customers');
+          } catch (err) {
+            show(err.message, 'error');
+            setDeleteBusy(false);
+          }
+        }}
+      />
       <Toast {...toast} />
     </div>
   );

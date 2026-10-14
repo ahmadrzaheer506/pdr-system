@@ -14,7 +14,7 @@ cp .env.example .env    # then edit: set JWT_SECRET and DATABASE_URL
 # Create a local Postgres database (development runs outside Docker):
 #   createdb roofing_crm   — or matching user/pass in DATABASE_URL
 npm run migrate         # applies Sequelize migrations (also runs on server boot)
-npm run seed            # loads realistic demo data
+npm run seed            # APP_ENV=development|staging: demo data. production: core data only
 npm run build           # builds the web app
 npm start               # http://localhost:4000
 ```
@@ -31,7 +31,7 @@ For development with hot reload: `npm run dev` (client on :5173, server on :4000
 
 Other field staff: `connor@`, `liam@`, `ryan@`, `callum@`, `nathan@` — same password. Sign in as a field staff account to see the phone view the lads get.
 
-`npm run seed:clean` wipes everything and reseeds. To start a real, empty system: point `DATABASE_URL` at an empty Postgres database, run the server once (migrations apply on boot), then create the first admin (or run the seed and delete the demo customers).
+`npm run seed:clean` wipes everything and reseeds. Set `APP_ENV=development` or `staging` for the full demo (customers, jobs, dummy staff). Set `APP_ENV=production` to seed only necessary data: company settings, message/checklist templates, skills, job types, and the service catalogue — no dummy customers or jobs. On production, set `SEED_ADMIN_EMAIL` and `SEED_ADMIN_PASSWORD` to a real owner login — seed creates that first admin and it cannot be deactivated or deleted. `SEED_MODE=full` or `SEED_MODE=core` overrides `APP_ENV` for a one-off seed.
 
 ---
 
@@ -106,7 +106,7 @@ On a droplet where Node, PM2 and Nginx are already installed:
 ./scripts/deploy.sh
 ```
 
-That installs dependencies, applies pending Sequelize migrations, builds the frontend, then starts or reloads both PM2 apps from `ecosystem.config.cjs`. Do not run `npm run dev` or `seed:clean` on a live database. Visit `http://<droplet-ip>/`, not port 4000.
+That installs dependencies, applies pending Sequelize migrations, builds the frontend, then starts or reloads both PM2 apps from `ecosystem.config.cjs`. Do not run `npm run dev` on a live database. With `APP_ENV=production`, `npm run seed` (or `seed:clean`) loads catalogue/settings only — never dummy customers. Visit `http://<droplet-ip>/`, not port 4000.
 
 ```bash
 docker compose up -d --build      # or:

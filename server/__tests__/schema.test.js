@@ -710,6 +710,60 @@ describe('QuickBooks sync ids migration', () => {
   });
 });
 
+describe('skills and job types migration (requirement 1.8 / 7.2)', () => {
+  test('creates skills and job_types and can add jobs.job_type_id', async () => {
+    const tables = {};
+    const indexes = [];
+    const inserted = [];
+    const added = [];
+    const queryInterface = {
+      showAllTables: async () => ['jobs', 'users'],
+      describeTable: async () => ({}),
+      createTable: async (name, cols) => { tables[name] = cols; },
+      addIndex: async (table, cols, opts) => { indexes.push({ table, cols, opts }); },
+      addColumn: async (table, col) => { added.push(`${table}.${col}`); },
+      bulkInsert: async (table, rows) => { inserted.push({ table, rows }); },
+      sequelize: {
+        query: async (sql) => {
+          if (/FROM skills/.test(sql) && /SELECT id, slug/.test(sql)) {
+            if (inserted.some((row) => row.table === 'skills')) {
+              return [[{ id: 1, slug: 'roofing' }]];
+            }
+            return [[]];
+          }
+          if (/FROM job_types/.test(sql)) return [[{ n: 0 }]];
+          if (/FROM users/.test(sql) || /FROM jobs/.test(sql)) return [[]];
+          return [[]];
+        },
+      },
+    };
+    const migration = require('../migrations/20261014010000-skills-and-job-types');
+    await migration.up(queryInterface, Sequelize);
+    expect(tables.skills.slug.unique).toBe(true);
+    expect(tables.job_types.required_skills.type).toBe(Sequelize.JSONB);
+    expect(added).toContain('jobs.job_type_id');
+    expect(inserted.some((row) => row.table === 'skills' && row.rows.some((s) => s.slug === 'roofing'))).toBe(true);
+    expect(inserted.some((row) => row.table === 'job_types' && row.rows.some((t) => t.name === 'Re-roof'))).toBe(true);
+  });
+});
+
+describe('protected first administrator migration', () => {
+  test('adds users.protected and flags the oldest ADMIN', async () => {
+    const added = [];
+    const sql = [];
+    const queryInterface = {
+      describeTable: async () => ({}),
+      addColumn: async (table, col) => { added.push(`${table}.${col}`); },
+      sequelize: { query: async (q) => { sql.push(q); } },
+    };
+    const migration = require('../migrations/20261014020000-user-protected');
+    await migration.up(queryInterface, { BOOLEAN: 'BOOLEAN' });
+    expect(added).toEqual(['users.protected']);
+    expect(sql.join('\n')).toMatch(/protected = true/);
+    expect(sql.join('\n')).toMatch(/role = 'ADMIN'/);
+  });
+});
+
 describe('QuickBooks estimates and attachables migration', () => {
   test('adds quote estimate ids and PDF attachable columns', async () => {
     const added = [];

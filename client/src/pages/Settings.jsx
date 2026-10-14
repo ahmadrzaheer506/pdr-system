@@ -1,10 +1,12 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { Plug, Building2, Users, Plus, ExternalLink, Copy, Shield, Trash2, Bell, Package, FileText, Search, MoreHorizontal, Landmark, Percent, Image, Clock, Mail, Upload } from 'lucide-react';
+import { Plug, Building2, Users, Plus, ExternalLink, Copy, Shield, Trash2, Bell, Package, FileText, Search, MoreHorizontal, Landmark, Percent, Image, Clock, Mail, Upload, Wrench } from 'lucide-react';
 import { api, fmtTimeAgo, fmtDate, money } from '../lib/api';
 import { PageLoading, LoadError, ModeBadge, Avatar, Modal, ConfirmModal, useToast, Toast, avatarUrl } from '../components/ui.jsx';
 import { useAuth } from '../lib/auth.jsx';
 import { ROLES } from '../lib/roles';
-import { SKILL_OPTIONS, skillLabel } from '../lib/skills';
+import { staffSkillLine } from '../lib/skills';
+import SkillPicker from '../components/SkillPicker.jsx';
+import SkillsSettings from '../components/SkillsSettings.jsx';
 import NotificationPrefsForm from '../components/NotificationPrefsForm.jsx';
 import { CORE_VAT_CODES, FALLBACK_VAT_RATES } from '../lib/taxDefaults';
 import { CIS_RATE_OPTIONS } from '../lib/invoiceTax';
@@ -18,6 +20,7 @@ const TABS = [
   { id: 'company', label: 'Company', icon: Building2 },
   { id: 'catalogue', label: 'Catalogue', icon: Package },
   { id: 'staff', label: 'Staff & Users', icon: Users },
+  { id: 'skills', label: 'Skills', icon: Wrench },
   { id: 'templates', label: 'Templates', icon: FileText },
   { id: 'notifications', label: 'Notifications', icon: Bell },
   { id: 'integrations', label: 'Integrations', icon: Plug },
@@ -151,6 +154,7 @@ export default function Settings() {
       {tab === 'catalogue' && <CatalogueSettings canEdit={user.role === ROLES.ADMIN} />}
       {tab === 'templates' && <TemplateSettings canEdit={user.role === ROLES.ADMIN} />}
       {tab === 'staff' && <StaffTab canEdit={user.role === ROLES.ADMIN} />}
+      {tab === 'skills' && <SkillsSettings canEdit={user.role === ROLES.ADMIN} />}
       {tab === 'security' && user.role === ROLES.ADMIN && <SecurityLogTab />}
     </div>
   );
@@ -862,16 +866,17 @@ function HolidayAllowanceField({ form, set, idPrefix, placeholder }) {
   );
 }
 
-function SkillFields({ form, toggleSkill, setDriver }) {
+function SkillFields({ form, setSkills, setDriver }) {
+  const [catalogue, setCatalogue] = useState([]);
+  useEffect(() => {
+    api.get('/skills').then((d) => setCatalogue(d.skills || [])).catch(() => setCatalogue([]));
+  }, []);
   return (
     <>
       <div>
         <label className="label">Skills</label>
-        <div className="flex flex-wrap gap-1.5">
-          {SKILL_OPTIONS.map((s) => (
-            <button type="button" key={s} onClick={() => toggleSkill(s)} className={`px-2.5 py-1 rounded-md text-xs font-medium ${form.skills.includes(s) ? 'bg-navy-900 text-white' : 'bg-slate-100 text-slate-500'}`}>{skillLabel(s)}</button>
-          ))}
-        </div>
+        <p className="mb-2 text-xs text-slate-500">Select only what they can do, then set Trainee, Competent, or Advanced.</p>
+        <SkillPicker catalogue={catalogue} value={Array.isArray(form.skills) ? form.skills : []} onChange={setSkills} />
       </div>
       <label className="flex items-center gap-2 text-sm text-slate-600">
         <input type="checkbox" className="h-4 w-4 shrink-0 rounded border-slate-300 accent-brand-500" checked={form.is_driver} onChange={(e) => setDriver(e.target.checked)} /> Can drive
@@ -906,7 +911,7 @@ function isoDay(value) {
   return `${y}-${m}-${day}`;
 }
 
-function StaffUserActions({ user, canToggle, onEdit, onToggleActive, onToggleFinancials }) {
+function StaffUserActions({ user, canToggle, canDelete, onEdit, onToggleActive, onToggleFinancials, onDelete }) {
   const [open, setOpen] = useState(false);
   const wrapRef = useRef(null);
 
@@ -967,6 +972,15 @@ function StaffUserActions({ user, canToggle, onEdit, onToggleActive, onToggleFin
                 {user.financials_restricted ? 'Allow costing' : 'Restrict costing'}
               </button>
             )}
+            {canDelete && (
+              <button
+                type="button"
+                className="block w-full px-3 py-2 text-left text-sm text-rose-600 hover:bg-rose-50"
+                onClick={() => { setOpen(false); onDelete(user); }}
+              >
+                Delete
+              </button>
+            )}
           </div>
         )}
       </div>
@@ -983,12 +997,19 @@ function StaffTab({ canEdit }) {
   const [status, setStatus] = useState('all');
   const [role, setRole] = useState('all');
   const [addedFrom, setAddedFrom] = useState('');
+  const [catalogue, setCatalogue] = useState([]);
+  const [deleteUser, setDeleteUser] = useState(null);
+  const [deleteWarning, setDeleteWarning] = useState('');
+  const [deleteBusy, setDeleteBusy] = useState(false);
   const { toast, show } = useToast();
   const load = () => api.get('/settings/users').then((d) => setUsers(d.users)).catch((err) => {
     show(err.message, 'error');
     setUsers((current) => current || []);
   });
   useEffect(() => { load(); }, []);
+  useEffect(() => {
+    api.get('/skills').then((d) => setCatalogue(d.skills || [])).catch(() => setCatalogue([]));
+  }, []);
   if (!users) return <PageLoading />;
 
   const activeAdminCount = users.filter((x) => x.role === ROLES.ADMIN && x.active).length;
@@ -1005,6 +1026,16 @@ function StaffTab({ canEdit }) {
     } catch (err) { show(err.message, 'error'); }
   };
 
+  const openDelete = async (u) => {
+    try {
+      const preview = await api.get(`/settings/users/${u.id}/delete-preview`);
+      setDeleteWarning(preview.warning || 'Are you sure you want to delete this user?');
+      setDeleteUser(u);
+    } catch (err) {
+      show(err.message, 'error');
+    }
+  };
+
   const needle = q.trim().toLowerCase();
   const filtered = users.filter((u) => {
     if (status === 'active' && !u.active) return false;
@@ -1014,7 +1045,7 @@ function StaffTab({ canEdit }) {
     if (!needle) return true;
     const hay = [
       u.name, u.email, u.phone, staffRoleLabel(u.role),
-      ...(Array.isArray(u.skills) ? u.skills : []),
+      staffSkillLine(u.skills, catalogue),
     ].join(' ').toLowerCase();
     return hay.includes(needle);
   }).slice().sort((a, b) => {
@@ -1088,8 +1119,7 @@ function StaffTab({ canEdit }) {
               )}
               {filtered.map((u) => {
                 const added = addedParts(u.created_at);
-                const skills = Array.isArray(u.skills) ? u.skills.map(skillLabel) : [];
-                const skillLine = [skills.join(', ') || '—', u.is_driver ? 'Driver' : ''].filter(Boolean).join(' · ');
+                const skillLine = [staffSkillLine(u.skills, catalogue) || '—', u.is_driver ? 'Driver' : ''].filter(Boolean).join(' · ');
                 return (
                   <tr key={u.id} className="border-t border-slate-100 last:border-0">
                     <td className="px-5 py-3.5">
@@ -1126,10 +1156,12 @@ function StaffTab({ canEdit }) {
                       <td className="px-5 py-3.5">
                         <StaffUserActions
                           user={u}
-                          canToggle={me?.id !== u.id && !isLastActiveAdmin(u)}
+                          canToggle={me?.id !== u.id && !isLastActiveAdmin(u) && !u.protected}
+                          canDelete={me?.id !== u.id && !u.protected}
                           onEdit={setEditUser}
                           onToggleActive={toggleActive}
                           onToggleFinancials={toggleFinancials}
+                          onDelete={openDelete}
                         />
                       </td>
                     )}
@@ -1153,7 +1185,31 @@ function StaffTab({ canEdit }) {
           }
         }}
       />
-      <EditUserModal user={editUser} lockRole={!!editUser && isLastActiveAdmin(editUser)} onClose={() => setEditUser(null)} onSaved={() => { setEditUser(null); load(); show('Account updated'); }} />
+      <EditUserModal user={editUser} lockRole={!!editUser && (isLastActiveAdmin(editUser) || !!editUser.protected)} onClose={() => setEditUser(null)} onSaved={() => { setEditUser(null); load(); show('Account updated'); }} />
+      <ConfirmModal
+        open={!!deleteUser}
+        title="Delete user"
+        message={deleteWarning}
+        confirmLabel="Delete user"
+        danger
+        busy={deleteBusy}
+        busyLabel="Deleting…"
+        onCancel={() => { if (!deleteBusy) setDeleteUser(null); }}
+        onConfirm={async () => {
+          if (!deleteUser) return;
+          setDeleteBusy(true);
+          try {
+            await api.del(`/settings/users/${deleteUser.id}`);
+            setDeleteUser(null);
+            load();
+            show('User deleted');
+          } catch (err) {
+            show(err.message, 'error');
+          } finally {
+            setDeleteBusy(false);
+          }
+        }}
+      />
       <Toast {...toast} />
     </div>
   );
@@ -1170,7 +1226,7 @@ function AddStaffModal({ open, onClose, onSaved }) {
   const [error, setError] = useState('');
   const [defaultAllowance, setDefaultAllowance] = useState(28);
   const set = (k) => (e) => setForm({ ...form, [k]: e.target.value });
-  const toggleSkill = (s) => setForm((f) => ({ ...f, skills: f.skills.includes(s) ? f.skills.filter((x) => x !== s) : [...f.skills, s] }));
+  const setSkills = (skills) => setForm((f) => ({ ...f, skills }));
 
   useEffect(() => {
     if (!open) return undefined;
@@ -1225,7 +1281,7 @@ function AddStaffModal({ open, onClose, onSaved }) {
           />
         </div>
         {form.role === ROLES.STAFF && (
-          <SkillFields form={form} toggleSkill={toggleSkill} setDriver={(checked) => setForm({ ...form, is_driver: checked })} />
+          <SkillFields form={form} setSkills={setSkills} setDriver={(checked) => setForm({ ...form, is_driver: checked })} />
         )}
         {form.role === ROLES.OFFICE && (
           <label className="flex items-center gap-2 text-sm text-slate-600">
@@ -1248,7 +1304,7 @@ function EditUserModal({ user, lockRole, onClose, onSaved }) {
   const [resetting, setResetting] = useState(false);
   const [error, setError] = useState('');
   const set = (k) => (e) => setForm({ ...form, [k]: e.target.value });
-  const toggleSkill = (s) => setForm((f) => ({ ...f, skills: f.skills.includes(s) ? f.skills.filter((x) => x !== s) : [...f.skills, s] }));
+  const setSkills = (skills) => setForm((f) => ({ ...f, skills }));
 
   useEffect(() => {
     if (!user) return;
@@ -1350,7 +1406,7 @@ function EditUserModal({ user, lockRole, onClose, onSaved }) {
           />
         </div>
         {form.role === ROLES.STAFF && (
-          <SkillFields form={form} toggleSkill={toggleSkill} setDriver={(checked) => setForm({ ...form, is_driver: checked })} />
+          <SkillFields form={form} setSkills={setSkills} setDriver={(checked) => setForm({ ...form, is_driver: checked })} />
         )}
         {form.role === ROLES.OFFICE && (
           <label className="flex items-center gap-2 text-sm text-slate-600">

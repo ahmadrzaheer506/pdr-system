@@ -5,7 +5,7 @@ const { sequelize, todayStr, plain } = require('../db');
 const { requireAuth, requireOffice, asyncHandler } = require('../auth');
 const { setStage, logActivity, resolveLeadForCustomer } = require('../services/pipeline');
 const { JOB_STATUSES, canAdvanceJobStatus, canUnscheduleJob, parseJobPriority } = require('../jobStatus');
-const { normaliseJobSkills } = require('../skills');
+const skillsLib = require('../skills');
 const jobKit = require('../jobKit');
 const jobFiles = require('../jobFiles');
 const jobVariations = require('../jobVariations');
@@ -77,7 +77,7 @@ router.get('/unscheduled', asyncHandler(async (req, res) => {
 }));
 
 router.post('/', asyncHandler(async (req, res) => {
-  const { customer_id, title, description, address, priority, required_skills, materials, value, start_date, end_date, start_time, end_time } = req.body || {};
+  const { customer_id, title, description, address, priority, required_skills, materials, value, start_date, end_date, start_time, end_time, job_type_id } = req.body || {};
   if (!customer_id || !title) return res.status(400).json({ error: 'customer_id and title required' });
   const parsedPriority = parseJobPriority(priority, { fallback: 'normal' });
   if (parsedPriority.error) return res.status(400).json({ error: parsedPriority.error });
@@ -92,12 +92,24 @@ router.post('/', asyncHandler(async (req, res) => {
   const picked = await contacts.resolveCustomerContactSelection(customer_id, req.body || {});
   if (picked.error) return res.status(400).json({ error: picked.error });
   const siteAddress = contacts.formatSite(picked.site);
+  const catalogue = await skillsLib.listSkillRows();
+  let nextSkills = skillsLib.normaliseJobSkills(required_skills, catalogue);
+  let nextTypeId = job_type_id ? Number(job_type_id) : null;
+  if (nextTypeId) {
+    const types = await skillsLib.listJobTypeRows();
+    const type = types.find((t) => t.id === nextTypeId);
+    if (!type) return res.status(400).json({ error: 'Unknown job type' });
+    if (!nextSkills.length) nextSkills = skillsLib.normaliseJobSkills(type.required_skills, catalogue);
+  } else {
+    nextTypeId = null;
+  }
   const created = await Job.create({
     customer_id, lead_id: lead?.id || null, title,
     description: description || null,
     address: address || siteAddress || null,
     priority: parsedPriority.value,
-    required_skills: normaliseJobSkills(required_skills),
+    required_skills: nextSkills,
+    job_type_id: nextTypeId,
     needs_driver: !!req.body?.needs_driver,
     materials: materials || null,
     value: value || null,
@@ -186,7 +198,26 @@ router.put('/:id', asyncHandler(async (req, res) => {
     if (updates.end_date !== undefined) updates.end_date = dated.end;
   }
   if (req.body.notes !== undefined) updates.notes = jobFiles.normaliseJobNotes(req.body.notes);
-  if (req.body.required_skills !== undefined) updates.required_skills = normaliseJobSkills(req.body.required_skills);
+  if (req.body.required_skills !== undefined || req.body.job_type_id !== undefined) {
+    const catalogue = await skillsLib.listSkillRows();
+    if (req.body.job_type_id !== undefined) {
+      const typeId = req.body.job_type_id ? Number(req.body.job_type_id) : null;
+      if (typeId) {
+        const types = await skillsLib.listJobTypeRows();
+        const type = types.find((t) => t.id === typeId);
+        if (!type) return res.status(400).json({ error: 'Unknown job type' });
+        updates.job_type_id = typeId;
+        if (req.body.required_skills === undefined) {
+          updates.required_skills = skillsLib.normaliseJobSkills(type.required_skills, catalogue);
+        }
+      } else {
+        updates.job_type_id = null;
+      }
+    }
+    if (req.body.required_skills !== undefined) {
+      updates.required_skills = skillsLib.normaliseJobSkills(req.body.required_skills, catalogue);
+    }
+  }
   if (req.body.needs_driver !== undefined) updates.needs_driver = !!req.body.needs_driver;
   if (req.body.site_id !== undefined || req.body.phone_id !== undefined || req.body.email_id !== undefined) {
     const picked = await contacts.resolveCustomerContactSelection(jb.customer_id, {

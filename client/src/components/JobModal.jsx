@@ -11,7 +11,9 @@ import JobKit from './JobKit.jsx';
 import JobFiles from './JobFiles.jsx';
 import JobVariations from './JobVariations.jsx';
 import { JOB_STATUSES, canAdvanceJobStatus, canUnscheduleJob, JOB_PRIORITY_OPTIONS } from '../lib/jobStatus';
-import { SKILL_OPTIONS, skillLabel, missingRequiredSkills, crewHasDriver } from '../lib/skills';
+import { missingRequiredSkills, crewHasDriver } from '../lib/skills';
+import { useSkillCatalogue } from '../lib/useSkillCatalogue';
+import SkillPicker from './SkillPicker.jsx';
 import { datesInRange, localIsoDate, parseIsoDate, crewIdsForDate, crewSaveConflicts, bookingsFromJobsRange, mergeCrewBookings, jobDatesForCrewDay } from '../lib/schedule';
 import DatePicker from './DatePicker.jsx';
 import SelectMenu from './SelectMenu.jsx';
@@ -256,6 +258,8 @@ export default function JobModal({ jobId, crewDate, onClose, onChanged, staff = 
   const [crew, setCrew] = useState([]);
   const [crewDay, setCrewDay] = useState('');
   const [skills, setSkills] = useState([]);
+  const [jobTypeId, setJobTypeId] = useState('');
+  const { skills: catalogue, jobTypes } = useSkillCatalogue();
   const [msg, setMsg] = useState('');
   const [error, setError] = useState('');
   const [crewWarnings, setCrewWarnings] = useState([]);
@@ -289,6 +293,7 @@ export default function JobModal({ jobId, crewDate, onClose, onChanged, staff = 
     setCrewDay(nextDay);
     setCrew(crewIdsForDate(d.job, nextDay));
     setSkills(Array.isArray(d.job.required_skills) ? d.job.required_skills : []);
+    setJobTypeId(d.job.job_type_id || '');
     setNeedsDriver(!!d.job.needs_driver);
     setContacts({
       site_id: d.job.site_id || '',
@@ -337,8 +342,11 @@ export default function JobModal({ jobId, crewDate, onClose, onChanged, staff = 
       ? c.filter((id) => Number(id) !== Number(uid))
       : [...c, uid]
   ));
-  const toggleSkill = (skill) => {
-    setSkills((cur) => (cur.includes(skill) ? cur.filter((s) => s !== skill) : [...cur, skill]));
+  const applyJobType = (id) => {
+    setJobTypeId(id);
+    if (!id) return;
+    const type = jobTypes.find((t) => Number(t.id) === Number(id));
+    if (type) setSkills(Array.isArray(type.required_skills) ? type.required_skills : []);
   };
   const saveDates = async (patch) => {
     const today = localIsoDate();
@@ -419,7 +427,10 @@ export default function JobModal({ jobId, crewDate, onClose, onChanged, staff = 
     setSavingSkills(true);
     setError('');
     try {
-      await api.put(`/jobs/${jobId}`, { required_skills: skills });
+      await api.put(`/jobs/${jobId}`, {
+        required_skills: skills,
+        job_type_id: jobTypeId || null,
+      });
       onChanged();
       load();
     } catch (err) { setError(err.message); }
@@ -648,22 +659,21 @@ export default function JobModal({ jobId, crewDate, onClose, onChanged, staff = 
               </button>
             )}
           >
-            <div className="flex flex-wrap gap-1.5">
-              {SKILL_OPTIONS.map((s) => (
-                <button
-                  type="button"
-                  key={s}
-                  onClick={() => toggleSkill(s)}
-                  className={`rounded-full px-3 py-1.5 text-xs font-medium transition ${
-                    skills.includes(s)
-                      ? 'bg-navy-900 text-white shadow-sm'
-                      : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
-                  }`}
-                >
-                  {skillLabel(s)}
-                </button>
-              ))}
-            </div>
+            {jobTypes.length ? (
+              <div className="mb-3">
+                <SelectMenu
+                  id="job-type"
+                  label="Job type"
+                  value={jobTypeId ? String(jobTypeId) : ''}
+                  onChange={applyJobType}
+                  options={[
+                    { value: '', label: 'Custom — pick skills below' },
+                    ...jobTypes.map((t) => ({ value: String(t.id), label: t.name })),
+                  ]}
+                />
+              </div>
+            ) : null}
+            <SkillPicker catalogue={catalogue} value={skills} onChange={setSkills} />
             <label className="mt-4 flex cursor-pointer items-center gap-3 rounded-xl bg-slate-50 px-3.5 py-3 text-sm text-slate-700 ring-1 ring-slate-200/70">
               <input
                 type="checkbox"

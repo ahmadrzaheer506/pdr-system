@@ -1,8 +1,8 @@
 import React, { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { Plus, Search, Users } from 'lucide-react';
+import { Plus, Search, Trash2, Users } from 'lucide-react';
 import { api, money, fmtTimeAgo } from '../lib/api';
-import { PageLoading, EmptyState, useToast, Toast } from '../components/ui.jsx';
+import { PageLoading, EmptyState, ConfirmModal, useToast, Toast } from '../components/ui.jsx';
 import NewCustomerModal from '../components/NewCustomerModal.jsx';
 import SelectMenu from '../components/SelectMenu.jsx';
 import DatePicker from '../components/DatePicker.jsx';
@@ -47,7 +47,20 @@ export default function Customers() {
   const [createdTo, setCreatedTo] = useState('');
   const [data, setData] = useState(null);
   const [createOpen, setCreateOpen] = useState(false);
+  const [deleteTarget, setDeleteTarget] = useState(null);
+  const [deleteWarning, setDeleteWarning] = useState('');
+  const [deleteBusy, setDeleteBusy] = useState(false);
   const { toast, show } = useToast();
+
+  const openDelete = async (customer) => {
+    try {
+      const preview = await api.get(`/customers/${customer.id}/delete-preview`);
+      setDeleteWarning(preview.warning || 'Are you sure you want to delete this customer?');
+      setDeleteTarget(customer);
+    } catch (err) {
+      show(err.message, 'error');
+    }
+  };
 
   useEffect(() => {
     const t = setTimeout(() => {
@@ -147,6 +160,7 @@ export default function Customers() {
                   <th className="text-left px-4 py-2.5 font-medium whitespace-nowrap w-[12%]">Source</th>
                   <th className="text-right px-4 py-2.5 font-medium whitespace-nowrap w-[9%]">Quoted</th>
                   <th className="text-left px-4 py-2.5 font-medium whitespace-nowrap w-[8%]">Updated</th>
+                  <th className="text-right px-4 py-2.5 font-medium whitespace-nowrap w-[5%]"><span className="sr-only">Actions</span></th>
                 </tr>
               </thead>
               <tbody>
@@ -179,6 +193,16 @@ export default function Customers() {
                       {Number(c.quoted_value) > 0 ? money(c.quoted_value) : '—'}
                     </td>
                     <td className="px-4 py-3 align-middle text-slate-400 whitespace-nowrap">{fmtTimeAgo(c.updated_at)}</td>
+                    <td className="px-4 py-3 align-middle text-right">
+                      <button
+                        type="button"
+                        className="inline-flex h-8 w-8 items-center justify-center rounded-lg text-slate-400 hover:bg-rose-50 hover:text-rose-600"
+                        aria-label={`Delete ${c.name}`}
+                        onClick={() => openDelete(c)}
+                      >
+                        <Trash2 size={15} />
+                      </button>
+                    </td>
                   </tr>
                 ))}
               </tbody>
@@ -188,6 +212,30 @@ export default function Customers() {
       )}
 
       <NewCustomerModal open={createOpen} onClose={() => setCreateOpen(false)} />
+      <ConfirmModal
+        open={!!deleteTarget}
+        title="Delete customer"
+        message={deleteWarning}
+        confirmLabel="Delete customer"
+        danger
+        busy={deleteBusy}
+        busyLabel="Deleting…"
+        onCancel={() => { if (!deleteBusy) setDeleteTarget(null); }}
+        onConfirm={async () => {
+          if (!deleteTarget) return;
+          setDeleteBusy(true);
+          try {
+            await api.del(`/customers/${deleteTarget.id}`);
+            setData((rows) => (rows || []).filter((row) => row.id !== deleteTarget.id));
+            setDeleteTarget(null);
+            show('Customer deleted');
+          } catch (err) {
+            show(err.message, 'error');
+          } finally {
+            setDeleteBusy(false);
+          }
+        }}
+      />
       <Toast {...toast} />
     </div>
   );

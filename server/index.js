@@ -70,6 +70,8 @@ app.use('/api/reports', require('./routes/reports'));
 app.use('/api/chat', require('./routes/chat'));
 app.use('/api/settings', require('./routes/settings'));
 app.use('/api/catalogue', require('./routes/catalogue'));
+app.use('/api/skills', require('./routes/skills'));
+app.use('/api/job-types', require('./routes/jobTypes'));
 app.use('/api/staff', require('./routes/staff'));
 app.use('/api/integrations', require('./routes/integrations'));
 

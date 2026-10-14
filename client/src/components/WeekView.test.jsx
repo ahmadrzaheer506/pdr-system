@@ -132,16 +132,16 @@ describe('WeekView (requirement 8.1)', () => {
           start_date: '2026-09-22',
           end_date: '2026-09-22',
           priority: 'normal',
-          required_skills: ['slate'],
+          required_skills: [{ skill_id: 1, level: 'advanced' }],
           needs_driver: true,
-          day_assignments: [{ work_date: '2026-09-22', user_id: 4, name: 'Liam', color: '#d97706', skills: ['labourer'], is_driver: false }],
+          day_assignments: [{ work_date: '2026-09-22', user_id: 4, name: 'Liam', color: '#d97706', skills: [{ skill_id: 15, level: 'competent' }], is_driver: false }],
         }]}
         holidays={[]}
         onJobClick={() => {}}
         onDayClick={() => {}}
       />,
     );
-    expect(screen.getByText(/nobody covering: slate/i)).toBeInTheDocument();
+    expect(screen.getByText(/nobody covering:/i)).toBeInTheDocument();
     expect(screen.getByText(/needs a driver — nobody assigned can drive/i)).toBeInTheDocument();
   });
 

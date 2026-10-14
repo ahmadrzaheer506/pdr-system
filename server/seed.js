@@ -1,6 +1,7 @@
 // ============================================================
-// Demo seed — realistic UK roofing CRM data for a fresh Postgres DB
-// (local default: DATABASE_URL …/roofing_crm).
+// Seed — core operating data always; dummy CRM records only in
+// development / staging (APP_ENV). Production seeds settings, the
+// skills catalogue, job types, and the service catalogue only.
 // Run after migrations:  npm run seed
 // Reset and reseed:      npm run seed:clean
 // Pipeline cards are per enquiry (Lead.stage / board_order). Every
@@ -9,7 +10,8 @@
 // ============================================================
 require('dotenv').config({ path: require('path').join(__dirname, '..', '.env') });
 const { initDb, nextRef, setSetting, getSetting, sequelize, DEFAULT_SETTINGS, money } = require('./db');
-const { hashPassword } = require('./auth');
+const { hashPassword, passwordError } = require('./auth');
+const { resolveSeedMode, isFullSeed } = require('./seedMode');
 const { normalisePhone } = require('./phone');
 const { datesInRange } = require('./jobDays');
 const { CATALOGUE, lineFromCatalogue, findCatalogueItem } = require('./catalogue');
@@ -22,8 +24,9 @@ const {
   User, Customer, CustomerSite, CustomerPhone, CustomerEmail, CustomerNote, Lead, Message,
   Appointment, AppointmentAssignee, Quote, Job, JobDayAssignment, JobMaterialLine, JobChecklistItem, JobVariation,
   JobMessage, Invoice, InvoicePayment, Followup, Activity, StageHistory, HolidayRequest,
-  TeamMessage, Task, TaskAssignee, Timesheet, IntegrationEvent, CatalogueItem, Notification, SecurityEvent,
+  TeamMessage, Task, TaskAssignee, Timesheet, IntegrationEvent, CatalogueItem, Skill, JobType, Notification, SecurityEvent,
 } = require('./models');
+const { DEFAULT_SKILLS, DEFAULT_JOB_TYPES } = require('./skills');
 
 const CLEAN = process.argv.includes('--clean');
 
@@ -35,7 +38,7 @@ const TABLES = [
   'job_day_assignments', 'job_assignments', 'jobs',
   'quotes', 'appointment_assignees', 'appointments', 'messages', 'leads', 'holiday_requests', 'team_messages',
   'customer_sites', 'customer_phones', 'customer_emails', 'customer_notes', 'customer_files',
-  'customers', 'security_events', 'users', 'settings', 'catalogue_items',
+  'customers', 'security_events', 'users', 'settings', 'catalogue_items', 'job_types', 'skills',
 ];
 
 function clone(value) {
@@ -118,6 +121,39 @@ function staffPrefs() {
   return { in_app, email: { crew_added: false, crew_removed: false } };
 }
 
+let skillBySlug = {};
+let jobTypeByName = {};
+
+function skillReq(slug, level = 'competent') {
+  const id = skillBySlug[slug];
+  return id ? { skill_id: id, level } : null;
+}
+
+function skillList(...entries) {
+  return entries.map(([slug, level]) => skillReq(slug, level)).filter(Boolean);
+}
+
+function jobTypeId(name) {
+  if (!name) return null;
+  const id = jobTypeByName[name];
+  return id || null;
+}
+
+async function seedSkillsCatalogue() {
+  await Skill.bulkCreate(DEFAULT_SKILLS.map((s, i) => ({
+    slug: s.slug, name: s.name, sort_order: i,
+  })));
+  const rows = await Skill.findAll();
+  skillBySlug = Object.fromEntries(rows.map((r) => [r.slug, r.id]));
+  await JobType.bulkCreate(DEFAULT_JOB_TYPES.map((t, i) => ({
+    name: t.name,
+    sort_order: i,
+    required_skills: t.skills.map((s) => skillReq(s.slug, s.level)).filter(Boolean),
+  })));
+  const types = await JobType.findAll();
+  jobTypeByName = Object.fromEntries(types.map((t) => [t.name, t.id]));
+}
+
 async function addUser(attrs) {
   const row = await User.create({
     name: attrs.name,
@@ -132,6 +168,7 @@ async function addUser(attrs) {
     hourly_cost: attrs.hourly_cost || 0,
     cis_status: attrs.cis_status || 'none',
     financials_restricted: !!attrs.financials_restricted,
+    protected: !!attrs.protected,
     notification_prefs: attrs.notification_prefs || { in_app: {}, email: {} },
     created_at: attrs.createdAt || at(-90, 9, 0),
   });
@@ -398,13 +435,14 @@ async function addJob({
   requiredSkills = [], needsDriver = false, materials, value, startDate, endDate,
   startTime = '08:00', endTime = '16:30', createdAt, crew = [], crewByDate = null,
   completedAt, notes, checklistId,
-  lat = null, lng = null, leadId = null,
+  lat = null, lng = null, leadId = null, jobTypeName = null,
 }) {
   const ids = await contactIdsFor(customerId, leadId || await latestLeadId(customerId));
   const row = await Job.create({
     customer_id: customerId,
     lead_id: leadId || await latestLeadId(customerId),
     quote_id: quoteId || null,
+    job_type_id: jobTypeId(jobTypeName),
     title,
     description: description || null,
     address,
@@ -587,34 +625,8 @@ async function scheduleQuoteFollowups(quote, customer, sentAt) {
   }
 }
 
-async function seedSettings() {
+async function seedCoreSettings() {
   const settings = clone(DEFAULT_SETTINGS);
-  settings.company = {
-    ...settings.company,
-    city: 'Reading',
-    vat_number: 'GB 123 4567 89',
-    company_number: '09876543',
-    bank_name: 'Barclays',
-    bank_account_name: 'Paul Douglas Roofing',
-    bank_sort_code: '20-00-00',
-    bank_account_number: '12345678',
-  };
-  settings.uk = {
-    ...settings.uk,
-    vat_registered: true,
-    cis_registered: true,
-    cis_utr: '1234567890',
-    default_cis_rate: 20,
-  };
-  settings.timesheets = {
-    ...settings.timesheets,
-    enabled: true,
-    require_location: true,
-    site_radius_m: 250,
-    require_photo_on_clockout: false,
-    round_to_minutes: 0,
-    max_shift_hours: 14,
-  };
   settings.followups = defaultFollowups();
   for (const [key, value] of Object.entries(settings)) {
     await setSetting(key, value);
@@ -625,8 +637,67 @@ async function seedSettings() {
   followupCfg = await getSetting('followups');
 }
 
+/** Demo-only company/VAT/bank figures so quotes and invoices look complete locally. */
+async function seedDemoSettingsOverlay() {
+  const company = {
+    ...(await getSetting('company')),
+    city: 'Reading',
+    vat_number: 'GB 123 4567 89',
+    company_number: '09876543',
+    bank_name: 'Barclays',
+    bank_account_name: 'Paul Douglas Roofing',
+    bank_sort_code: '20-00-00',
+    bank_account_number: '12345678',
+  };
+  const uk = {
+    ...(await getSetting('uk')),
+    vat_registered: true,
+    cis_registered: true,
+    cis_utr: '1234567890',
+    default_cis_rate: 20,
+  };
+  const timesheets = {
+    ...(await getSetting('timesheets')),
+    enabled: true,
+    require_location: true,
+    site_radius_m: 250,
+    require_photo_on_clockout: false,
+    round_to_minutes: 0,
+    max_shift_hours: 14,
+  };
+  await setSetting('company', company);
+  await setSetting('uk', uk);
+  await setSetting('timesheets', timesheets);
+  ukSettings = await getSetting('uk');
+  quoteDefaults = await getSetting('quote_defaults');
+  followupCfg = await getSetting('followups');
+}
+
+async function seedProductionAdmin() {
+  const name = String(process.env.SEED_ADMIN_NAME || 'Paul Douglas').trim();
+  const email = String(process.env.SEED_ADMIN_EMAIL || '').trim().toLowerCase();
+  const password = String(process.env.SEED_ADMIN_PASSWORD || '');
+  if (!email || !password) {
+    throw new Error('Production seed needs SEED_ADMIN_EMAIL and SEED_ADMIN_PASSWORD (real owner login). That account cannot be deactivated or deleted.');
+  }
+  const pwdErr = passwordError(password);
+  if (pwdErr) throw new Error(`SEED_ADMIN_PASSWORD: ${pwdErr}`);
+  await addUser({
+    name,
+    email,
+    password,
+    role: 'ADMIN',
+    color: '#ea580c',
+    protected: true,
+    notification_prefs: officePrefs(),
+  });
+  console.log(`Production seed: created protected admin ${email}`);
+}
+
 async function main() {
   await initDb();
+  const seedMode = resolveSeedMode();
+  console.log(`Seed mode: ${seedMode} (APP_ENV=${process.env.APP_ENV || process.env.NODE_ENV || 'development'})`);
 
   if (CLEAN) {
     console.log('Cleaning existing data...');
@@ -644,12 +715,24 @@ async function main() {
     return;
   }
 
-  await seedSettings();
+  await seedCoreSettings();
+  await seedSkillsCatalogue();
+
+  if (!isFullSeed()) {
+    await seedProductionAdmin();
+    console.log('\nProduction seed complete.');
+    console.log('  Seeded: company settings, message templates, checklist templates, skills, job types, service catalogue.');
+    console.log('  Skipped dummy customers, jobs, quotes, visits, and demo staff.');
+    await sequelize.close();
+    return;
+  }
+
+  await seedDemoSettingsOverlay();
 
   console.log('Creating staff...');
   paul = await addUser({
     name: 'Paul Douglas', email: 'paul@pauldouglasroofing.co.uk', phone: '07700 900001',
-    password: 'password123', role: 'ADMIN', color: '#ea580c', notification_prefs: officePrefs(),
+    password: 'password123', role: 'ADMIN', color: '#ea580c', protected: true, notification_prefs: officePrefs(),
     createdAt: at(-120, 9, 0),
   });
   lisa = await addUser({
@@ -660,32 +743,32 @@ async function main() {
 
   const jamie = await addUser({
     hourly_cost: 24.50, cis_status: 'net20', name: 'Jamie Fisher', email: 'jamie@pauldouglasroofing.co.uk',
-    phone: '07700 900011', password: 'password123', role: 'STAFF', skills: ['roofer', 'slate', 'lead_work'],
+    phone: '07700 900011', password: 'password123', role: 'STAFF', skills: skillList(['roofing', 'advanced'], ['lead_work', 'advanced'], ['site_supervision', 'competent'], ['joinery_carpentry', 'competent']),
     is_driver: true, color: '#16a34a', notification_prefs: staffPrefs(), createdAt: at(-95, 9, 0),
   });
   const connor = await addUser({
     hourly_cost: 23.00, cis_status: 'net20', name: 'Connor Blake', email: 'connor@pauldouglasroofing.co.uk',
-    phone: '07700 900012', password: 'password123', role: 'STAFF', skills: ['roofer', 'flat_roof', 'felt'],
+    phone: '07700 900012', password: 'password123', role: 'STAFF', skills: skillList(['roofing', 'competent'], ['flat_roofing', 'advanced'], ['windows_doors', 'competent']),
     is_driver: false, color: '#7c3aed', notification_prefs: staffPrefs(), createdAt: at(-94, 9, 0),
   });
   const liam = await addUser({
     hourly_cost: 16.50, cis_status: 'net20', name: 'Liam Ozturk', email: 'liam@pauldouglasroofing.co.uk',
-    phone: '07700 900013', password: 'password123', role: 'STAFF', skills: ['labourer', 'guttering'],
+    phone: '07700 900013', password: 'password123', role: 'STAFF', skills: skillList(['general_labouring', 'competent'], ['guttering_plastics', 'competent'], ['trailer_towing', 'trainee'], ['groundworks', 'trainee']),
     is_driver: true, color: '#d97706', notification_prefs: staffPrefs(), createdAt: at(-93, 9, 0),
   });
   const ryan = await addUser({
     hourly_cost: 25.00, cis_status: 'net20', name: 'Ryan Kaczmarek', email: 'ryan@pauldouglasroofing.co.uk',
-    phone: '07700 900014', password: 'password123', role: 'STAFF', skills: ['roofer', 'slate', 'chimney'],
+    phone: '07700 900014', password: 'password123', role: 'STAFF', skills: skillList(['roofing', 'advanced'], ['brickwork_masonry', 'competent'], ['general_building', 'competent'], ['digger_plant', 'trainee']),
     is_driver: true, color: '#2563eb', notification_prefs: staffPrefs(), createdAt: at(-92, 9, 0),
   });
   const callum = await addUser({
     hourly_cost: 15.75, cis_status: 'net20', name: 'Callum Ashworth', email: 'callum@pauldouglasroofing.co.uk',
-    phone: '07700 900015', password: 'password123', role: 'STAFF', skills: ['labourer', 'flat_roof'],
+    phone: '07700 900015', password: 'password123', role: 'STAFF', skills: skillList(['general_labouring', 'trainee'], ['flat_roofing', 'trainee'], ['tiling', 'trainee']),
     is_driver: false, color: '#db2777', notification_prefs: staffPrefs(), createdAt: at(-91, 9, 0),
   });
   const nathan = await addUser({
     hourly_cost: 21.00, cis_status: 'net20', name: 'Nathan Wren', email: 'nathan@pauldouglasroofing.co.uk',
-    phone: '07700 900016', password: 'password123', role: 'STAFF', skills: ['roofer', 'felt', 'guttering'],
+    phone: '07700 900016', password: 'password123', role: 'STAFF', skills: skillList(['roofing', 'competent'], ['guttering_plastics', 'advanced'], ['flat_roofing', 'competent'], ['kitchen_fitting', 'trainee']),
     is_driver: false, color: '#0d9488', notification_prefs: staffPrefs(), createdAt: at(-90, 9, 0),
   });
 
@@ -964,7 +1047,7 @@ async function main() {
     const porchValue = jobValueFromQuote(q, [porchExtra]);
     const porchJob = await addJob({
       customerId: id, quoteId: q.id, title: 'Porch roof rebuild', address: '2 Priory Court, Reading',
-      status: 'PENDING', requiredSkills: ['flat_roof', 'felt'], needsDriver: true,
+      status: 'PENDING', requiredSkills: skillList(['flat_roofing', 'competent']), jobTypeName: 'Flat roof', needsDriver: true,
       value: porchValue, createdAt: at(-1, 11, 0), checklistId: 'felt',
       lat: SITE.reading.lat, lng: SITE.reading.lng,
     });
@@ -1042,7 +1125,7 @@ async function main() {
     const jobId = await addJob({
       customerId: id, quoteId: q.id, title: 'Guttering & fascia replacement',
       description: 'Full run — front & rear, UPVC', address: '44 Sherwood Rise, Woodley',
-      status: 'IN_PROGRESS', priority: 'low', requiredSkills: ['guttering'], needsDriver: true,
+      status: 'IN_PROGRESS', priority: 'low', requiredSkills: skillList(['guttering_plastics', 'competent']), jobTypeName: 'Guttering', needsDriver: true,
       value: jobValueFromQuote(q, []), startDate: fitchStart, endDate: fitchEnd,
       createdAt: at(-6, 14, 0),
       crewByDate: {
@@ -1108,7 +1191,7 @@ async function main() {
     const jobId = await addJob({
       customerId: id, quoteId: q.id, title: 'Flat roof overlay — hall extension',
       description: 'GRP fibreglass overlay, full extension roof', address: 'Reading Community Hall, Northfield Rd',
-      status: 'SCHEDULED', priority: 'high', requiredSkills: ['flat_roof'], needsDriver: true,
+      status: 'SCHEDULED', priority: 'high', requiredSkills: skillList(['flat_roofing', 'competent']), jobTypeName: 'Flat roof', needsDriver: true,
       value: jobValueFromQuote(q, []), startDate: hallStart, endDate: hallEnd,
       startTime: '09:30',
       createdAt: at(-9, 14, 0),
@@ -1195,7 +1278,7 @@ async function main() {
     jobReroof = await addJob({
       customerId: id, quoteId: q.id, title: 'Full re-roof — semi-detached',
       description: 'Strip & re-roof, concrete interlocking tiles', address: '6 Foxglove Way, Lower Earley',
-      status: 'IN_PROGRESS', priority: 'high', requiredSkills: ['roofer'], needsDriver: true,
+      status: 'IN_PROGRESS', priority: 'high', requiredSkills: skillList(['roofing', 'advanced']), jobTypeName: 'Re-roof', needsDriver: true,
       value: jobValueFromQuote(q, []), startDate: dateOnly(-1), endDate: dateOnly(1),
       createdAt: at(-6, 10, 0),
       crewByDate: {
@@ -1242,7 +1325,7 @@ async function main() {
     await addStageHistory(id, 'QUOTED', 'WON', paul, at(-14, 14, 0));
     jobMoss = await addJob({
       customerId: id, quoteId: q.id, title: 'Moss removal & roof treatment', address: '3 Chestnut Ave, Caversham',
-      status: 'COMPLETED', requiredSkills: ['roofer'],
+      status: 'COMPLETED', requiredSkills: skillList(['roofing', 'competent']), jobTypeName: 'Re-roof',
       value: jobValueFromQuote(q, []), startDate: dateOnly(-1), endDate: dateOnly(-1),
       createdAt: at(-7, 10, 0), crew: [nathan, callum], completedAt: at(-1, 15, 30), checklistId: 'generic',
       lat: SITE.caversham.lat, lng: SITE.caversham.lng,
@@ -1339,7 +1422,7 @@ async function main() {
     await addStageHistory(id, 'QUOTED', 'WON', paul, at(-30, 14, 0));
     jobCommercial = await addJob({
       customerId: id, quoteId: q.id, title: 'Commercial flat roof repair', address: 'Unit 12, Bracknell Retail Park',
-      status: 'INVOICED', requiredSkills: ['flat_roof'], needsDriver: true,
+      status: 'INVOICED', requiredSkills: skillList(['flat_roofing', 'competent']), jobTypeName: 'Flat roof', needsDriver: true,
       value: jobValueFromQuote(q, []), startDate: dateOnly(-22), endDate: dateOnly(-21),
       createdAt: at(-25, 10, 0), crew: [ryan, connor], completedAt: at(-21, 16, 0), checklistId: 'felt',
       lat: SITE.bracknell.lat, lng: SITE.bracknell.lng,
@@ -1405,7 +1488,7 @@ async function main() {
     await addStageHistory(id, 'QUOTED', 'WON', paul, at(-42, 14, 0));
     const jobId = await addJob({
       customerId: id, quoteId: q.id, title: 'Velux window replacement', address: '19 Hawthorn Drive, Earley',
-      status: 'PAID', requiredSkills: ['roofer'], needsDriver: true,
+      status: 'PAID', requiredSkills: skillList(['roofing', 'advanced'], ['windows_doors', 'competent']), jobTypeName: 'Windows & doors', needsDriver: true,
       value: jobValueFromQuote(q, []), startDate: dateOnly(-35), endDate: dateOnly(-35),
       createdAt: at(-40, 10, 0), crew: [jamie], completedAt: at(-35, 15, 0), checklistId: 'generic',
       lat: SITE.earley.lat, lng: SITE.earley.lng,
@@ -1448,7 +1531,7 @@ async function main() {
     await addStageHistory(id, 'QUOTED', 'WON', paul, at(-50, 14, 0));
     const jobId = await addJob({
       customerId: id, quoteId: q.id, title: 'Classroom block flat roof recover', address: 'Church Road, Reading',
-      status: 'PAID', requiredSkills: ['flat_roof', 'felt'],
+      status: 'PAID', requiredSkills: skillList(['flat_roofing', 'competent']), jobTypeName: 'Flat roof',
       value: jobValueFromQuote(q, []), startDate: dateOnly(-44), endDate: dateOnly(-40),
       createdAt: at(-48, 10, 0), crew: [connor, callum, nathan], completedAt: at(-40, 16, 0), checklistId: 'felt',
       lat: SITE.reading.lat, lng: SITE.reading.lng,
@@ -1490,7 +1573,7 @@ async function main() {
     await addStageHistory(id, 'QUOTED', 'WON', paul, at(-8, 14, 0));
     jobNora = await addJob({
       customerId: id, quoteId: q.id, title: 'Downpipe & fascia repair', address: '11 Star Road, Caversham',
-      status: 'INVOICED', requiredSkills: ['guttering'], needsDriver: true,
+      status: 'INVOICED', requiredSkills: skillList(['guttering_plastics', 'competent']), jobTypeName: 'Guttering', needsDriver: true,
       value: jobValueFromQuote(q, []), startDate: dateOnly(-2), endDate: dateOnly(-2),
       createdAt: at(-7, 10, 0), crew: [liam], completedAt: at(-2, 15, 0), checklistId: 'guttering',
       lat: SITE.caversham.lat, lng: SITE.caversham.lng,
@@ -1531,7 +1614,7 @@ async function main() {
     await addStageHistory(id, 'QUOTED', 'WON', paul, at(-10, 11, 0));
     const jobId = await addJob({
       customerId: id, quoteId: q.id, title: 'Replace cracked tiles', address: '27 Peppard Road, Reading',
-      status: 'INVOICED', requiredSkills: ['roofer'],
+      status: 'INVOICED', requiredSkills: skillList(['roofing', 'competent']), jobTypeName: 'Re-roof',
       value: jobValueFromQuote(q, []), startDate: dateOnly(-4), endDate: dateOnly(-4),
       createdAt: at(-9, 10, 0), crew: [nathan], completedAt: at(-4, 15, 0), checklistId: 'generic',
       lat: SITE.reading.lat, lng: SITE.reading.lng,
@@ -1571,7 +1654,7 @@ async function main() {
     await addStageHistory(id, 'QUOTED', 'WON', paul, at(-12, 14, 0));
     jobMaya = await addJob({
       customerId: id, quoteId: q.id, title: 'Gutter joint repair', address: '4 Meadow Walk, Woodley',
-      status: 'INVOICED', requiredSkills: ['guttering'], needsDriver: true,
+      status: 'INVOICED', requiredSkills: skillList(['guttering_plastics', 'competent']), jobTypeName: 'Guttering', needsDriver: true,
       value: jobValueFromQuote(q, []), startDate: dateOnly(-5), endDate: dateOnly(-5),
       createdAt: at(-11, 10, 0), crew: [liam], completedAt: at(-5, 15, 0), checklistId: 'guttering',
       lat: SITE.woodley.lat, lng: SITE.woodley.lng,

@@ -10,7 +10,7 @@ jest.mock('../models', () => {
   });
   return {
     sequelize: { transaction: jest.fn(async (fn) => fn({})) },
-    Customer: { create: jest.fn(), findByPk: jest.fn(), findAll: jest.fn(), update: jest.fn() },
+    Customer: { create: jest.fn(), findByPk: jest.fn(), findAll: jest.fn(), update: jest.fn(), destroy: jest.fn() },
     CustomerSite: contactModel(),
     CustomerPhone: contactModel(),
     CustomerEmail: contactModel(),
@@ -40,6 +40,10 @@ jest.mock('../services/pipeline', () => ({
 jest.mock('../services/messenger', () => ({
   sendToCustomer: jest.fn(),
 }));
+jest.mock('../recordDelete', () => ({
+  customerDeleteImpact: jest.fn(),
+  destroyCustomer: jest.fn(),
+}));
 jest.mock('../db', () => ({
   plain: (row) => (row && typeof row.toJSON === 'function' ? row.toJSON() : row),
   nextRef: jest.fn(async () => 'L-0001'),
@@ -58,6 +62,7 @@ const request = require('supertest');
 const express = require('express');
 const { Op } = require('sequelize');
 const { Customer, CustomerPhone, CustomerSite, CustomerEmail, User, Lead } = require('../models');
+const { customerDeleteImpact, destroyCustomer } = require('../recordDelete');
 const { logActivity, setStage, resolveLeadForCustomer } = require('../services/pipeline');
 const { __setUser } = require('../auth');
 const { resolveCustomerType, typeFields, CUSTOMER_TYPES } = require('../customerType');
@@ -501,5 +506,47 @@ describe('PUT /api/customers/:id/stage lost reason (requirement 2.6)', () => {
       { lost_reason: 'Cheaper quote' },
       { where: { id: 41, customer_id: '9' } },
     );
+  });
+});
+
+describe('DELETE /api/customers/:id', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    __setUser({ id: 1, role: 'ADMIN', name: 'Paul' });
+  });
+
+  test('returns a warning when the customer has leads and related records', async () => {
+    Customer.findByPk.mockResolvedValue({ id: 9, name: 'Dave Whitfield' });
+    customerDeleteImpact.mockResolvedValue({
+      leads: 2,
+      messages: 4,
+      quotes: 1,
+      jobs: 0,
+      invoices: 0,
+      appointments: 1,
+      notes: 0,
+      files: 0,
+      warning: 'This customer has 2 leads. Deleting this customer also deletes related records (4 messages, 1 quote, 1 site visit). This cannot be undone.',
+    });
+    const res = await request(app).get('/api/customers/9/delete-preview');
+    expect(res.status).toBe(200);
+    expect(res.body.leads).toBe(2);
+    expect(res.body.warning).toMatch(/2 leads/);
+    expect(res.body.warning).toMatch(/4 messages/);
+  });
+
+  test('deletes the customer after confirm', async () => {
+    Customer.findByPk.mockResolvedValue({ id: 9, name: 'Dave Whitfield' });
+    destroyCustomer.mockResolvedValue();
+    const res = await request(app).delete('/api/customers/9');
+    expect(res.status).toBe(200);
+    expect(destroyCustomer).toHaveBeenCalledWith(9);
+  });
+
+  test('404 when the customer is missing', async () => {
+    Customer.findByPk.mockResolvedValue(null);
+    const res = await request(app).delete('/api/customers/99');
+    expect(res.status).toBe(404);
+    expect(destroyCustomer).not.toHaveBeenCalled();
   });
 });

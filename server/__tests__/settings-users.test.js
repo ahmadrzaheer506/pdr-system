@@ -1,6 +1,16 @@
 jest.mock('../models', () => ({
   User: { create: jest.fn(), findByPk: jest.fn(), findAll: jest.fn(), count: jest.fn() },
   SecurityEvent: { create: jest.fn(), findAll: jest.fn() },
+  Skill: {
+    findAll: jest.fn(async () => [
+      { id: 1, slug: 'roofing', name: 'Roofing', sort_order: 0 },
+      { id: 3, slug: 'lead_work', name: 'Lead Work', sort_order: 2 },
+    ]),
+  },
+}));
+jest.mock('../recordDelete', () => ({
+  staffDeleteImpact: jest.fn(),
+  destroyStaffUser: jest.fn(),
 }));
 jest.mock('../db', () => ({
   allSettings: jest.fn(),
@@ -28,6 +38,7 @@ jest.mock('../auth', () => {
 const request = require('supertest');
 const express = require('express');
 const { User, SecurityEvent } = require('../models');
+const { staffDeleteImpact, destroyStaffUser } = require('../recordDelete');
 const settings = require('../routes/settings');
 const { ROLE_VALUES } = require('../roles');
 const { getSetting } = require('../db');
@@ -189,6 +200,7 @@ function userRow(overrides = {}) {
     holiday_allowance: 28,
     color: '#000',
     financials_restricted: false,
+    protected: false,
     hourly_cost: 0,
     cis_status: 'none',
     token_version: 0,
@@ -252,6 +264,16 @@ describe('PUT /api/settings/users/:id lifecycle (requirement 1.7)', () => {
     const res = await request(app).put('/api/settings/users/1').send({ role: 'OFFICE' });
     expect(res.status).toBe(400);
     expect(res.body.error).toBe('Cannot deactivate or change the role of the last administrator');
+    expect(update).not.toHaveBeenCalled();
+  });
+
+  test('refuses to deactivate the protected first administrator', async () => {
+    const update = jest.fn();
+    User.findByPk.mockResolvedValue(userRow({ id: 9, role: 'ADMIN', protected: true, update }));
+    User.count.mockResolvedValue(2);
+    const res = await request(app).put('/api/settings/users/9').send({ active: false });
+    expect(res.status).toBe(400);
+    expect(res.body.error).toBe('The first administrator cannot be deactivated');
     expect(update).not.toHaveBeenCalled();
   });
 
@@ -359,7 +381,7 @@ describe('user skills, driver, and pay rates (requirement 1.8)', () => {
   test('GET /users returns hourly_cost and cis_status for office viewers', async () => {
     User.findAll.mockResolvedValue([{
       toJSON: () => ({
-        id: 3, name: 'Jamie', role: 'STAFF', skills: ['roofer'], is_driver: true,
+        id: 3, name: 'Jamie', role: 'STAFF', skills: [{ skill_id: 1, level: 'advanced' }], is_driver: true,
         hourly_cost: 24.5, cis_status: 'net20', financials_restricted: false,
       }),
     }]);
@@ -369,7 +391,7 @@ describe('user skills, driver, and pay rates (requirement 1.8)', () => {
       order: [['created_at', 'DESC'], ['id', 'DESC']],
     }));
     expect(res.body.users[0]).toMatchObject({
-      hourly_cost: 24.5, cis_status: 'net20', skills: ['roofer'], is_driver: true,
+      hourly_cost: 24.5, cis_status: 'net20', skills: [{ skill_id: 1, level: 'advanced' }], is_driver: true,
     });
   });
 
@@ -384,11 +406,11 @@ describe('user skills, driver, and pay rates (requirement 1.8)', () => {
     }));
     User.create.mockClear();
     await request(app).post('/api/settings/users').send({
-      ...validUser, role: 'STAFF', skills: ['slate'], is_driver: true,
+      ...validUser, role: 'STAFF', skills: [{ skill_id: 1, level: 'competent' }], is_driver: true,
       hourly_cost: 24.5, cis_status: 'net20',
     });
     expect(User.create).toHaveBeenCalledWith(expect.objectContaining({
-      role: 'STAFF', skills: ['slate'], is_driver: true, hourly_cost: 24.5, cis_status: 'net20',
+      role: 'STAFF', skills: [{ skill_id: 1, level: 'competent' }], is_driver: true, hourly_cost: 24.5, cis_status: 'net20',
     }));
   });
 
@@ -409,19 +431,19 @@ describe('user skills, driver, and pay rates (requirement 1.8)', () => {
   test('PUT updates STAFF skills/driver/rates and clears skills when the role is not STAFF', async () => {
     const update = jest.fn();
     User.findByPk.mockResolvedValue(userRow({
-      skills: ['roofer'], is_driver: true, hourly_cost: 24.5, cis_status: 'none', update,
+      skills: [{ skill_id: 1, level: 'competent' }], is_driver: true, hourly_cost: 24.5, cis_status: 'none', update,
     }));
     const staff = await request(app).put('/api/settings/users/5').send({
-      skills: ['roofer', 'slate'], is_driver: false, hourly_cost: 26, cis_status: 'higher30',
+      skills: [{ skill_id: 1, level: 'advanced' }, { skill_id: 3, level: 'competent' }], is_driver: false, hourly_cost: 26, cis_status: 'higher30',
     });
     expect(staff.status).toBe(200);
     expect(update).toHaveBeenCalledWith(expect.objectContaining({
-      skills: ['roofer', 'slate'], is_driver: false, hourly_cost: 26, cis_status: 'higher30',
+      skills: [{ skill_id: 1, level: 'advanced' }, { skill_id: 3, level: 'competent' }], is_driver: false, hourly_cost: 26, cis_status: 'higher30',
     }));
 
     update.mockClear();
     User.findByPk.mockResolvedValue(userRow({
-      skills: ['roofer'], is_driver: true, hourly_cost: 24.5, cis_status: 'net20', update,
+      skills: [{ skill_id: 1, level: 'competent' }], is_driver: true, hourly_cost: 24.5, cis_status: 'net20', update,
     }));
     const office = await request(app).put('/api/settings/users/5').send({ role: 'OFFICE', hourly_cost: 20 });
     expect(office.status).toBe(200);
@@ -477,5 +499,62 @@ describe('POST/PUT /api/settings/users holiday allowance (requirement 17.3)', ()
     const res = await request(app).put('/api/settings/users/5').send({ name: 'Jamie Field' });
     expect(res.status).toBe(200);
     expect(update).toHaveBeenCalledWith(expect.objectContaining({ holiday_allowance: 18 }));
+  });
+});
+
+describe('DELETE /api/settings/users/:id', () => {
+  beforeEach(() => jest.clearAllMocks());
+
+  test('preview lists pending tasks and visits separately', async () => {
+    User.findByPk.mockResolvedValue(userRow({ id: 5, name: 'Jamie' }));
+    staffDeleteImpact.mockResolvedValue({
+      pending_tasks: 2,
+      pending_visits: 1,
+      pending_jobs: 0,
+      warning: 'This user has 2 pending tasks. This user has 1 pending site visit. Deleting this account unassigns them from that work. This cannot be undone.',
+    });
+    const res = await request(app).get('/api/settings/users/5/delete-preview');
+    expect(res.status).toBe(200);
+    expect(res.body.pending_tasks).toBe(2);
+    expect(res.body.pending_visits).toBe(1);
+    expect(res.body.warning).toMatch(/2 pending tasks/);
+    expect(res.body.warning).toMatch(/1 pending site visit/);
+  });
+
+  test('deletes a staff account', async () => {
+    User.findByPk.mockResolvedValue(userRow({ id: 5 }));
+    destroyStaffUser.mockResolvedValue();
+    const res = await request(app).delete('/api/settings/users/5');
+    expect(res.status).toBe(200);
+    expect(destroyStaffUser).toHaveBeenCalledWith(5);
+    expect(SecurityEvent.create).toHaveBeenCalledWith(expect.objectContaining({
+      action: 'user_delete', actor_user_id: 1, target_user_id: 5,
+    }));
+  });
+
+  test('refuses to delete the signed-in account', async () => {
+    User.findByPk.mockResolvedValue(userRow({ id: 1, role: 'ADMIN' }));
+    const res = await request(app).delete('/api/settings/users/1');
+    expect(res.status).toBe(400);
+    expect(res.body.error).toBe('You cannot delete your own account');
+    expect(destroyStaffUser).not.toHaveBeenCalled();
+  });
+
+  test('refuses to delete the protected first administrator', async () => {
+    User.findByPk.mockResolvedValue(userRow({ id: 9, role: 'ADMIN', active: true, protected: true }));
+    User.count.mockResolvedValue(2);
+    const res = await request(app).delete('/api/settings/users/9');
+    expect(res.status).toBe(400);
+    expect(res.body.error).toBe('The first administrator cannot be deleted');
+    expect(destroyStaffUser).not.toHaveBeenCalled();
+  });
+
+  test('refuses to delete the last administrator', async () => {
+    User.findByPk.mockResolvedValue(userRow({ id: 9, role: 'ADMIN', active: true }));
+    User.count.mockResolvedValue(1);
+    const res = await request(app).delete('/api/settings/users/9');
+    expect(res.status).toBe(400);
+    expect(res.body.error).toBe('Cannot delete the last administrator');
+    expect(destroyStaffUser).not.toHaveBeenCalled();
   });
 });

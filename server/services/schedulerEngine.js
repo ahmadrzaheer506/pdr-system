@@ -4,6 +4,7 @@
 const { Op } = require('sequelize');
 const { User, HolidayRequest, Job, JobDayAssignment, Customer } = require('../models');
 const { plain } = require('../db');
+const skillsLib = require('../skills');
 
 async function buildContext(forDate) {
   const staffRows = await User.findAll({
@@ -136,13 +137,20 @@ function ruleSchedule(context, transcript = '') {
     const team = [];
     const notes = [];
     for (const skill of jb.required_skills) {
-      if (team.some((m) => m.skills.includes(skill))) continue;
-      const match = free().find((s) => s.skills.includes(skill) && !team.includes(s));
+      if (team.some((m) => skillsLib.staffCoversRequirement(m.skills, skill))) continue;
+      const match = free()
+        .filter((s) => skillsLib.staffCoversRequirement(s.skills, skill) && !team.includes(s))
+        .sort((a, b) => {
+          const skillId = skill?.skill_id ?? skill;
+          const ra = skillsLib.LEVEL_RANK[skillsLib.staffLevelFor(a.skills, skillId)] || 0;
+          const rb = skillsLib.LEVEL_RANK[skillsLib.staffLevelFor(b.skills, skillId)] || 0;
+          return rb - ra;
+        })[0];
       if (match) {
         team.push(match);
         taken.add(match.id);
       } else {
-        notes.push(`no available staff with skill "${skill}"`);
+        notes.push(`no available staff with skill "${skillsLib.requiredSkillLabel(skill)}"`);
       }
     }
     if (!team.some((m) => m.is_driver)) {
@@ -252,7 +260,9 @@ function validateProposal(proposal, context, { allowConflicts = false } = {}) {
     }
     const teamSkills = users.flatMap((u) => staffById.get(u).skills);
     for (const skill of jb.required_skills || []) {
-      if (!teamSkills.includes(skill)) warnings.push(`"${jb.title}": nobody on the team has required skill "${skill}"`);
+      if (!skillsLib.staffCoversRequirement(teamSkills, skill)) {
+        warnings.push(`"${jb.title}": nobody on the team has required skill "${skillsLib.requiredSkillLabel(skill)}"`);
+      }
     }
     if (!users.some((u) => staffById.get(u).is_driver)) warnings.push(`"${jb.title}": no driver on the team`);
     cleaned.push({ ...a, job_id: jb.id, user_ids: users });
