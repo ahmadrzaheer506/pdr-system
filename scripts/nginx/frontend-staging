@@ -1,0 +1,27 @@
+# Copy to /etc/nginx/sites-available/frontend-staging and enable:
+#   sudo ln -sfn /etc/nginx/sites-available/frontend-staging /etc/nginx/sites-enabled/frontend-staging
+#   sudo nginx -t && sudo systemctl reload nginx
+#
+# Proxies the staging host to pdr-staging-web on 127.0.0.1:5000.
+# The staging API stays on 127.0.0.1:5001 and is reached only via /api.
+# Do not use default_server — production frontend already owns :80 default.
+
+server {
+    listen 80;
+    listen [::]:80;
+
+    # Replace with the staging hostname, e.g. staging.example.com
+    server_name staging.example.com;
+
+    client_max_body_size 12m;
+
+    location / {
+        proxy_pass http://127.0.0.1:5000;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_read_timeout 60s;
+    }
+}

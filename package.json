@@ -15,7 +15,8 @@
     "seed": "node server/seed.js",
     "seed:clean": "node server/seed.js --clean",
     "start": "node server/index.js",
-    "deploy": "bash scripts/deploy.sh"
+    "deploy": "bash scripts/deploy.sh",
+    "deploy:staging": "bash scripts/deploy-staging.sh"
   },
   "devDependencies": {
     "concurrently": "^9.1.0"

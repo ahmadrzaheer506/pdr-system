@@ -177,7 +177,9 @@ export default function DayView({
           {dayHolidays.map((h) => (
             <div key={h.id} className="text-[10px] bg-amber-50 text-amber-700 rounded px-2 py-1">🏖 {(h.user_name || '').split(' ')[0]} off</div>
           ))}
-          {dayJobs.length === 0 && dayHolidays.length === 0 && <div className="text-sm text-slate-300 text-center py-4">No jobs this day</div>}
+          {dayJobs.length === 0 && dayHolidays.length === 0 && (
+            <div className="flex min-h-[9.5rem] items-center justify-center text-sm text-slate-300">No data found</div>
+          )}
         </div>
       </div>
     </div>

@@ -1,7 +1,7 @@
 // ============================================================
 // Sequelize instance — PostgreSQL via DATABASE_URL.
 // ============================================================
-require('dotenv').config({ path: require('path').join(__dirname, '..', '..', '.env') });
+require('../loadEnv');
 const { Sequelize } = require('sequelize');
 const { sequelizeDialectOptions } = require('./postgresSsl');
 

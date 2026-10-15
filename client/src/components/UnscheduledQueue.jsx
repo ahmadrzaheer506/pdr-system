@@ -173,7 +173,9 @@ export default function UnscheduledQueue({
     <div className="card flex h-full min-h-[28rem] max-h-[min(52rem,calc(100vh-5.5rem))] flex-col p-4 lg:sticky lg:top-4 lg:min-h-[42rem]">
       <h3 className="mb-1 flex shrink-0 items-center gap-1.5 font-semibold text-slate-800"><ListTodo size={16} /> Unscheduled</h3>
       <p className="mb-3 shrink-0 text-xs text-slate-400">PENDING jobs. Place them with a start date (end date optional).</p>
-      {jobs.length === 0 && <p className="text-sm text-slate-400">Queue is empty.</p>}
+      {jobs.length === 0 ? (
+        <div className="flex min-h-0 flex-1 items-center justify-center text-sm text-slate-400">No data found</div>
+      ) : (
       <ul className="min-h-0 flex-1 space-y-3 overflow-y-auto overscroll-contain pr-0.5">
         {jobs.map((job) => {
           const form = formFor(job.id);
@@ -260,6 +262,7 @@ export default function UnscheduledQueue({
           );
         })}
       </ul>
+      )}
       <CrewConflictModal
         open={!!conflictJob}
         conflicts={conflict?.conflicts || []}

@@ -77,7 +77,7 @@ export default function WeekView({ anchorDate, jobs, holidays, onJobClick, onDay
         return (
           <div
             key={dISO}
-            className={`flex min-w-0 flex-col rounded-lg border p-2 ${isToday ? 'border-brand-300 bg-brand-50/40' : 'border-slate-200 bg-white'}`}
+            className={`flex min-h-[12rem] min-w-0 flex-col rounded-lg border p-2 ${isToday ? 'border-brand-300 bg-brand-50/40' : 'border-slate-200 bg-white'}`}
           >
             <button
               type="button"
@@ -90,7 +90,7 @@ export default function WeekView({ anchorDate, jobs, holidays, onJobClick, onDay
             <div
               role="region"
               aria-label={`Jobs on ${heading}`}
-              className="space-y-1.5 overflow-y-auto max-h-[28rem] overscroll-contain pr-0.5"
+              className="min-h-[9.5rem] space-y-1.5 overflow-y-auto max-h-[28rem] overscroll-contain pr-0.5"
             >
               {dayJobs.map((j) => (
                 <JobChip
@@ -105,7 +105,9 @@ export default function WeekView({ anchorDate, jobs, holidays, onJobClick, onDay
               {dayHolidays.map((h) => (
                 <div key={h.id} className="text-[10px] bg-amber-50 text-amber-700 rounded px-2 py-1">🏖 {(h.user_name || '').split(' ')[0]} off</div>
               ))}
-              {dayJobs.length === 0 && dayHolidays.length === 0 && <div className="text-[11px] text-slate-300 text-center py-1">—</div>}
+              {dayJobs.length === 0 && dayHolidays.length === 0 && (
+                <div className="flex min-h-[8.5rem] items-center justify-center text-[11px] text-slate-300">No data found</div>
+              )}
             </div>
           </div>
         );

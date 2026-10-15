@@ -2,7 +2,7 @@
 // Paul Douglas Roofing — Business OS
 // Server entry point: Express app, cron jobs, static hosting.
 // ============================================================
-require('dotenv').config({ path: require('path').join(__dirname, '..', '.env') });
+require('./loadEnv');
 const express = require('express');
 const cors = require('cors');
 const cookieParser = require('cookie-parser');

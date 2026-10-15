@@ -3,7 +3,7 @@
  * Production frontend process: serves client/dist and proxies /api
  * and /public-files to the API PM2 process so the SPA keeps same-origin cookies.
  */
-require('dotenv').config({ path: require('path').join(__dirname, '..', '.env') });
+require('./loadEnv');
 const http = require('http');
 const path = require('path');
 const express = require('express');

@@ -8,7 +8,7 @@
 // customer gets a primary lead with one site/phone/email. Quotes, visits,
 // jobs and stage history always carry that lead_id (and inherit those contacts).
 // ============================================================
-require('dotenv').config({ path: require('path').join(__dirname, '..', '.env') });
+require('./loadEnv');
 const { initDb, nextRef, setSetting, getSetting, sequelize, DEFAULT_SETTINGS, money } = require('./db');
 const { hashPassword, passwordError } = require('./auth');
 const { resolveSeedMode, isFullSeed } = require('./seedMode');

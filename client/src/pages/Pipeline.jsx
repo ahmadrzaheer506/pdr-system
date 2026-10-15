@@ -666,7 +666,7 @@ export default function Pipeline() {
                     ))}
                     {cards.length === 0 && (
                       <div className="text-xs text-slate-400 text-center py-8 border border-dashed border-slate-200 bg-white/60 rounded-lg">
-                        No customers
+                        No data found
                       </div>
                     )}
                   </div>

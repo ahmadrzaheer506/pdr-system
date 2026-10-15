@@ -210,12 +210,16 @@ export function StatTile({ label, value, sub, icon: Icon, accent = 'brand' }) {
   );
 }
 
-export function EmptyState({ icon: Icon, title, detail }) {
+export function EmptyState({ icon: Icon, title, detail, className = '' }) {
   return (
-    <div className="flex flex-col items-center justify-center text-center py-14 text-slate-400">
-      {Icon && <Icon size={32} className="mb-3 opacity-50" />}
-      <div className="font-medium text-slate-500">{title}</div>
-      {detail && <div className="text-sm mt-1 max-w-sm">{detail}</div>}
+    <div className={`flex min-h-[18rem] flex-col items-center justify-center rounded-2xl bg-white px-6 py-14 text-center shadow-[0_1px_2px_rgba(15,23,42,0.04)] ring-1 ring-slate-200/80 ${className}`}>
+      {Icon ? (
+        <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-slate-100 text-slate-500 ring-1 ring-slate-200/70">
+          <Icon size={22} />
+        </div>
+      ) : null}
+      <div className={`text-[15px] font-semibold text-slate-800 ${Icon ? 'mt-4' : ''}`}>{title}</div>
+      {detail ? <div className="mt-1.5 max-w-md text-sm leading-relaxed text-slate-500">{detail}</div> : null}
     </div>
   );
 }

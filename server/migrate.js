@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // Apply pending Sequelize/Umzug migrations without starting the HTTP server.
-require('dotenv').config({ path: require('path').join(__dirname, '..', '.env') });
+require('./loadEnv');
 const { initDb, sequelize } = require('./db');
 
 initDb()

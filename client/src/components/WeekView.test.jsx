@@ -226,6 +226,7 @@ describe('WeekView (requirement 8.1)', () => {
     const list = screen.getByRole('region', { name: /jobs on mon 28/i });
     expect(list.parentElement.className).not.toMatch(/h-\[32rem\]/);
     expect(list.className).toMatch(/max-h-\[28rem\]/);
-    expect(screen.getAllByText('—').length).toBe(7);
+    expect(list.className).toMatch(/min-h-\[9\.5rem\]/);
+    expect(screen.getAllByText('No data found').length).toBe(7);
   });
 });

@@ -308,9 +308,7 @@ function LiveTab({ show }) {
           <h2 className="font-semibold text-slate-800">On the clock ({active.length})</h2>
         </div>
         {active.length === 0 ? (
-          <div className="card">
-            <EmptyState icon={Radio} title="Nobody on the clock" detail="Open shifts appear here as soon as someone clocks in." />
-          </div>
+          <EmptyState icon={Radio} title="Nobody on the clock" detail="Open shifts appear here as soon as someone clocks in." />
         ) : (
           <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-3">
             {active.map((a) => (

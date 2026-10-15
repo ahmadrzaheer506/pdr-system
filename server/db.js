@@ -4,7 +4,7 @@
 // Settings helpers and reference generators stay here so routes
 // keep a single import for DATA_DIR / getSetting / nextRef.
 // ============================================================
-require('dotenv').config({ path: require('path').join(__dirname, '..', '.env') });
+require('./loadEnv');
 const path = require('path');
 const fs = require('fs');
 const { Umzug, SequelizeStorage } = require('umzug');
