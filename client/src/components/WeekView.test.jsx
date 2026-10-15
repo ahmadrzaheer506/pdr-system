@@ -196,6 +196,23 @@ describe('WeekView (requirement 8.1)', () => {
     expect(onJobClick).toHaveBeenCalledWith(12, '2026-10-08');
   });
 
+  it('scrolls the week horizontally so day columns stay readable on a narrow screen', () => {
+    render(
+      <WeekView
+        anchorDate={new Date(2026, 8, 28)}
+        jobs={[]}
+        holidays={[]}
+        onJobClick={() => {}}
+        onDayClick={() => {}}
+      />,
+    );
+    const scroller = screen.getByTestId('week-view-scroller');
+    expect(scroller.className).toMatch(/overflow-x-auto/);
+    expect(scroller.firstElementChild.className).toMatch(/min-w-\[52rem\]/);
+    expect(scroller.firstElementChild.className).toMatch(/lg:min-w-0/);
+    expect(scroller.firstElementChild.className).toMatch(/grid-cols-7/);
+  });
+
   it('keeps an empty day column short', () => {
     render(
       <WeekView

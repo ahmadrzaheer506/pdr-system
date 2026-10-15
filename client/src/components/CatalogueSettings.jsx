@@ -95,17 +95,24 @@ export default function CatalogueSettings({ canEdit }) {
 
   return (
     <section className="rounded-2xl border border-slate-200 bg-white p-5 sm:p-6">
-      <div className="mb-5 flex items-start gap-3">
-        <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-slate-100 text-slate-600">
-          <Package size={15} />
+      <div className="mb-5 flex items-start justify-between gap-3">
+        <div className="flex min-w-0 items-start gap-3">
+          <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-slate-100 text-slate-600">
+            <Package size={15} />
+          </div>
+          <div className="min-w-0">
+            <h3 className="text-[15px] font-semibold text-slate-900">Service catalogue</h3>
+            <p className="mt-0.5 text-xs leading-relaxed text-slate-500">Used on quotes. Changing a row does not rewrite lines already saved on a quote.</p>
+          </div>
         </div>
-        <div className="min-w-0">
-          <h3 className="text-[15px] font-semibold text-slate-900">Service catalogue</h3>
-          <p className="mt-0.5 text-xs leading-relaxed text-slate-500">Used on quotes. Changing a row does not rewrite lines already saved on a quote.</p>
-        </div>
+        {canEdit && (
+          <button type="button" className="btn-primary shrink-0 whitespace-nowrap !h-10 !px-3" onClick={() => setDraft({ ...EMPTY })}>
+            <Plus size={14} /> Add item
+          </button>
+        )}
       </div>
-      <div className="flex flex-wrap items-center gap-3">
-        <div className="min-w-[12rem] flex-1">
+      <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center sm:gap-3">
+        <div className="min-w-0 w-full sm:min-w-[12rem] sm:flex-1">
           <input
             id="catalogue-search"
             className="input !h-10"
@@ -122,13 +129,8 @@ export default function CatalogueSettings({ canEdit }) {
           onChange={setKind}
           options={KINDS}
           align="right"
-          className="w-[9.5rem] shrink-0"
+          className="w-full sm:w-[9.5rem] sm:shrink-0"
         />
-        {canEdit && (
-          <button type="button" className="btn-primary !h-10" onClick={() => setDraft({ ...EMPTY })}>
-            <Plus size={14} /> Add item
-          </button>
-        )}
       </div>
       <div className="mt-4 overflow-x-auto">
         <table className="w-full text-sm">

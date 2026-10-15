@@ -313,20 +313,59 @@ describe('Pipeline filters (requirement 4.4)', () => {
   });
 
   it('starts with filters open and can collapse and expand', async () => {
-    const user = userEvent.setup();
-    render(
-      <MemoryRouter initialEntries={['/pipeline?q=Dave']}>
-        <Pipeline />
-      </MemoryRouter>,
-    );
-    expect(await screen.findByLabelText(/search pipeline/i)).toHaveValue('Dave');
-    expect(screen.getByRole('button', { name: /hide filters/i })).toHaveAttribute('aria-expanded', 'true');
-    await user.click(screen.getByRole('button', { name: /hide filters/i }));
-    expect(screen.queryByLabelText(/search pipeline/i)).toBeNull();
-    expect(screen.getByRole('button', { name: /show filters/i })).toHaveAttribute('aria-expanded', 'false');
-    expect(screen.getByText(/1 active/i)).toBeInTheDocument();
-    await user.click(screen.getByRole('button', { name: /show filters/i }));
-    expect(screen.getByLabelText(/search pipeline/i)).toBeInTheDocument();
+    const originalMatchMedia = window.matchMedia;
+    window.matchMedia = vi.fn().mockImplementation((query) => ({
+      matches: query.includes('1024px'),
+      media: query,
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn(),
+      addListener: vi.fn(),
+      removeListener: vi.fn(),
+      dispatchEvent: vi.fn(),
+    }));
+    try {
+      const user = userEvent.setup();
+      render(
+        <MemoryRouter initialEntries={['/pipeline?q=Dave']}>
+          <Pipeline />
+        </MemoryRouter>,
+      );
+      expect(await screen.findByLabelText(/search pipeline/i)).toHaveValue('Dave');
+      expect(screen.getByRole('button', { name: /hide filters/i })).toHaveAttribute('aria-expanded', 'true');
+      await user.click(screen.getByRole('button', { name: /hide filters/i }));
+      expect(screen.queryByLabelText(/search pipeline/i)).toBeNull();
+      expect(screen.getByRole('button', { name: /show filters/i })).toHaveAttribute('aria-expanded', 'false');
+      expect(screen.getByText(/1 active/i)).toBeInTheDocument();
+      await user.click(screen.getByRole('button', { name: /show filters/i }));
+      expect(screen.getByLabelText(/search pipeline/i)).toBeInTheDocument();
+    } finally {
+      window.matchMedia = originalMatchMedia;
+    }
+  });
+
+  it('starts with filters collapsed on a mobile viewport', async () => {
+    const originalMatchMedia = window.matchMedia;
+    window.matchMedia = vi.fn().mockImplementation((query) => ({
+      matches: false,
+      media: query,
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn(),
+      addListener: vi.fn(),
+      removeListener: vi.fn(),
+      dispatchEvent: vi.fn(),
+    }));
+    try {
+      render(
+        <MemoryRouter initialEntries={['/pipeline']}>
+          <Pipeline />
+        </MemoryRouter>,
+      );
+      await screen.findByText(/Dave Whitfield/);
+      expect(screen.getByRole('button', { name: /show filters/i })).toHaveAttribute('aria-expanded', 'false');
+      expect(screen.queryByLabelText(/search pipeline/i)).toBeNull();
+    } finally {
+      window.matchMedia = originalMatchMedia;
+    }
   });
 });
 

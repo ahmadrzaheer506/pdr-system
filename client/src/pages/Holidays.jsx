@@ -14,6 +14,7 @@ import {
   holidayPayload,
 } from '../lib/holidays.js';
 import { localIsoDate } from '../lib/schedule';
+import ScrollTabBar from '../components/ScrollTabBar.jsx';
 
 const PAGE_TABS = [
   { id: 'calendar', label: 'Calendar' },
@@ -57,45 +58,53 @@ export default function Holidays() {
 
   return (
     <div className="space-y-5">
-      <div className="flex items-center justify-between flex-wrap gap-3">
-        <div>
-          <h1 className="text-2xl font-bold text-slate-900">Staff Holidays</h1>
-          <p className="text-slate-500 text-sm mt-0.5">
-            {data.notice_days} days&apos; notice is required when the lads request.
-            Office can book emergency or compassionate leave without that wait.
-          </p>
+      <div>
+        <div className="flex items-center justify-between gap-3">
+          <h1 className="min-w-0 text-2xl font-bold text-slate-900">Staff Holidays</h1>
+          <button type="button" className="btn-primary shrink-0" onClick={() => setBookOpen(true)}>
+            <Plus size={16} /> Book holiday
+          </button>
         </div>
-        <button type="button" className="btn-primary" onClick={() => setBookOpen(true)}><Plus size={16} /> Book holiday</button>
+        <p className="mt-0.5 text-sm text-slate-500">
+          {data.notice_days} days&apos; notice is required when the lads request.
+          Office can book emergency or compassionate leave without that wait.
+        </p>
       </div>
 
-      <div className="flex gap-1 bg-white border border-slate-200 rounded-lg p-1 w-fit">
-        {PAGE_TABS.map((tab) => (
-          <button
-            key={tab.id}
-            type="button"
-            onClick={() => setPage(tab.id)}
-            className={`px-3.5 py-1.5 text-sm rounded-md font-medium ${page === tab.id ? 'bg-navy-900 text-white' : 'text-slate-500 hover:bg-slate-50'}`}
-          >
-            {tab.label}
-          </button>
-        ))}
+      <div className="max-w-full rounded-lg border border-slate-200 bg-white p-1">
+        <ScrollTabBar value={page} fadeFrom="from-white" trackClassName="gap-1">
+          {PAGE_TABS.map((tab) => (
+            <button
+              key={tab.id}
+              type="button"
+              data-tab={tab.id}
+              onClick={() => setPage(tab.id)}
+              className={`shrink-0 whitespace-nowrap rounded-md px-3.5 py-1.5 text-sm font-medium ${page === tab.id ? 'bg-navy-900 text-white' : 'text-slate-500 hover:bg-slate-50'}`}
+            >
+              {tab.label}
+            </button>
+          ))}
+        </ScrollTabBar>
       </div>
 
       {page === 'calendar' ? (
         <HolidayMonthGrid refreshKey={calTick} />
       ) : (
         <>
-          <div className="flex gap-1 bg-white border border-slate-200 rounded-lg p-1 w-fit">
-            {HOLIDAY_TABS.map((tab) => (
-              <button
-                key={tab.id}
-                type="button"
-                onClick={() => setStatus(tab.id)}
-                className={`px-3.5 py-1.5 text-sm rounded-md font-medium ${status === tab.id ? 'bg-navy-900 text-white' : 'text-slate-500 hover:bg-slate-50'}`}
-              >
-                {tab.label}
-              </button>
-            ))}
+          <div className="max-w-full rounded-lg border border-slate-200 bg-white p-1">
+            <ScrollTabBar value={status} fadeFrom="from-white" trackClassName="gap-1">
+              {HOLIDAY_TABS.map((tab) => (
+                <button
+                  key={tab.id}
+                  type="button"
+                  data-tab={tab.id}
+                  onClick={() => setStatus(tab.id)}
+                  className={`shrink-0 whitespace-nowrap rounded-md px-3.5 py-1.5 text-sm font-medium ${status === tab.id ? 'bg-navy-900 text-white' : 'text-slate-500 hover:bg-slate-50'}`}
+                >
+                  {tab.label}
+                </button>
+              ))}
+            </ScrollTabBar>
           </div>
 
           {data.holidays.length === 0 ? (
@@ -308,7 +317,7 @@ function StaffOffChip({ person, compact = false }) {
   return (
     <StaffPersonHover
       person={person}
-      className={`flex min-w-0 items-center gap-1.5 rounded-lg px-1 py-0.5 ${compact ? '' : 'border border-white/60'}`}
+      className={`flex min-w-0 items-center gap-1 rounded-lg ${compact ? 'p-0 sm:gap-1.5 sm:px-1 sm:py-0.5' : 'gap-1.5 border border-white/60 px-1 py-0.5'}`}
       style={{ background: colorWash(person.color) || 'rgba(241, 245, 249, 0.9)' }}
     >
       <Avatar
@@ -317,7 +326,7 @@ function StaffOffChip({ person, compact = false }) {
         size={compact ? 4.5 : 6}
         src={avatarUrl({ id: person.user_id, avatar_file: person.avatar_file })}
       />
-      <span className={`min-w-0 font-medium text-slate-800 ${compact ? 'line-clamp-2 text-[11px] leading-tight' : 'text-sm'}`}>
+      <span className={`min-w-0 font-medium text-slate-800 ${compact ? 'hidden sm:line-clamp-2 sm:block text-[11px] leading-tight' : 'text-sm'}`}>
         {name}
       </span>
     </StaffPersonHover>
@@ -353,25 +362,25 @@ function HolidayMonthGrid({ refreshKey }) {
 
   return (
     <div className="card overflow-visible">
-      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-100 px-5 py-4">
+      <div className="flex flex-col gap-3 border-b border-slate-100 px-4 py-4 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between sm:px-5">
         <div>
           <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-400">Team calendar</p>
           <h2 className="text-lg font-semibold text-slate-900">Approved off</h2>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex min-w-0 items-center gap-2">
           <button
             type="button"
-            className="btn-secondary !h-9 !px-3 text-xs"
+            className="btn-secondary !h-9 shrink-0 !px-3 text-xs"
             disabled={viewingCurrent}
             onClick={() => goTo(now.getFullYear(), now.getMonth() + 1)}
           >
             Today
           </button>
-          <div className="flex items-center rounded-lg border border-slate-200 bg-slate-50 p-0.5">
+          <div className="flex min-w-0 flex-1 items-center rounded-lg border border-slate-200 bg-slate-50 p-0.5 sm:flex-none">
             <button type="button" className="btn-ghost !p-1.5" onClick={() => shift(-1)} aria-label="Previous month">
               <ChevronLeft size={16} />
             </button>
-            <div className="min-w-[9.5rem] px-2 text-center text-sm font-semibold text-slate-800">{label}</div>
+            <div className="min-w-0 flex-1 px-1 text-center text-sm font-semibold text-slate-800 sm:min-w-[9.5rem] sm:px-2">{label}</div>
             <button type="button" className="btn-ghost !p-1.5" onClick={() => shift(1)} aria-label="Next month">
               <ChevronRight size={16} />
             </button>
@@ -379,18 +388,19 @@ function HolidayMonthGrid({ refreshKey }) {
         </div>
       </div>
 
-      <div className="p-4 sm:p-5">
-        <div className="grid grid-cols-7 gap-1.5" data-calendar-month={`${year}-${pad2(month)}`}>
+      <div className="p-3 sm:p-5">
+        <div className="grid grid-cols-7 gap-1 sm:gap-1.5" data-calendar-month={`${year}-${pad2(month)}`}>
           {WEEKDAYS.map((d, i) => (
             <div
               key={d}
-              className={`pb-1.5 text-center text-[11px] font-semibold uppercase tracking-wide ${i >= 5 ? 'text-slate-400' : 'text-slate-500'}`}
+              className={`pb-1 text-center text-[10px] font-semibold uppercase tracking-wide sm:pb-1.5 sm:text-[11px] ${i >= 5 ? 'text-slate-400' : 'text-slate-500'}`}
             >
-              {d}
+              <span className="sm:hidden">{d.slice(0, 1)}</span>
+              <span className="hidden sm:inline">{d}</span>
             </div>
           ))}
           {monthCells(year, month).map((iso, i) => {
-            if (!iso) return <div key={`e-${i}`} className="min-h-[6.75rem] rounded-xl bg-slate-50/60" />;
+            if (!iso) return <div key={`e-${i}`} className="min-h-[3.75rem] rounded-lg bg-slate-50/60 sm:min-h-[6.75rem] sm:rounded-xl" />;
             const off = peopleOffOn(iso, holidays);
             const shown = off.slice(0, MAX_DAY_CHIPS);
             const extra = off.length - shown.length;
@@ -400,7 +410,7 @@ function HolidayMonthGrid({ refreshKey }) {
             return (
               <div
                 key={iso}
-                    className={`flex min-h-[6.75rem] flex-col rounded-xl border p-1.5 sm:p-2 ${
+                className={`flex min-h-[3.75rem] flex-col overflow-hidden rounded-lg border p-1 sm:min-h-[6.75rem] sm:rounded-xl sm:p-2 ${
                   isToday
                     ? 'border-brand-500 bg-brand-50 shadow-sm'
                     : off.length
@@ -410,24 +420,24 @@ function HolidayMonthGrid({ refreshKey }) {
                         : 'border-slate-100 bg-white'
                 }`}
               >
-                <div className="mb-1 flex items-center justify-between">
+                <div className="mb-0.5 flex items-center justify-between sm:mb-1">
                   <span
-                    className={`inline-flex h-6 w-6 items-center justify-center rounded-full text-xs font-semibold ${
+                    className={`inline-flex h-5 w-5 items-center justify-center rounded-full text-[11px] font-semibold sm:h-6 sm:w-6 sm:text-xs ${
                       isToday ? 'bg-brand-600 text-white' : isWeekend ? 'text-slate-400' : 'text-slate-600'
                     }`}
                   >
                     {dayNum}
                   </span>
                   {off.length > 0 && (
-                    <span className="text-[10px] font-medium text-slate-400">{off.length}</span>
+                    <span className="hidden text-[10px] font-medium text-slate-400 sm:inline">{off.length}</span>
                   )}
                 </div>
-                <div className="min-h-0 flex-1 space-y-1">
+                <div className="flex min-h-0 flex-1 flex-wrap content-start gap-0.5 sm:block sm:space-y-1">
                   {shown.map((h) => (
                     <StaffOffChip key={h.user_id || h.id} person={h} compact />
                   ))}
                   {extra > 0 && (
-                    <div className="px-1 text-[10px] font-medium text-slate-400">+{extra} more</div>
+                    <div className="px-0.5 text-[10px] font-medium text-slate-400 sm:px-1">+{extra}</div>
                   )}
                 </div>
               </div>

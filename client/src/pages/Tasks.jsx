@@ -146,12 +146,14 @@ export default function Tasks() {
 
   return (
     <div className="space-y-5">
-      <div className="flex items-end justify-between flex-wrap gap-3">
-        <div>
-          <h1 className="text-[1.7rem] font-semibold tracking-tight text-slate-900">Tasks & Reminders</h1>
-          <p className="text-slate-500 text-sm mt-1">Generated automatically by the system, plus anything you add manually.</p>
+      <div>
+        <div className="flex items-center justify-between gap-3">
+          <h1 className="min-w-0 text-[1.7rem] font-semibold tracking-tight text-slate-900">Tasks & Reminders</h1>
+          <button type="button" className="btn-primary shrink-0" onClick={() => setTaskForm('new')}>
+            <Plus size={16} /> Add task
+          </button>
         </div>
-        <button className="btn-primary" onClick={() => setTaskForm('new')}><Plus size={16} /> Add task</button>
+        <p className="mt-1 text-sm text-slate-500">Generated automatically by the system, plus anything you add manually.</p>
       </div>
 
       <div className="grid grid-cols-2 gap-2 sm:flex sm:flex-wrap sm:gap-3">
@@ -188,8 +190,8 @@ export default function Tasks() {
       </div>
 
       <div className="rounded-2xl bg-white p-3 ring-1 ring-slate-200/70 shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
-        <div className="flex flex-wrap items-center gap-3">
-          <div className="relative min-w-[16rem] flex-1">
+        <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center sm:gap-3">
+          <div className="relative w-full min-w-0 sm:min-w-[16rem] sm:flex-1">
             <Search size={15} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
             <input
               className="input !pl-9 w-full"
@@ -200,7 +202,7 @@ export default function Tasks() {
             />
           </div>
           <DatePicker
-            className="w-[12.5rem]"
+            className="w-full sm:w-[12.5rem] sm:shrink-0"
             label="Filter by due date"
             placeholder="Due date"
             value={dueOn}

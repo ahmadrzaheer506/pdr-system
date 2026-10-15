@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { Plug, Building2, Users, Plus, ExternalLink, Copy, Shield, Trash2, Bell, Package, FileText, Search, MoreHorizontal, Landmark, Percent, Image, Clock, Mail, Upload, Wrench } from 'lucide-react';
+import { Plug, Building2, Users, Plus, ExternalLink, Copy, Shield, Trash2, Bell, Package, FileText, Search, MoreHorizontal, Landmark, Percent, Image, Clock, Mail, Upload, Wrench, ChevronDown } from 'lucide-react';
 import { api, fmtTimeAgo, fmtDate, money } from '../lib/api';
 import { PageLoading, LoadError, ModeBadge, Avatar, Modal, ConfirmModal, useToast, Toast, avatarUrl } from '../components/ui.jsx';
 import { useAuth } from '../lib/auth.jsx';
@@ -15,6 +15,7 @@ import TemplateSettings from '../components/TemplateSettings.jsx';
 import BrandLogo, { bumpBrandLogo } from '../components/BrandLogo.jsx';
 import SelectMenu from '../components/SelectMenu.jsx';
 import DatePicker from '../components/DatePicker.jsx';
+import ScrollTabBar from '../components/ScrollTabBar.jsx';
 
 const TABS = [
   { id: 'company', label: 'Company', icon: Building2 },
@@ -93,7 +94,7 @@ const SECURITY_ACTION_LABELS = {
 
 function SettingsSection({ title, hint, icon: Icon, children, className = '' }) {
   return (
-    <section className={`flex h-full flex-col rounded-2xl border border-slate-200 bg-white p-5 sm:p-6 ${className}`}>
+    <section className={`flex flex-col rounded-2xl border border-slate-200 bg-white p-5 sm:p-6 lg:h-full ${className}`}>
       <div className="mb-5 flex items-start gap-3">
         {Icon ? (
           <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-slate-100 text-slate-600">
@@ -127,26 +128,27 @@ export default function Settings() {
   const [tab, setTab] = useState('company');
   const visibleTabs = TABS.filter((t) => !t.adminOnly || user.role === ROLES.ADMIN);
   return (
-    <div className="space-y-5">
+    <div className="min-w-0 space-y-5">
       <div>
         <h1 className="text-2xl font-bold text-slate-900">Settings</h1>
         <p className="text-slate-500 text-sm mt-0.5">Connections, company details, and staff accounts.</p>
       </div>
-      <nav className="-mx-4 overflow-x-auto px-4 no-scrollbar sm:mx-0 sm:px-0" aria-label="Settings sections">
-        <div className="flex w-max min-w-full gap-1 rounded-xl border border-slate-200 bg-white p-1.5">
+      <nav className="rounded-xl border border-slate-200 bg-white p-1" aria-label="Settings sections">
+        <ScrollTabBar value={tab} fadeFrom="from-white" trackClassName="gap-1">
           {visibleTabs.map((t) => (
             <button
               key={t.id}
               type="button"
+              data-tab={t.id}
               onClick={() => setTab(t.id)}
-              className={`flex h-9 shrink-0 items-center gap-1.5 whitespace-nowrap rounded-lg px-3.5 text-sm font-medium transition-colors ${
+              className={`flex h-9 shrink-0 items-center gap-1.5 whitespace-nowrap rounded-lg px-3.5 text-sm font-medium ${
                 tab === t.id ? 'bg-navy-900 text-white shadow-sm' : 'text-slate-500 hover:bg-slate-50 hover:text-slate-700'
               }`}
             >
-              <t.icon size={14} /> {t.label}
+              <t.icon size={14} className="shrink-0" /> <span>{t.label}</span>
             </button>
           ))}
-        </div>
+        </ScrollTabBar>
       </nav>
       {tab === 'integrations' && <IntegrationsTab />}
       {tab === 'notifications' && <NotificationPrefsForm />}
@@ -209,13 +211,13 @@ function IntegrationsTab() {
   const copy = (text) => { navigator.clipboard?.writeText(text); show('Copied to clipboard'); };
 
   return (
-    <div className="space-y-5">
-      <div className="grid gap-4 md:grid-cols-2">
+    <div className="min-w-0 space-y-5 overflow-x-hidden">
+      <div className="grid min-w-0 gap-4 md:grid-cols-2">
         {data.integrations.map((intg) => (
-          <div key={intg.id} className="rounded-2xl border border-slate-200 bg-white p-5">
+          <div key={intg.id} className="min-w-0 overflow-hidden rounded-2xl border border-slate-200 bg-white p-5">
             <div className="flex items-start justify-between gap-3">
-              <div>
-                <div className="font-semibold text-slate-900">{intg.name}</div>
+              <div className="min-w-0">
+                <div className="font-semibold text-slate-900 break-words">{intg.name}</div>
                 <div className="mt-1"><ModeBadge mode={intg.mode} /></div>
               </div>
               <div className="flex shrink-0 items-center gap-2">
@@ -233,14 +235,14 @@ function IntegrationsTab() {
                 )}
               </div>
             </div>
-            <p className="text-xs text-slate-500 mt-2">{intg.detail}</p>
+            <p className="mt-2 text-xs text-slate-500 break-words">{intg.detail}</p>
             {intg.webhook_url && (
-              <button onClick={() => copy(intg.webhook_url)} className="mt-2 flex items-center gap-1.5 text-[11px] text-slate-400 hover:text-slate-600 font-mono bg-slate-50 rounded-lg px-2 py-1 w-full text-left truncate">
-                <Copy size={11} className="flex-shrink-0" /> <span className="truncate">{intg.webhook_url}</span>
+              <button onClick={() => copy(intg.webhook_url)} className="mt-2 flex items-center gap-1.5 text-[11px] text-slate-400 hover:text-slate-600 font-mono bg-slate-50 rounded-lg px-2 py-1 w-full text-left">
+                <Copy size={11} className="flex-shrink-0" /> <span className="min-w-0 break-all">{intg.webhook_url}</span>
               </button>
             )}
             {intg.env_needed && (
-              <div className="mt-2 text-[11px] text-slate-400">Needs: {intg.env_needed.join(', ')}</div>
+              <div className="mt-2 text-[11px] text-slate-400 break-words">Needs: {intg.env_needed.join(', ')}</div>
             )}
           </div>
         ))}
@@ -251,11 +253,14 @@ function IntegrationsTab() {
         <div className="space-y-1.5 max-h-72 overflow-y-auto">
           {data.events.length === 0 && <p className="text-sm text-slate-400">No events yet.</p>}
           {data.events.map((e) => (
-            <div key={e.id} className="flex items-center gap-2 text-xs">
-              <span className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${e.status === 'error' ? 'bg-red-500' : e.status === 'simulated' ? 'bg-amber-400' : 'bg-emerald-500'}`} />
-              <span className="font-medium text-slate-600 capitalize">{e.provider}</span>
-              <span className="text-slate-400">{e.event}</span>
-              <span className="text-slate-300 ml-auto flex-shrink-0">{fmtTimeAgo(e.created_at)}</span>
+            <div key={e.id} className="flex min-w-0 items-start gap-2 text-xs">
+              <span className={`mt-1 w-1.5 h-1.5 rounded-full flex-shrink-0 ${e.status === 'error' ? 'bg-red-500' : e.status === 'simulated' ? 'bg-amber-400' : 'bg-emerald-500'}`} />
+              <span className="min-w-0 flex-1 break-words">
+                <span className="font-medium text-slate-600 capitalize">{e.provider}</span>
+                {' '}
+                <span className="text-slate-400">{e.event}</span>
+              </span>
+              <span className="text-slate-300 flex-shrink-0">{fmtTimeAgo(e.created_at)}</span>
             </div>
           ))}
         </div>
@@ -414,9 +419,9 @@ function CompanyTab({ canEdit }) {
   };
 
   const saveBar = canEdit ? (
-    <div className="flex items-center justify-between gap-3">
-      <p className="min-w-0 truncate text-sm text-slate-500">These details appear on quotes, invoices, and PDFs.</p>
-      <button type="button" onClick={save} disabled={saving} className="btn-primary shrink-0">
+    <div className="flex flex-col gap-2 lg:flex-row lg:items-center lg:justify-between lg:gap-3">
+      <p className="text-sm text-slate-500">These details appear on quotes, invoices, and PDFs.</p>
+      <button type="button" onClick={save} disabled={saving} className="btn-primary w-full shrink-0 lg:w-auto">
         {saving ? 'Saving…' : 'Save changes'}
       </button>
     </div>
@@ -632,13 +637,6 @@ function CompanyTab({ canEdit }) {
           ))}
         </div>
       </SettingsSection>
-      {canEdit ? (
-        <div className="flex justify-end border-t border-slate-200 pt-4">
-          <button type="button" onClick={save} disabled={saving} className="btn-primary" aria-hidden="true" tabIndex={-1}>
-            {saving ? 'Saving…' : 'Save changes'}
-          </button>
-        </div>
-      ) : null}
       </div>
       <Toast {...toast} />
     </div>
@@ -826,14 +824,26 @@ function cisShort(status) {
   return found.label;
 }
 
-function PayFields({ form, set, idPrefix }) {
+function FormSection({ title, hint, children }) {
   return (
-    <div className="grid grid-cols-2 gap-3">
+    <section className="space-y-3">
       <div>
+        <h4 className="text-[11px] font-semibold uppercase tracking-wide text-slate-400">{title}</h4>
+        {hint ? <p className="mt-0.5 text-xs leading-relaxed text-slate-500">{hint}</p> : null}
+      </div>
+      {children}
+    </section>
+  );
+}
+
+function PayFields({ form, set, idPrefix, holidayPlaceholder }) {
+  return (
+    <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+      <div className="min-w-0">
         <label className="label" htmlFor={`${idPrefix}-hourly-cost`}>Hourly cost (£)</label>
         <input id={`${idPrefix}-hourly-cost`} className="input" type="number" min="0" step="0.01" value={form.hourly_cost} onChange={set('hourly_cost')} />
       </div>
-      <div>
+      <div className="min-w-0">
         <label className="label" htmlFor={`${idPrefix}-cis-status`}>CIS status</label>
         <SelectMenu
           id={`${idPrefix}-cis-status`}
@@ -843,45 +853,85 @@ function PayFields({ form, set, idPrefix }) {
           options={CIS_STATUS_OPTIONS}
         />
       </div>
-    </div>
-  );
-}
-
-function HolidayAllowanceField({ form, set, idPrefix, placeholder }) {
-  return (
-    <div>
-      <label className="label" htmlFor={`${idPrefix}-holiday-allowance`}>Holiday allowance (days)</label>
-      <input
-        id={`${idPrefix}-holiday-allowance`}
-        className="input"
-        type="number"
-        min="0"
-        max="365"
-        step="0.5"
-        value={form.holiday_allowance}
-        placeholder={placeholder}
-        onChange={set('holiday_allowance')}
-      />
+      <div className="min-w-0">
+        <label className="label" htmlFor={`${idPrefix}-holiday-allowance`}>Holiday allowance (days)</label>
+        <input
+          id={`${idPrefix}-holiday-allowance`}
+          className="input"
+          type="number"
+          min="0"
+          max="365"
+          step="0.5"
+          value={form.holiday_allowance}
+          placeholder={holidayPlaceholder}
+          onChange={set('holiday_allowance')}
+        />
+      </div>
     </div>
   );
 }
 
 function SkillFields({ form, setSkills, setDriver }) {
-  const [catalogue, setCatalogue] = useState([]);
+  const [catalogue, setCatalogue] = useState(null);
+  const [open, setOpen] = useState(true);
   useEffect(() => {
-    api.get('/skills').then((d) => setCatalogue(d.skills || [])).catch(() => setCatalogue([]));
+    let cancelled = false;
+    api.get('/skills').then((d) => {
+      if (!cancelled) setCatalogue(d.skills || []);
+    }).catch(() => {
+      if (!cancelled) setCatalogue([]);
+    });
+    return () => { cancelled = true; };
   }, []);
+  const selected = Array.isArray(form.skills) ? form.skills : [];
+  const summary = staffSkillLine(selected, catalogue) || 'None selected — they will not match skilled jobs.';
+
   return (
-    <>
-      <div>
-        <label className="label">Skills</label>
-        <p className="mb-2 text-xs text-slate-500">Select only what they can do, then set Trainee, Competent, or Advanced.</p>
-        <SkillPicker catalogue={catalogue} value={Array.isArray(form.skills) ? form.skills : []} onChange={setSkills} />
-      </div>
-      <label className="flex items-center gap-2 text-sm text-slate-600">
-        <input type="checkbox" className="h-4 w-4 shrink-0 rounded border-slate-300 accent-brand-500" checked={form.is_driver} onChange={(e) => setDriver(e.target.checked)} /> Can drive
-      </label>
-    </>
+    <div className="overflow-hidden rounded-2xl border border-slate-200">
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        aria-expanded={open}
+        className="flex w-full items-start justify-between gap-3 px-4 py-3 text-left hover:bg-slate-50"
+      >
+        <div className="min-w-0">
+          <p className="text-sm font-semibold text-slate-900">
+            Skills
+            {selected.length ? (
+              <span className="ml-2 rounded-full bg-slate-100 px-2 py-0.5 text-[11px] font-medium text-slate-600">
+                {selected.length}
+              </span>
+            ) : null}
+          </p>
+          <p className="mt-0.5 line-clamp-2 text-xs leading-relaxed text-slate-500">{summary}</p>
+        </div>
+        <ChevronDown
+          size={16}
+          className={`mt-0.5 shrink-0 text-slate-400 transition-transform ${open ? 'rotate-180' : ''}`}
+        />
+      </button>
+      {open ? (
+        <div className="space-y-3 border-t border-slate-100 p-3">
+          <p className="text-xs text-slate-500">
+            Tick only what they can do, then set Trainee, Competent, or Advanced.
+          </p>
+          {catalogue == null ? (
+            <p className="px-1 py-3 text-xs text-slate-400">Loading skills…</p>
+          ) : (
+            <SkillPicker catalogue={catalogue} value={selected} onChange={setSkills} />
+          )}
+          <label className="flex cursor-pointer items-center gap-3 rounded-xl bg-slate-50 px-3.5 py-3 text-sm text-slate-700 ring-1 ring-slate-200/70">
+            <input
+              type="checkbox"
+              className="h-4 w-4 shrink-0 rounded border-slate-300 accent-brand-500"
+              checked={form.is_driver}
+              onChange={(e) => setDriver(e.target.checked)}
+            />
+            Can drive
+          </label>
+        </div>
+      ) : null}
+    </div>
   );
 }
 
@@ -1096,7 +1146,7 @@ function StaffTab({ canEdit }) {
             </button>
           )}
         </div>
-        <div className="overflow-x-auto">
+        <div className="min-h-[28rem] overflow-x-auto">
           <table className="w-full text-sm">
             <thead>
               <tr className="border-y border-slate-100 bg-slate-50/80 text-left text-[11px] font-semibold uppercase tracking-wider text-slate-400">
@@ -1112,7 +1162,7 @@ function StaffTab({ canEdit }) {
             <tbody>
               {filtered.length === 0 && (
                 <tr>
-                  <td colSpan={canEdit ? 7 : 6} className="px-5 py-12 text-center text-slate-400">
+                  <td colSpan={canEdit ? 7 : 6} className="h-[24rem] px-5 text-center align-middle text-slate-400">
                     {users.length === 0 ? 'No accounts yet.' : 'No people match these filters.'}
                   </td>
                 </tr>
@@ -1261,37 +1311,68 @@ function AddStaffModal({ open, onClose, onSaved }) {
   };
 
   return (
-    <Modal open={open} onClose={onClose} title="Add user">
-      <form onSubmit={submit} className="space-y-3">
+    <Modal
+      open={open}
+      onClose={onClose}
+      size="2xl"
+      tall
+      title="Add user"
+      subtitle="Login, role, skills, and pay in one place."
+      footer={(
+        <div className="flex w-full items-center justify-end gap-2">
+          <button type="button" className="btn-secondary" onClick={onClose} disabled={saving}>Cancel</button>
+          <button type="submit" form="add-user-form" className="btn-primary" disabled={saving}>
+            {saving ? 'Adding…' : 'Add user'}
+          </button>
+        </div>
+      )}
+    >
+      <form id="add-user-form" onSubmit={submit} className="space-y-6">
         {error && <div className="bg-red-50 text-red-700 text-sm rounded-lg px-3 py-2">{error}</div>}
-        <div><label className="label" htmlFor="add-user-name">Name</label><input id="add-user-name" className="input" value={form.name} onChange={set('name')} required /></div>
-        <div className="grid grid-cols-2 gap-3">
-          <div><label className="label" htmlFor="add-user-email">Email (their login)</label><input id="add-user-email" className="input" type="email" value={form.email} onChange={set('email')} required /></div>
-          <div><label className="label" htmlFor="add-user-phone">Phone</label><input id="add-user-phone" className="input" value={form.phone} onChange={set('phone')} /></div>
-        </div>
-        <div><label className="label" htmlFor="add-user-password">Temporary password</label><input id="add-user-password" className="input" value={form.password} onChange={set('password')} required minLength={8} /></div>
-        <div>
-          <label className="label" htmlFor="add-user-role">Role</label>
-          <SelectMenu
-            id="add-user-role"
-            label="Role"
-            value={form.role}
-            onChange={(value) => setForm({ ...form, role: value, financials_restricted: value === ROLES.OFFICE ? form.financials_restricted : false })}
-            options={ROLE_OPTIONS}
-          />
-        </div>
+        <FormSection title="Account" hint="This email is their login.">
+          <div>
+            <label className="label" htmlFor="add-user-name">Name</label>
+            <input id="add-user-name" className="input" value={form.name} onChange={set('name')} required />
+          </div>
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+            <div>
+              <label className="label" htmlFor="add-user-email">Email (their login)</label>
+              <input id="add-user-email" className="input" type="email" value={form.email} onChange={set('email')} required />
+            </div>
+            <div>
+              <label className="label" htmlFor="add-user-phone">Phone</label>
+              <input id="add-user-phone" className="input" value={form.phone} onChange={set('phone')} />
+            </div>
+          </div>
+          <div>
+            <label className="label" htmlFor="add-user-password">Temporary password</label>
+            <input id="add-user-password" className="input" value={form.password} onChange={set('password')} required minLength={8} />
+          </div>
+        </FormSection>
+        <FormSection title="Role">
+          <div>
+            <label className="label" htmlFor="add-user-role">Role</label>
+            <SelectMenu
+              id="add-user-role"
+              label="Role"
+              value={form.role}
+              onChange={(value) => setForm({ ...form, role: value, financials_restricted: value === ROLES.OFFICE ? form.financials_restricted : false })}
+              options={ROLE_OPTIONS}
+            />
+          </div>
+          {form.role === ROLES.OFFICE && (
+            <label className="flex cursor-pointer items-center gap-3 rounded-xl bg-slate-50 px-3.5 py-3 text-sm text-slate-700 ring-1 ring-slate-200/70">
+              <input type="checkbox" className="h-4 w-4 shrink-0 rounded border-slate-300 accent-brand-500" checked={form.financials_restricted} onChange={(e) => setForm({ ...form, financials_restricted: e.target.checked })} />
+              Restrict job costing and labour-cost figures
+            </label>
+          )}
+        </FormSection>
         {form.role === ROLES.STAFF && (
           <SkillFields form={form} setSkills={setSkills} setDriver={(checked) => setForm({ ...form, is_driver: checked })} />
         )}
-        {form.role === ROLES.OFFICE && (
-          <label className="flex items-center gap-2 text-sm text-slate-600">
-            <input type="checkbox" className="h-4 w-4 shrink-0 rounded border-slate-300 accent-brand-500" checked={form.financials_restricted} onChange={(e) => setForm({ ...form, financials_restricted: e.target.checked })} />
-            Restrict job costing and labour-cost figures
-          </label>
-        )}
-        <PayFields form={form} set={set} idPrefix="add-user" />
-        <HolidayAllowanceField form={form} set={set} idPrefix="add-user" placeholder={`Company default (${defaultAllowance})`} />
-        <button className="btn-primary w-full" disabled={saving}>{saving ? 'Adding…' : 'Add user'}</button>
+        <FormSection title="Pay & leave">
+          <PayFields form={form} set={set} idPrefix="add-user" holidayPlaceholder={`Company default (${defaultAllowance})`} />
+        </FormSection>
       </form>
     </Modal>
   );
@@ -1374,7 +1455,10 @@ function EditUserModal({ user, lockRole, onClose, onSaved }) {
     <Modal
       open={!!user}
       onClose={onClose}
+      size="2xl"
+      tall
       title={user ? `Edit ${user.name}` : 'Edit account'}
+      subtitle="Login, role, skills, and pay in one place."
       footer={(
         <div className="flex w-full flex-wrap items-center justify-between gap-2">
           <button type="button" className="btn-secondary" onClick={sendReset} disabled={busy || !user?.active}>
@@ -1389,33 +1473,49 @@ function EditUserModal({ user, lockRole, onClose, onSaved }) {
         </div>
       )}
     >
-      <form id="edit-user-form" onSubmit={submit} className="space-y-3">
+      <form id="edit-user-form" onSubmit={submit} className="space-y-6">
         {error && <div className="bg-red-50 text-red-700 text-sm rounded-lg px-3 py-2">{error}</div>}
-        <div><label className="label" htmlFor="edit-user-name">Name</label><input id="edit-user-name" className="input" value={form.name} onChange={set('name')} required /></div>
-        <div><label className="label" htmlFor="edit-user-email">Email (their login)</label><input id="edit-user-email" className="input" type="email" value={form.email} onChange={set('email')} required /></div>
-        <div><label className="label" htmlFor="edit-user-phone">Phone</label><input id="edit-user-phone" className="input" value={form.phone} onChange={set('phone')} /></div>
-        <div>
-          <label className="label" htmlFor="edit-user-role">Role</label>
-          <SelectMenu
-            id="edit-user-role"
-            label="Role"
-            value={form.role}
-            disabled={lockRole}
-            onChange={(value) => setForm({ ...form, role: value, financials_restricted: value === ROLES.OFFICE ? form.financials_restricted : false })}
-            options={ROLE_OPTIONS}
-          />
-        </div>
+        <FormSection title="Account" hint="This email is their login.">
+          <div>
+            <label className="label" htmlFor="edit-user-name">Name</label>
+            <input id="edit-user-name" className="input" value={form.name} onChange={set('name')} required />
+          </div>
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+            <div>
+              <label className="label" htmlFor="edit-user-email">Email (their login)</label>
+              <input id="edit-user-email" className="input" type="email" value={form.email} onChange={set('email')} required />
+            </div>
+            <div>
+              <label className="label" htmlFor="edit-user-phone">Phone</label>
+              <input id="edit-user-phone" className="input" value={form.phone} onChange={set('phone')} />
+            </div>
+          </div>
+        </FormSection>
+        <FormSection title="Role">
+          <div>
+            <label className="label" htmlFor="edit-user-role">Role</label>
+            <SelectMenu
+              id="edit-user-role"
+              label="Role"
+              value={form.role}
+              disabled={lockRole}
+              onChange={(value) => setForm({ ...form, role: value, financials_restricted: value === ROLES.OFFICE ? form.financials_restricted : false })}
+              options={ROLE_OPTIONS}
+            />
+          </div>
+          {form.role === ROLES.OFFICE && (
+            <label className="flex cursor-pointer items-center gap-3 rounded-xl bg-slate-50 px-3.5 py-3 text-sm text-slate-700 ring-1 ring-slate-200/70">
+              <input type="checkbox" className="h-4 w-4 shrink-0 rounded border-slate-300 accent-brand-500" checked={form.financials_restricted} onChange={(e) => setForm({ ...form, financials_restricted: e.target.checked })} />
+              Restrict job costing and labour-cost figures
+            </label>
+          )}
+        </FormSection>
         {form.role === ROLES.STAFF && (
           <SkillFields form={form} setSkills={setSkills} setDriver={(checked) => setForm({ ...form, is_driver: checked })} />
         )}
-        {form.role === ROLES.OFFICE && (
-          <label className="flex items-center gap-2 text-sm text-slate-600">
-            <input type="checkbox" className="h-4 w-4 shrink-0 rounded border-slate-300 accent-brand-500" checked={form.financials_restricted} onChange={(e) => setForm({ ...form, financials_restricted: e.target.checked })} />
-            Restrict job costing and labour-cost figures
-          </label>
-        )}
-        <PayFields form={form} set={set} idPrefix="edit-user" />
-        <HolidayAllowanceField form={form} set={set} idPrefix="edit-user" />
+        <FormSection title="Pay & leave">
+          <PayFields form={form} set={set} idPrefix="edit-user" />
+        </FormSection>
       </form>
       <Toast {...toast} />
     </Modal>

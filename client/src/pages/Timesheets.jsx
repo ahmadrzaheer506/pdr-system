@@ -8,6 +8,7 @@ import { useAuth } from '../lib/auth.jsx';
 import { canSeeLabourCosts, ROLES } from '../lib/roles';
 import DatePicker from '../components/DatePicker.jsx';
 import SelectMenu from '../components/SelectMenu.jsx';
+import ScrollTabBar from '../components/ScrollTabBar.jsx';
 
 function pad2(n) {
   return String(n).padStart(2, '0');
@@ -49,6 +50,28 @@ const TABS = [
   { id: 'totals', label: 'Weekly totals' },
   { id: 'costing', label: 'Job profitability' },
 ];
+
+function DateRangeFields({ from, to, setFrom, setTo }) {
+  return (
+    <div className="grid w-full grid-cols-2 gap-2 lg:flex lg:w-auto lg:items-center">
+      <DatePicker
+        className="w-full lg:w-40"
+        size="sm"
+        label="From"
+        value={from}
+        onChange={setFrom}
+      />
+      <span className="hidden text-sm text-slate-400 lg:inline">to</span>
+      <DatePicker
+        className="w-full lg:w-40"
+        size="sm"
+        label="To"
+        value={to}
+        onChange={setTo}
+      />
+    </div>
+  );
+}
 const LIVE_POLL_MS = 10000;
 
 const REVIEW_VIEWS = [
@@ -201,35 +224,29 @@ export default function Timesheets() {
           </p>
         </div>
         {tab === 'costing' && (
-          <div className="flex items-center gap-2 flex-wrap">
-            <DatePicker
-              className="w-40"
-              size="sm"
-              label="From"
-              value={from}
-              onChange={setFrom}
-            />
-            <span className="text-slate-400 text-sm">to</span>
-            <DatePicker
-              className="w-40"
-              size="sm"
-              label="To"
-              value={to}
-              onChange={setTo}
-            />
-            <a href={timesheetCsvHref(from, to)} className="btn-secondary !py-1.5">
+          <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row sm:flex-wrap sm:items-center">
+            <DateRangeFields from={from} to={to} setFrom={setFrom} setTo={setTo} />
+            <a href={timesheetCsvHref(from, to)} className="btn-secondary !py-1.5 w-full justify-center sm:w-auto">
               <Download size={15} /> CSV
             </a>
           </div>
         )}
       </div>
 
-      <div className="flex gap-1 bg-white border border-slate-200 rounded-lg p-1 w-fit">
-        {tabs.map((t) => (
-          <button key={t.id} onClick={() => setTab(t.id)} className={`px-3.5 py-1.5 text-sm rounded-md font-medium ${tab === t.id ? 'bg-navy-900 text-white' : 'text-slate-500 hover:bg-slate-50'}`}>
-            {t.label}
-          </button>
-        ))}
+      <div className="rounded-lg border border-slate-200 bg-white p-1">
+        <ScrollTabBar value={tab} fadeFrom="from-white" trackClassName="gap-1">
+          {tabs.map((t) => (
+            <button
+              key={t.id}
+              type="button"
+              data-tab={t.id}
+              onClick={() => setTab(t.id)}
+              className={`shrink-0 whitespace-nowrap rounded-md px-3.5 py-1.5 text-sm font-medium ${tab === t.id ? 'bg-navy-900 text-white' : 'text-slate-500 hover:bg-slate-50'}`}
+            >
+              {t.label}
+            </button>
+          ))}
+        </ScrollTabBar>
       </div>
 
       {tab === 'live' && <LiveTab show={show} />}
@@ -659,52 +676,38 @@ function ReviewTab({ from, to, setFrom, setTo, show, showCosts }) {
       </div>
 
       <div className="rounded-2xl border border-slate-200/80 bg-white p-3 shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
-        <div className="flex flex-wrap items-center gap-2">
+        <div className="flex flex-col gap-2 lg:flex-row lg:flex-wrap lg:items-center">
           <SelectMenu
-            className="w-44"
+            className="w-full lg:w-44"
             label="Staff"
             value={staffId}
             onChange={setStaffId}
             options={staffOptions}
           />
           <SelectMenu
-            className="w-48"
+            className="w-full lg:w-48"
             label="Status"
             value={statusView}
             onChange={setStatusView}
             options={REVIEW_STATUS_OPTIONS}
           />
-          <DatePicker
-            className="w-40"
-            size="sm"
-            label="From"
-            value={from}
-            onChange={setFrom}
-          />
-          <span className="text-slate-400 text-sm">to</span>
-          <DatePicker
-            className="w-40"
-            size="sm"
-            label="To"
-            value={to}
-            onChange={setTo}
-          />
+          <DateRangeFields from={from} to={to} setFrom={setFrom} setTo={setTo} />
           {filtering && (
-            <button type="button" className="text-xs font-medium text-brand-600 hover:text-brand-700 px-1" onClick={clearFilters}>
+            <button type="button" className="self-start text-xs font-medium text-brand-600 hover:text-brand-700 px-1" onClick={clearFilters}>
               Clear filters
             </button>
           )}
-          <div className="ml-auto flex flex-wrap items-center gap-2">
+          <div className="flex w-full flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center lg:ml-auto lg:w-auto">
             {selected.length > 0 ? (
-              <button type="button" onClick={approveBatch} className="btn-primary !py-1.5">
+              <button type="button" onClick={approveBatch} className="btn-primary !py-1.5 w-full justify-center sm:w-auto">
                 <Check size={15} /> Approve {selected.length} selected
               </button>
             ) : pending.length > 0 ? (
-              <button type="button" onClick={() => setSelected(pending.map((t) => t.id))} className="btn-secondary !py-1.5">
+              <button type="button" onClick={() => setSelected(pending.map((t) => t.id))} className="btn-secondary !py-1.5 w-full justify-center sm:w-auto">
                 Select all pending
               </button>
             ) : null}
-            <a href={timesheetCsvHref(from, to, { userId: staffId, statusView })} className="btn-secondary !py-1.5">
+            <a href={timesheetCsvHref(from, to, { userId: staffId, statusView })} className="btn-secondary !py-1.5 w-full justify-center sm:w-auto">
               <Download size={15} /> CSV
             </a>
           </div>
@@ -963,46 +966,32 @@ function TotalsTab({ from, to, setFrom, setTo, showCosts }) {
   return (
     <div className="space-y-4">
       <div className="rounded-2xl border border-slate-200/80 bg-white p-3 shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
-        <div className="flex flex-wrap items-center gap-2">
+        <div className="flex flex-col gap-2 lg:flex-row lg:flex-wrap lg:items-center">
           <SelectMenu
-            className="w-44"
+            className="w-full lg:w-44"
             label="Staff"
             value={staffId}
             onChange={setStaffId}
             options={staffOptions}
           />
           <SelectMenu
-            className="w-48"
+            className="w-full lg:w-48"
             label="Show"
             value={focus}
             onChange={setFocus}
             options={TOTALS_FOCUS_OPTIONS}
           />
-          <DatePicker
-            className="w-40"
-            size="sm"
-            label="From"
-            value={from}
-            onChange={setFrom}
-          />
-          <span className="text-slate-400 text-sm">to</span>
-          <DatePicker
-            className="w-40"
-            size="sm"
-            label="To"
-            value={to}
-            onChange={setTo}
-          />
+          <DateRangeFields from={from} to={to} setFrom={setFrom} setTo={setTo} />
           {filtering && (
             <button
               type="button"
-              className="text-xs font-medium text-brand-600 hover:text-brand-700 px-1"
+              className="self-start text-xs font-medium text-brand-600 hover:text-brand-700 px-1"
               onClick={() => { setStaffId(''); setFocus('ALL'); }}
             >
               Clear filters
             </button>
           )}
-          <a href={timesheetCsvHref(from, to, { userId: staffId })} className="btn-secondary !py-1.5 ml-auto">
+          <a href={timesheetCsvHref(from, to, { userId: staffId })} className="btn-secondary !py-1.5 w-full justify-center sm:w-auto lg:ml-auto">
             <Download size={15} /> CSV
           </a>
         </div>
@@ -1015,7 +1004,7 @@ function TotalsTab({ from, to, setFrom, setTo, showCosts }) {
       ) : (
         <div className="overflow-hidden rounded-2xl border border-slate-200/80 bg-white shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
           <div className="overflow-x-auto">
-            <table className="w-full text-sm">
+            <table className="w-full min-w-[40rem] text-sm">
               <thead className="bg-slate-50/90 text-[11px] font-semibold uppercase tracking-wider text-slate-500">
                 <tr>
                   <th className="text-left px-4 py-3">Staff</th>

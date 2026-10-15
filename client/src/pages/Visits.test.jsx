@@ -97,6 +97,28 @@ describe('office Visits list', () => {
     });
   });
 
+  it('renders stacked visit cards on a mobile viewport', async () => {
+    const originalMatchMedia = window.matchMedia;
+    window.matchMedia = vi.fn().mockImplementation((query) => ({
+      matches: false,
+      media: query,
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn(),
+      addListener: vi.fn(),
+      removeListener: vi.fn(),
+      dispatchEvent: vi.fn(),
+    }));
+    try {
+      render(<MemoryRouter><Visits /></MemoryRouter>);
+      expect(await screen.findByText('L-0008 - Sandra Cole')).toBeInTheDocument();
+      expect(screen.queryByRole('columnheader', { name: /when/i })).toBeNull();
+      expect(screen.getByText('Callum Ashworth')).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: /cancelled/i })).toBeInTheDocument();
+    } finally {
+      window.matchMedia = originalMatchMedia;
+    }
+  });
+
   it('filters by visit type', async () => {
     const user = userEvent.setup();
     render(<MemoryRouter><Visits /></MemoryRouter>);

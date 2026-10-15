@@ -111,7 +111,7 @@ export default function AppHeader({
           <button
             type="button"
             onClick={onMenuClick}
-            className="inline-flex h-9 w-9 items-center justify-center rounded-lg text-slate-500 transition-all hover:bg-slate-100 hover:text-slate-700 active:scale-95 md:hidden"
+            className="inline-flex h-9 w-9 items-center justify-center rounded-lg text-slate-500 transition-all hover:bg-slate-100 hover:text-slate-700 active:scale-95 xl:hidden"
             aria-label="Open menu"
           >
             <Menu size={20} />

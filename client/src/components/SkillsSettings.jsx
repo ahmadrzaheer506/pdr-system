@@ -161,12 +161,12 @@ export default function SkillsSettings({ canEdit }) {
   return (
     <div className="space-y-5">
       <section className="rounded-2xl border border-slate-200 bg-white p-5 sm:p-6">
-        <div className="mb-5 flex items-start justify-between gap-3">
-          <div className="flex items-start gap-3">
+        <div className="mb-5 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+          <div className="flex min-w-0 items-start gap-3">
             <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-slate-100 text-slate-600">
               <Wrench size={15} />
             </div>
-            <div>
+            <div className="min-w-0">
               <h3 className="text-[15px] font-semibold text-slate-900">Skills</h3>
               <p className="mt-0.5 text-xs leading-relaxed text-slate-500">
                 Staff pick from this list with Trainee, Competent, or Advanced. Jobs use the same list for what the work needs.
@@ -174,7 +174,7 @@ export default function SkillsSettings({ canEdit }) {
             </div>
           </div>
           {canEdit ? (
-            <button type="button" className="btn-secondary !py-1.5 !px-3 text-xs" onClick={() => setSkillDraft({ name: '' })}>
+            <button type="button" className="btn-secondary shrink-0 self-start whitespace-nowrap !py-1.5 !px-3 text-xs" onClick={() => setSkillDraft({ name: '' })}>
               <Plus size={14} /> Add skill
             </button>
           ) : null}
@@ -200,12 +200,12 @@ export default function SkillsSettings({ canEdit }) {
       </section>
 
       <section className="rounded-2xl border border-slate-200 bg-white p-5 sm:p-6">
-        <div className="mb-5 flex items-start justify-between gap-3">
-          <div className="flex items-start gap-3">
+        <div className="mb-5 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+          <div className="flex min-w-0 items-start gap-3">
             <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-slate-100 text-slate-600">
               <Briefcase size={15} />
             </div>
-            <div>
+            <div className="min-w-0">
               <h3 className="text-[15px] font-semibold text-slate-900">Job types</h3>
               <p className="mt-0.5 text-xs leading-relaxed text-slate-500">
                 Apply a type on a job to fill the required skills automatically — Re-roof, Lead valley, Extension, and so on.
@@ -213,7 +213,7 @@ export default function SkillsSettings({ canEdit }) {
             </div>
           </div>
           {canEdit ? (
-            <button type="button" className="btn-secondary !py-1.5 !px-3 text-xs" onClick={() => setTypeDraft({ name: '', required_skills: [] })}>
+            <button type="button" className="btn-secondary shrink-0 self-start whitespace-nowrap !py-1.5 !px-3 text-xs" onClick={() => setTypeDraft({ name: '', required_skills: [] })}>
               <Plus size={14} /> Add job type
             </button>
           ) : null}

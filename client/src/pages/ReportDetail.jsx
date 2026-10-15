@@ -191,7 +191,7 @@ export default function ReportDetail() {
 
   return (
     <div className="space-y-5">
-      <div className="flex items-start justify-between flex-wrap gap-3">
+      <div className="flex min-w-0 flex-col gap-3">
         <div>
           <BackLink />
           <h1 className="text-2xl font-bold text-slate-900 mt-2">{TITLES[type]}</h1>
@@ -199,7 +199,7 @@ export default function ReportDetail() {
         {pipeline ? (
           <button
             type="button"
-            className="btn-secondary"
+            className="btn-secondary w-full sm:w-auto"
             disabled={!csvReady || downloading}
             onClick={onDownload}
           >
@@ -257,6 +257,17 @@ function BackLink() {
   );
 }
 
+function ReportTable({ children, minClass = 'min-w-[40rem]', header = null, tableClass = '' }) {
+  return (
+    <div className="card min-w-0 overflow-hidden">
+      {header}
+      <div className="overflow-x-auto overscroll-x-contain">
+        <table className={`w-full text-sm ${minClass} ${tableClass}`.trim()}>{children}</table>
+      </div>
+    </div>
+  );
+}
+
 function LeadVolumeReport({ data }) {
   const rows = data.leads || [];
   return (
@@ -264,8 +275,7 @@ function LeadVolumeReport({ data }) {
       <p className="text-sm text-slate-500">{data.total} new inbox lead{data.total === 1 ? '' : 's'} in this window.</p>
       {data.total === 0 && <EmptyState title="No leads in this window" />}
       {rows.length > 0 && (
-        <div className="card overflow-hidden">
-          <table className="w-full text-sm">
+        <ReportTable>
             <thead className="bg-slate-50 text-left text-xs text-slate-500">
               <tr>
                 <th className="px-4 py-2 font-medium">Lead</th>
@@ -298,8 +308,7 @@ function LeadVolumeReport({ data }) {
                 </tr>
               ))}
             </tbody>
-          </table>
-        </div>
+        </ReportTable>
       )}
     </>
   );
@@ -327,8 +336,7 @@ function WinLossReport({ data }) {
         </div>
       )}
       {data.customers?.length > 0 && (
-        <div className="card overflow-hidden">
-          <table className="w-full text-sm">
+        <ReportTable>
             <thead className="bg-slate-50 text-left text-xs text-slate-500">
               <tr>
                 <th className="px-4 py-2 font-medium">Customer</th>
@@ -349,8 +357,7 @@ function WinLossReport({ data }) {
                 </tr>
               ))}
             </tbody>
-          </table>
-        </div>
+        </ReportTable>
       )}
     </>
   );
@@ -385,8 +392,7 @@ function CustomersReport({ data }) {
       <p className="text-sm text-slate-500">{rows.length} customer{rows.length === 1 ? '' : 's'} created in this window.</p>
       {rows.length === 0 && <EmptyState title="No customers in this window" />}
       {rows.length > 0 && (
-        <div className="card overflow-hidden">
-          <table className="w-full text-sm">
+        <ReportTable minClass="min-w-[48rem]">
             <thead className="bg-slate-50 text-left text-xs text-slate-500">
               <tr>
                 <th className="px-4 py-2 font-medium">Name</th>
@@ -411,8 +417,7 @@ function CustomersReport({ data }) {
                 </tr>
               ))}
             </tbody>
-          </table>
-        </div>
+        </ReportTable>
       )}
     </>
   );
@@ -425,8 +430,7 @@ function JobsReport({ data }) {
       <p className="text-sm text-slate-500">{rows.length} job{rows.length === 1 ? '' : 's'} created in this window.</p>
       {rows.length === 0 && <EmptyState title="No jobs in this window" />}
       {rows.length > 0 && (
-        <div className="card overflow-hidden">
-          <table className="w-full text-sm">
+        <ReportTable>
             <thead className="bg-slate-50 text-left text-xs text-slate-500">
               <tr>
                 <th className="px-4 py-2 font-medium">Title</th>
@@ -453,8 +457,7 @@ function JobsReport({ data }) {
                 </tr>
               ))}
             </tbody>
-          </table>
-        </div>
+        </ReportTable>
       )}
     </>
   );
@@ -468,8 +471,7 @@ function InvoicesReport({ data }) {
       <p className="text-sm text-slate-500">{rows.length} invoice{rows.length === 1 ? '' : 's'} created in this window.</p>
       {rows.length === 0 && <EmptyState title="No invoices in this window" />}
       {rows.length > 0 && (
-        <div className="card overflow-hidden">
-          <table className="w-full text-sm">
+        <ReportTable minClass="min-w-[44rem]">
             <thead className="bg-slate-50 text-left text-xs text-slate-500">
               <tr>
                 <th className="px-4 py-2 font-medium">Ref</th>
@@ -496,8 +498,7 @@ function InvoicesReport({ data }) {
                 </tr>
               ))}
             </tbody>
-          </table>
-        </div>
+        </ReportTable>
       )}
     </>
   );
@@ -515,9 +516,11 @@ function ProfitabilityReport({ data }) {
       {jobs.length === 0 ? (
         <EmptyState title="No costed jobs in this window" detail="Jobs need completed or approved clocked hours." />
       ) : (
-        <div className="card overflow-hidden">
-          <h3 className="font-semibold text-slate-800 px-4 pt-4">Jobs</h3>
-          <table className="w-full text-sm mt-2">
+        <ReportTable
+          minClass="min-w-[48rem]"
+          tableClass="mt-2"
+          header={<h3 className="font-semibold text-slate-800 px-4 pt-4">Jobs</h3>}
+        >
             <thead className="bg-slate-50 text-left text-xs text-slate-500">
               <tr>
                 <th className="px-4 py-2 font-medium">Job</th>
@@ -552,16 +555,14 @@ function ProfitabilityReport({ data }) {
                 </tr>
               ))}
             </tbody>
-          </table>
-        </div>
+        </ReportTable>
       )}
       <div>
         <h3 className="font-semibold text-slate-800 mb-2">Labour by operative</h3>
         {labour.length === 0 ? (
           <EmptyState title="No clocked labour in this window" />
         ) : (
-          <div className="card overflow-hidden">
-            <table className="w-full text-sm">
+          <ReportTable minClass="min-w-[28rem]">
               <thead className="bg-slate-50 text-left text-xs text-slate-500">
                 <tr>
                   <th className="px-4 py-2 font-medium">Name</th>
@@ -578,8 +579,7 @@ function ProfitabilityReport({ data }) {
                   </tr>
                 ))}
               </tbody>
-            </table>
-          </div>
+          </ReportTable>
         )}
       </div>
     </div>

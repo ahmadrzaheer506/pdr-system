@@ -69,6 +69,17 @@ describe('office sidebar', () => {
     expect(screen.getByText('SETTINGS')).toBeInTheDocument();
   });
 
+  it('opens the overlay sidebar from the header menu button', async () => {
+    const user = userEvent.setup();
+    render(<MemoryRouter><Layout><div>child</div></Layout></MemoryRouter>);
+    expect(screen.getByRole('button', { name: 'Open menu' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Dismiss menu' })).not.toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Open menu' }));
+    expect(screen.getByRole('button', { name: 'Dismiss menu' })).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Close menu' }));
+    expect(screen.queryByRole('button', { name: 'Dismiss menu' })).not.toBeInTheDocument();
+  });
+
   it('renders the persistent app header', () => {
     render(<MemoryRouter><Layout><div>child</div></Layout></MemoryRouter>);
     expect(screen.queryByRole('button', { name: 'Search' })).toBeNull();

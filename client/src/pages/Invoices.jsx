@@ -10,6 +10,7 @@ import { invoiceSentMessage, isLiveQboId } from '../lib/quickbooks';
 import { canRecordPayment } from '../lib/invoicePayments';
 import { Receipt } from 'lucide-react';
 import { leadPath } from '../lib/customerRoutes.js';
+import ScrollTabBar from '../components/ScrollTabBar.jsx';
 
 const FILTERS = ['ALL', 'draft', 'sent', 'part_paid', 'paid', 'overdue'];
 
@@ -103,7 +104,8 @@ export default function Invoices() {
         {ready.length === 0 ? (
           <p className="px-4 py-3 text-sm text-slate-500">None waiting.</p>
         ) : (
-          <table className="w-full text-sm">
+          <div className="overflow-x-auto">
+          <table className="w-full min-w-[32rem] text-sm">
             <thead className="bg-slate-50 text-slate-500 text-xs uppercase">
               <tr>
                 <th className="text-left px-4 py-2.5 font-medium">Job</th>
@@ -135,18 +137,31 @@ export default function Invoices() {
               ))}
             </tbody>
           </table>
+          </div>
         )}
       </div>
 
-      <div className="flex items-center justify-between flex-wrap gap-3">
-        <div className="flex gap-1 bg-white border border-slate-200 rounded-lg p-1">
-          {FILTERS.map((s) => (
-            <button key={s} onClick={() => setStatus(s)} className={`px-3 py-1.5 text-sm rounded-md font-medium capitalize ${status === s ? 'bg-navy-900 text-white' : 'text-slate-500 hover:bg-slate-50'}`}>{s.replace('_', ' ')}</button>
-          ))}
+      <div className="flex min-w-0 flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <div className="min-w-0 w-full sm:flex-1">
+          <div className="min-w-0 rounded-lg border border-slate-200 bg-white p-1">
+            <ScrollTabBar value={status} fadeFrom="from-white" trackClassName="gap-1">
+              {FILTERS.map((s) => (
+                <button
+                  key={s}
+                  type="button"
+                  data-tab={s}
+                  onClick={() => setStatus(s)}
+                  className={`shrink-0 whitespace-nowrap rounded-md px-3 py-1.5 text-sm font-medium capitalize ${status === s ? 'bg-navy-900 text-white' : 'text-slate-500 hover:bg-slate-50'}`}
+                >
+                  {s.replace('_', ' ')}
+                </button>
+              ))}
+            </ScrollTabBar>
+          </div>
         </div>
-        <div className="relative">
+        <div className="relative w-full shrink-0 sm:w-56">
           <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
-          <input className="input !pl-9 w-56" placeholder="Search invoices…" value={q} onChange={(e) => setQ(e.target.value)} />
+          <input className="input !pl-9 w-full" placeholder="Search invoices…" value={q} onChange={(e) => setQ(e.target.value)} />
         </div>
       </div>
 
@@ -154,7 +169,8 @@ export default function Invoices() {
         <EmptyState icon={Receipt} title="No invoices found" detail="Invoices are created from completed jobs, or from the invoicing prompt in Tasks." />
       ) : (
         <div className="card overflow-hidden">
-          <table className="w-full text-sm">
+          <div className="overflow-x-auto">
+          <table className="w-full min-w-[52rem] text-sm">
             <thead className="bg-slate-50 text-slate-500 text-xs uppercase">
               <tr>
                 <th className="text-left px-4 py-2.5 font-medium">Ref</th>
@@ -216,6 +232,7 @@ export default function Invoices() {
               ))}
             </tbody>
           </table>
+          </div>
         </div>
       )}
 

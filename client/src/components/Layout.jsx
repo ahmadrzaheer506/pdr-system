@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { NavLink } from 'react-router-dom';
 import {
   LayoutDashboard, Inbox, Kanban, Users, Calendar, CalendarDays, FileText, Receipt, CheckSquare,
-  MessageSquare, Settings, Menu, X, PlaneTakeoff, Clock, BarChart3,
+  MessageSquare, Settings, X, PlaneTakeoff, Clock, BarChart3,
 } from 'lucide-react';
 import BrandLogo from './BrandLogo.jsx';
 import AppHeader from './AppHeader.jsx';
@@ -39,15 +39,23 @@ const NAV_SECTIONS = [
   },
 ];
 
+/** Pinned sidebar from xl (1280px). Phone and tablet use an overlay drawer. */
 export default function Layout({ children }) {
   const [open, setOpen] = useState(false);
 
+  React.useEffect(() => {
+    if (!open) return undefined;
+    const previous = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    return () => { document.body.style.overflow = previous; };
+  }, [open]);
+
   return (
     <div className="flex h-screen overflow-hidden bg-slate-50">
-      <aside className={`fixed md:relative inset-y-0 left-0 z-50 flex h-screen w-64 shrink-0 flex-col border-r border-slate-200/80 bg-white shadow-sm transition-transform ${open ? 'translate-x-0' : '-translate-x-full md:translate-x-0'}`}>
+      <aside className={`fixed xl:relative inset-y-0 left-0 z-50 flex h-screen w-64 shrink-0 flex-col border-r border-slate-200/80 bg-white shadow-sm transition-transform ${open ? 'translate-x-0' : '-translate-x-full xl:translate-x-0'}`}>
         <div className="relative flex shrink-0 items-center justify-center px-5 py-5 border-b border-slate-100">
           <BrandLogo className="h-auto w-[75px]" />
-          <button className="md:hidden absolute right-4 inline-flex h-8 w-8 items-center justify-center rounded-lg text-slate-400 hover:bg-slate-100 hover:text-slate-600 transition-colors" onClick={() => setOpen(false)} aria-label="Close menu">
+          <button className="xl:hidden absolute right-4 inline-flex h-8 w-8 items-center justify-center rounded-lg text-slate-400 hover:bg-slate-100 hover:text-slate-600 transition-colors" onClick={() => setOpen(false)} aria-label="Close menu">
             <X size={18} />
           </button>
         </div>
@@ -85,12 +93,19 @@ export default function Layout({ children }) {
           ))}
         </nav>
       </aside>
-      {open && <div className="fixed inset-0 bg-slate-900/30 backdrop-blur-sm z-40 md:hidden animate-in fade-in duration-200" onClick={() => setOpen(false)} />}
+      {open && (
+        <button
+          type="button"
+          className="fixed inset-0 z-40 bg-slate-900/30 backdrop-blur-sm xl:hidden animate-in fade-in duration-200"
+          aria-label="Dismiss menu"
+          onClick={() => setOpen(false)}
+        />
+      )}
 
       <div className="flex min-h-0 min-w-0 flex-1 flex-col">
         <AppHeader showMenuButton onMenuClick={() => setOpen(true)} profileHref="/profile" />
-        <main className="min-h-0 flex-1 overflow-y-auto bg-slate-50">
-          <div className="mx-auto max-w-[1400px] px-4 pt-4 pb-8 md:px-8">{children}</div>
+        <main className="min-h-0 min-w-0 flex-1 overflow-y-auto overflow-x-hidden bg-slate-50">
+          <div className="mx-auto min-w-0 max-w-[1400px] px-4 pt-4 pb-8 md:px-8">{children}</div>
         </main>
       </div>
     </div>

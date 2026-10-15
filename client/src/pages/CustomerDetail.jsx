@@ -135,8 +135,8 @@ export default function CustomerDetail() {
       </div>
 
       <div className="card p-4">
-        <div className="flex flex-wrap items-start gap-3">
-          <div className="max-w-full">
+        <div className="flex min-w-0 flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-start">
+          <div className="min-w-0 max-w-full flex-1">
             <div className="flex items-center gap-2 flex-wrap">
               <h1 className="text-xl font-bold text-slate-900">
                 {leadDisplayName({ ...activeLead, customer_name: customer.name, name: customer.name })}
@@ -166,17 +166,17 @@ export default function CustomerDetail() {
               )}
             </div>
           </div>
-          <div className="ml-auto flex shrink-0 flex-wrap justify-end gap-2">
+          <div className="grid w-full min-w-0 grid-cols-2 gap-2 sm:ml-auto sm:flex sm:w-auto sm:flex-wrap sm:justify-end">
             <Link
               to={customerPath(id)}
               title="Open the master customer record"
-              className="btn-secondary"
+              className="btn-secondary min-w-0 justify-center whitespace-nowrap"
             >
               <IdCard size={15} />
               Customer record
             </Link>
-            <button className="btn-secondary" onClick={() => setVisitModal('new')}><Calendar size={15} /> Book visit</button>
-            <button className="btn-primary" onClick={() => setQuoteModal(true)}><FileText size={15} /> New quote</button>
+            <button className="btn-secondary min-w-0 justify-center whitespace-nowrap" onClick={() => setVisitModal('new')}><Calendar size={15} /> Book visit</button>
+            <button className="btn-primary col-span-2 min-w-0 justify-center whitespace-nowrap sm:col-span-1" onClick={() => setQuoteModal(true)}><FileText size={15} /> New quote</button>
           </div>
         </div>
         {lostReason && displayStage === 'LOST' && (

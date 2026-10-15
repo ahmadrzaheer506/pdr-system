@@ -19,7 +19,7 @@ export function JobChip({ job, dateIso, onJobClick, holidays = [], bookings = []
   const conflictNote = jobConflictCaption(crew, { holidays, bookings, iso: dateIso, excludeJobId: job.id });
   return (
     <HoverTooltip text={jobCardHoverText(job)} className="block w-full min-w-0">
-      <button type="button" onClick={() => onJobClick?.(job.id, dateIso)} className="block w-full text-left bg-slate-100 hover:bg-slate-200 rounded-md px-2 py-1.5 transition-colors">
+      <button type="button" onClick={() => onJobClick?.(job.id, dateIso)} className="block w-full min-w-0 overflow-hidden text-left bg-slate-100 hover:bg-slate-200 rounded-md px-2 py-1.5 transition-colors">
       <div className="text-xs font-medium text-slate-800 truncate">{job.title}</div>
       <div className="text-[10px] text-slate-500 truncate">{job.customer_name}</div>
       {job.priority !== 'normal' ? (
@@ -65,7 +65,8 @@ export default function WeekView({ anchorDate, jobs, holidays, onJobClick, onDay
   const today = localIsoDate();
 
   return (
-    <div className="grid grid-cols-7 gap-2 items-start">
+    <div className="-mx-1 overflow-x-auto overscroll-x-contain pb-1" data-testid="week-view-scroller">
+      <div className="grid w-full min-w-[52rem] grid-cols-7 items-start gap-2 lg:min-w-0">
       {days.map((d) => {
         const dISO = localIsoDate(d);
         const isToday = dISO === today;
@@ -76,13 +77,13 @@ export default function WeekView({ anchorDate, jobs, holidays, onJobClick, onDay
         return (
           <div
             key={dISO}
-            className={`rounded-lg border ${isToday ? 'border-brand-300 bg-brand-50/40' : 'border-slate-200 bg-white'} p-2 flex flex-col`}
+            className={`flex min-w-0 flex-col rounded-lg border p-2 ${isToday ? 'border-brand-300 bg-brand-50/40' : 'border-slate-200 bg-white'}`}
           >
             <button
               type="button"
               onClick={() => onDayClick?.(dISO)}
               aria-label={`Open ${heading}`}
-              className={`text-xs font-semibold mb-1.5 w-full text-left rounded px-0.5 py-0.5 shrink-0 hover:bg-white/80 ${isToday ? 'text-brand-600' : 'text-slate-500'}`}
+              className={`mb-1.5 w-full shrink-0 truncate rounded px-0.5 py-0.5 text-left text-xs font-semibold whitespace-nowrap hover:bg-white/80 ${isToday ? 'text-brand-600' : 'text-slate-500'}`}
             >
               {heading}
             </button>
@@ -109,6 +110,7 @@ export default function WeekView({ anchorDate, jobs, holidays, onJobClick, onDay
           </div>
         );
       })}
+      </div>
     </div>
   );
 }

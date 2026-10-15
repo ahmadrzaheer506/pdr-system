@@ -129,12 +129,14 @@ export default function Inbox() {
 
   return (
     <div className="space-y-5">
-      <div className="flex items-end justify-between flex-wrap gap-3">
-        <div>
-          <h1 className="text-[1.7rem] font-semibold tracking-tight text-slate-900">Lead Inbox</h1>
-          <p className="text-slate-500 text-sm mt-1">Every enquiry, whatever channel it came from — one place, nothing missed.</p>
+      <div>
+        <div className="flex items-center justify-between gap-3">
+          <h1 className="min-w-0 text-[1.7rem] font-semibold tracking-tight text-slate-900">Lead Inbox</h1>
+          <button type="button" className="btn-primary shrink-0" onClick={() => setAddOpen(true)}>
+            <Plus size={16} /> Log enquiry
+          </button>
         </div>
-        <button className="btn-primary" onClick={() => setAddOpen(true)}><Plus size={16} /> Log enquiry</button>
+        <p className="mt-1 text-sm text-slate-500">Every enquiry, whatever channel it came from — one place, nothing missed.</p>
       </div>
 
       <div className="grid grid-cols-2 gap-2 sm:flex sm:flex-wrap sm:gap-3">

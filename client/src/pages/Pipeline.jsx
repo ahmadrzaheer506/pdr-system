@@ -10,6 +10,14 @@ import { leadDisplayName } from '../lib/leads.js';
 import SelectMenu from '../components/SelectMenu.jsx';
 import DatePicker from '../components/DatePicker.jsx';
 
+/** Filters start open from Tailwind `lg` (1024px); phones and tablets start collapsed. */
+const FILTERS_OPEN_MQ = '(min-width: 1024px)';
+
+function filtersStartOpen() {
+  if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') return true;
+  return window.matchMedia(FILTERS_OPEN_MQ).matches;
+}
+
 const COL_META = {
   ENQUIRY: { color: '#64748b', wash: 'bg-slate-50' },
   SITE_VISIT_BOOKED: { color: '#0284c7', wash: 'bg-sky-50' },
@@ -193,7 +201,7 @@ function PipelineFilters({ params, setParams, owners, customers }) {
   const [minDraft, setMinDraft] = useState(urlMin);
   const [maxDraft, setMaxDraft] = useState(urlMax);
   const [qDraft, setQDraft] = useState(urlQ);
-  const [open, setOpen] = useState(true);
+  const [open, setOpen] = useState(filtersStartOpen);
   const minTimer = useRef(null);
   const maxTimer = useRef(null);
   const qTimer = useRef(null);

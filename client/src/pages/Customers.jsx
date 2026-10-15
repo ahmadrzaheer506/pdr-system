@@ -7,6 +7,7 @@ import NewCustomerModal from '../components/NewCustomerModal.jsx';
 import SelectMenu from '../components/SelectMenu.jsx';
 import DatePicker from '../components/DatePicker.jsx';
 import { leadSourceLabel } from '../lib/leads.js';
+import ScrollTabBar from '../components/ScrollTabBar.jsx';
 
 const TYPE_FILTERS = [
   { value: 'ALL', label: 'All' },
@@ -83,28 +84,36 @@ export default function Customers() {
 
   return (
     <div className="space-y-5">
-      <div className="flex items-start justify-between gap-3">
-        <div>
-          <h1 className="text-2xl font-bold text-slate-900">Customers</h1>
-          <p className="text-slate-500 text-sm mt-0.5">Every customer record — domestic and commercial — in one list.</p>
+      <div>
+        <div className="flex items-center justify-between gap-3">
+          <h1 className="min-w-0 text-2xl font-bold text-slate-900">Customers</h1>
+          <button type="button" className="btn-primary shrink-0" onClick={() => setCreateOpen(true)}>
+            <Plus size={16} /> New customer
+          </button>
         </div>
-        <button className="btn-primary shrink-0" onClick={() => setCreateOpen(true)}><Plus size={16} /> New customer</button>
+        <p className="mt-0.5 text-sm text-slate-500">Every customer record — domestic and commercial — in one list.</p>
       </div>
 
       <div className="card p-3">
-        <div className="flex w-full items-center justify-between gap-4">
-          <div className="flex h-10 shrink-0 items-center gap-1 rounded-lg bg-slate-100 p-1">
+        <div className="flex w-full flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+          <ScrollTabBar
+            value={type}
+            fadeFrom="from-slate-100"
+            className="min-w-0 rounded-lg bg-slate-100 p-1 lg:max-w-none"
+            trackClassName="h-8 gap-1 sm:h-9"
+          >
             {TYPE_FILTERS.map((s) => (
               <button
                 key={s.value}
                 type="button"
+                data-tab={s.value}
                 onClick={() => setType(s.value)}
-                className={`h-full rounded-md px-3 text-sm font-medium ${type === s.value ? 'bg-navy-900 text-white' : 'text-slate-500 hover:bg-white'}`}
+                className={`h-full shrink-0 whitespace-nowrap rounded-md px-3 text-sm font-medium ${type === s.value ? 'bg-navy-900 text-white' : 'text-slate-500 hover:bg-white'}`}
               >
                 {s.label}
               </button>
             ))}
-          </div>
+          </ScrollTabBar>
           <div className="flex min-w-0 items-center justify-end gap-2 overflow-x-auto">
             <div className="relative w-40 shrink-0">
               <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
