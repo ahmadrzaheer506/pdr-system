@@ -214,7 +214,7 @@ router.get('/:id', asyncHandler(async (req, res) => {
   const internal_notes = await notes.listNotes(id);
   const customer_files = await files.listFiles(id);
 
-  const quotes = plain(await Quote.findAll({ where: { customer_id: id }, order: [['id', 'DESC']] }));
+  const quoteRows = plain(await Quote.findAll({ where: { customer_id: id }, order: [['id', 'DESC']] }));
 
   const jobRows = await Job.findAll({
     where: { customer_id: id },
@@ -233,6 +233,8 @@ router.get('/:id', asyncHandler(async (req, res) => {
     delete row.day_assignments;
     return row;
   });
+  const jobIdByQuote = new Map(jobs.filter((j) => j.quote_id).map((j) => [j.quote_id, j.id]));
+  const quotes = quoteRows.map((q) => ({ ...q, job_id: jobIdByQuote.get(q.id) || null }));
 
   const invoices = plain(await Invoice.findAll({
     where: { customer_id: id },

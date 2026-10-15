@@ -444,69 +444,107 @@ router.post('/:id/send', asyncHandler(async (req, res) => {
   res.json({ ok: true, results, errors, pdf: filename });
 }));
 
+async function createJobFromAcceptedQuote(quote, customer, acceptedExtras) {
+  const extras = Array.isArray(acceptedExtras) ? acceptedExtras : [];
+  const jobValue = jobValueFromQuote(quote, extras);
+  const job = await Job.create({
+    customer_id: customer.id,
+    lead_id: quote.lead_id || null,
+    quote_id: quote.id,
+    title: quote.title,
+    description: quote.notes || null,
+    address: contacts.formatSite((customer.sites || []).find((s) => s.id === quote.site_id)) || customer.address,
+    status: 'PENDING',
+    value: jobValue,
+    required_skills: [],
+    site_id: quote.site_id,
+    phone_id: quote.phone_id,
+    email_id: quote.email_id,
+  });
+  await geocode.ensureJobSitePoint(job, { refresh: true });
+  await resolveRule(`create_job:quote:${quote.id}`);
+  await ensureTask({
+    ruleKey: `schedule_job:job:${job.id}`,
+    title: `Schedule job — ${quote.title}`,
+    detail: `${customer.name} accepted quote ${quote.ref} (${money(jobValue)}). Job needs lads and dates.`,
+    priority: 'high',
+    entityType: 'job',
+    entityId: job.id,
+  });
+  return { job, jobValue };
+}
+
 router.post('/:id/decision', asyncHandler(async (req, res) => {
-  const { decision, reason, accepted_extra_indexes } = req.body || {};
+  const { decision, reason, accepted_extra_indexes, create_job: createJobFlag } = req.body || {};
   const quote = await Quote.findByPk(req.params.id);
   if (!quote) return res.status(404).json({ error: 'Quote not found' });
   if (!['accepted', 'declined'].includes(decision)) return res.status(400).json({ error: 'decision must be accepted or declined' });
   const customer = await contacts.loadCustomerWithContacts(quote.customer_id);
+  const wantJob = createJobFlag !== false && createJobFlag !== 'false';
 
-  let acceptedExtras = [];
   if (decision === 'accepted') {
     const existingJob = await Job.findOne({ where: { quote_id: quote.id } });
     if (existingJob) {
       return res.json({ ok: true, job_id: existingJob.id, job_value: existingJob.value });
     }
-    const picked = pickAcceptedExtras(quote.optional_extras, accepted_extra_indexes);
-    if (picked.error) return res.status(400).json({ error: picked.error });
-    acceptedExtras = picked.extras;
+
+    const alreadyAccepted = quote.status === 'accepted';
+    let acceptedExtras = Array.isArray(quote.accepted_optional_extras) ? quote.accepted_optional_extras : [];
+    if (!alreadyAccepted) {
+      const picked = pickAcceptedExtras(quote.optional_extras, accepted_extra_indexes);
+      if (picked.error) return res.status(400).json({ error: picked.error });
+      acceptedExtras = picked.extras;
+      await quote.update({
+        status: 'accepted',
+        decided_at: new Date(),
+        accepted_optional_extras: acceptedExtras,
+      });
+      await cancelPendingForQuote(quote.id, 'quote accepted');
+      await resolveQuoteFollowupTask(quote.id);
+      await setStage(customer.id, 'WON', req.user.id, `Quote ${quote.ref} accepted`, { leadId: quote.lead_id });
+      const { safeNotify, notifyOffice } = require('../notifications');
+      await safeNotify(() => notifyOffice({
+        kind: 'quote_accepted',
+        message: `${customer.name} accepted quote ${quote.ref}.`,
+        entity_type: 'customer',
+        entity_id: customer.id,
+      }, { excludeId: req.user.id }));
+    }
+
+    if (!wantJob) {
+      await ensureTask({
+        ruleKey: `create_job:quote:${quote.id}`,
+        title: `Create job — ${quote.title}`,
+        detail: `Next step: create a job from accepted quote ${quote.ref} (${customer.name}).`,
+        priority: 'high',
+        entityType: 'quote',
+        entityId: quote.id,
+      });
+      if (!alreadyAccepted) {
+        await logActivity(customer.id, req.user.id, 'quote_accepted', `Quote ${quote.ref} accepted`, 'quote', quote.id);
+      }
+      return res.json({ ok: true, job_id: null });
+    }
+
+    const { job, jobValue } = await createJobFromAcceptedQuote(quote, customer, acceptedExtras);
+    await logActivity(
+      customer.id,
+      req.user.id,
+      'quote_accepted',
+      alreadyAccepted ? `Job created from quote ${quote.ref}` : `Quote ${quote.ref} accepted — job created`,
+      'job',
+      job.id,
+    );
+    return res.json({ ok: true, job_id: job.id, job_value: jobValue });
   }
 
   await quote.update({
     status: decision,
     decided_at: new Date(),
-    accepted_optional_extras: decision === 'accepted' ? acceptedExtras : [],
+    accepted_optional_extras: [],
   });
   await cancelPendingForQuote(quote.id, `quote ${decision}`);
   await resolveQuoteFollowupTask(quote.id);
-
-  if (decision === 'accepted') {
-    const jobValue = jobValueFromQuote(quote, acceptedExtras);
-    await setStage(customer.id, 'WON', req.user.id, `Quote ${quote.ref} accepted`, { leadId: quote.lead_id });
-    const job = await Job.create({
-      customer_id: customer.id,
-      lead_id: quote.lead_id || null,
-      quote_id: quote.id,
-      title: quote.title,
-      description: quote.notes || null,
-      address: contacts.formatSite((customer.sites || []).find((s) => s.id === quote.site_id)) || customer.address,
-      status: 'PENDING',
-      value: jobValue,
-      required_skills: [],
-      site_id: quote.site_id,
-      phone_id: quote.phone_id,
-      email_id: quote.email_id,
-    });
-    await geocode.ensureJobSitePoint(job, { refresh: true });
-    await ensureTask({
-      ruleKey: `schedule_job:job:${job.id}`,
-      title: `Schedule job — ${quote.title}`,
-      detail: `${customer.name} accepted quote ${quote.ref} (${money(jobValue)}). Job needs lads and dates.`,
-      priority: 'high',
-      entityType: 'job',
-      entityId: job.id,
-    });
-    await logActivity(customer.id, req.user.id, 'quote_accepted', `Quote ${quote.ref} accepted — job created`, 'job', job.id);
-    const { safeNotify, notifyOffice } = require('../notifications');
-    await safeNotify(() => notifyOffice({
-      kind: 'quote_accepted',
-      message: `${customer.name} accepted quote ${quote.ref}.`,
-      entity_type: 'customer',
-      entity_id: customer.id,
-    }, { excludeId: req.user.id }));
-    return res.json({ ok: true, job_id: job.id, job_value: jobValue });
-  }
-
   await setStage(customer.id, 'LOST', req.user.id, `Quote ${quote.ref} declined${reason ? ` — ${reason}` : ''}`, { leadId: quote.lead_id });
   if (reason) await Customer.update({ lost_reason: reason }, { where: { id: customer.id } });
   await logActivity(customer.id, req.user.id, 'quote_declined', `Quote ${quote.ref} declined${reason ? ` — ${reason}` : ''}`, 'quote', quote.id);

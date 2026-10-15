@@ -568,16 +568,123 @@ describe('CustomerDetail type (requirement 2.1)', () => {
         }],
       });
     });
-    api.post.mockResolvedValue({ ok: true, job_id: 8 });
+    api.post.mockResolvedValue({ ok: true, job_id: null });
     renderDetail();
     await user.click(await screen.findByRole('button', { name: /accepted/i }));
     expect(screen.getByText(/tick the optional extras/i)).toBeInTheDocument();
     expect(api.post).not.toHaveBeenCalledWith('/quotes/4/decision', expect.anything());
     await user.click(screen.getByLabelText(/Velux window/i));
-    await user.click(screen.getByRole('button', { name: /confirm acceptance/i }));
+    await user.click(screen.getByRole('button', { name: /accept quote/i }));
+    await waitFor(() => expect(api.post).toHaveBeenCalledWith('/quotes/4/decision', {
+      decision: 'accepted',
+      accepted_extra_indexes: [0],
+      create_job: false,
+    }));
+    expect(screen.getByRole('heading', { name: /next step: create a job/i })).toBeInTheDocument();
+    api.post.mockResolvedValue({ ok: true, job_id: 8 });
+    await user.click(screen.getByRole('button', { name: /^create job$/i }));
     expect(api.post).toHaveBeenCalledWith('/quotes/4/decision', {
       decision: 'accepted',
       accepted_extra_indexes: [0],
+      create_job: true,
+    });
+  });
+
+  it('asks whether to create a job when a quote is accepted', async () => {
+    const user = userEvent.setup();
+    api.get.mockImplementation((path) => {
+      if (String(path).includes('/settings/users')) {
+        return Promise.resolve({ users: [{ id: 1, name: 'Paul Douglas', role: 'ADMIN', active: true }] });
+      }
+      return Promise.resolve({
+        ...DETAIL,
+        quotes: [{
+          id: 6,
+          ref: 'Q-2026-0006',
+          title: 'Felt',
+          total: 1200,
+          status: 'sent',
+          optional_extras: [],
+        }],
+      });
+    });
+    api.post.mockResolvedValue({ ok: true, job_id: null });
+    renderDetail();
+    await user.click(await screen.findByRole('button', { name: /accepted/i }));
+    await waitFor(() => expect(api.post).toHaveBeenCalledWith('/quotes/6/decision', {
+      decision: 'accepted',
+      accepted_extra_indexes: undefined,
+      create_job: false,
+    }));
+    expect(screen.getByRole('heading', { name: /next step: create a job/i })).toBeInTheDocument();
+    expect(screen.getByText(/is accepted and the customer is won/i)).toBeInTheDocument();
+    api.post.mockResolvedValue({ ok: true, job_id: 9 });
+    await user.click(screen.getByRole('button', { name: /^create job$/i }));
+    expect(api.post).toHaveBeenCalledWith('/quotes/6/decision', {
+      decision: 'accepted',
+      accepted_extra_indexes: undefined,
+      create_job: true,
+    });
+  });
+
+  it('accepts the quote without a job when create-job is cancelled', async () => {
+    const user = userEvent.setup();
+    api.get.mockImplementation((path) => {
+      if (String(path).includes('/settings/users')) {
+        return Promise.resolve({ users: [{ id: 1, name: 'Paul Douglas', role: 'ADMIN', active: true }] });
+      }
+      return Promise.resolve({
+        ...DETAIL,
+        quotes: [{
+          id: 6,
+          ref: 'Q-2026-0006',
+          title: 'Felt',
+          total: 1200,
+          status: 'sent',
+          optional_extras: [],
+        }],
+      });
+    });
+    api.post.mockResolvedValue({ ok: true, job_id: null });
+    renderDetail();
+    await user.click(await screen.findByRole('button', { name: /accepted/i }));
+    await waitFor(() => expect(api.post).toHaveBeenCalledWith('/quotes/6/decision', {
+      decision: 'accepted',
+      accepted_extra_indexes: undefined,
+      create_job: false,
+    }));
+    await user.click(screen.getByRole('button', { name: /^not now$/i }));
+    expect(api.post).toHaveBeenCalledTimes(1);
+  });
+
+  it('shows create-job as the next step on an accepted quote with no job', async () => {
+    const user = userEvent.setup();
+    api.get.mockImplementation((path) => {
+      if (String(path).includes('/settings/users')) {
+        return Promise.resolve({ users: [{ id: 1, name: 'Paul Douglas', role: 'ADMIN', active: true }] });
+      }
+      return Promise.resolve({
+        ...DETAIL,
+        quotes: [{
+          id: 6,
+          ref: 'Q-2026-0006',
+          title: 'Felt',
+          total: 1200,
+          status: 'accepted',
+          optional_extras: [],
+          job_id: null,
+        }],
+        jobs: [],
+      });
+    });
+    api.post.mockResolvedValue({ ok: true, job_id: 12 });
+    renderDetail();
+    expect(await screen.findByText(/next step: create a job/i)).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: /create job/i }));
+    expect(api.post).toHaveBeenCalledWith('/quotes/6/decision', {
+      decision: 'accepted',
+      accepted_extra_indexes: undefined,
+      create_job: true,
     });
   });
 
@@ -766,6 +873,7 @@ describe('CustomerDetail type (requirement 2.1)', () => {
     await waitFor(() => expect(api.post).toHaveBeenCalledWith('/quotes/6/decision', {
       decision: 'declined',
       accepted_extra_indexes: undefined,
+      create_job: undefined,
     }));
   });
 

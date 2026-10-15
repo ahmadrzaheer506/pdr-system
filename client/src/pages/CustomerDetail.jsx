@@ -472,6 +472,7 @@ function quoteEditLockedHint(status) {
 
 function QuotesCard({ quotes, onEdit, onChanged, show }) {
   const [acceptQuote, setAcceptQuote] = useState(null);
+  const [jobPrompt, setJobPrompt] = useState(null);
   const [pickedExtras, setPickedExtras] = useState([]);
   const [busy, setBusy] = useState(null);
   const [cloneQuote, setCloneQuote] = useState(null);
@@ -493,12 +494,20 @@ function QuotesCard({ quotes, onEdit, onChanged, show }) {
     } catch (err) { show(err.message, 'error'); }
     finally { setBusy(null); }
   };
-  const decide = async (q, decision, accepted_extra_indexes) => {
+  const decide = async (q, decision, { accepted_extra_indexes, create_job } = {}) => {
     setBusy({ quoteId: q.id, action: decision });
     try {
-      await api.post(`/quotes/${q.id}/decision`, { decision, accepted_extra_indexes });
-      show(`Quote marked ${decision}`);
+      const result = await api.post(`/quotes/${q.id}/decision`, { decision, accepted_extra_indexes, create_job });
       setAcceptQuote(null);
+      if (decision === 'accepted' && !result?.job_id) {
+        show('Quote accepted');
+        await onChanged();
+        setJobPrompt({ quote: { ...q, status: 'accepted' }, extras: accepted_extra_indexes });
+        return;
+      }
+      if (decision === 'accepted' && result?.job_id) show(q.status === 'accepted' ? 'Job created' : 'Quote accepted and job created');
+      else show(`Quote marked ${decision}`);
+      setJobPrompt(null);
       await onChanged();
     } catch (err) { show(err.message, 'error'); }
     finally { setBusy(null); }
@@ -506,11 +515,15 @@ function QuotesCard({ quotes, onEdit, onChanged, show }) {
   const requestAccept = (q) => {
     const extras = Array.isArray(q.optional_extras) ? q.optional_extras : [];
     if (!extras.length) {
-      decide(q, 'accepted');
+      decide(q, 'accepted', { create_job: false });
       return;
     }
     setPickedExtras([]);
     setAcceptQuote(q);
+  };
+  const confirmExtrasThenAccept = () => {
+    if (!acceptQuote) return;
+    decide(acceptQuote, 'accepted', { accepted_extra_indexes: pickedExtras, create_job: false });
   };
   const openClone = (q) => {
     setCloneQuote(q);
@@ -650,6 +663,23 @@ function QuotesCard({ quotes, onEdit, onChanged, show }) {
                 <Trash2 size={12} /> Delete
               </button>
             </div>
+            {q.status === 'accepted' && !q.job_id && (
+              <div className="mt-2 rounded-lg bg-amber-50 px-3 py-2 ring-1 ring-amber-200/80">
+                <p className="text-xs font-semibold text-amber-950">Next step: create a job</p>
+                <p className="mt-0.5 text-[11px] leading-relaxed text-amber-800">
+                  The quote is won. A job is needed before you can put dates and crew on the diary.
+                </p>
+                <button
+                  type="button"
+                  className="btn-primary mt-2 !py-1 !px-2 text-xs inline-flex items-center gap-1"
+                  disabled={quoteBusy(q.id)}
+                  aria-busy={actionBusy(q.id, 'accepted') || undefined}
+                  onClick={() => decide(q, 'accepted', { create_job: true })}
+                >
+                  {actionBusy(q.id, 'accepted') ? <><Loader2 size={12} className="animate-spin" /> Creating…</> : <><Briefcase size={12} /> Create job</>}
+                </button>
+              </div>
+            )}
           </div>
         ))}
       </ScrollableLeadList>
@@ -721,10 +751,53 @@ function QuotesCard({ quotes, onEdit, onChanged, show }) {
             </div>
             <div className="flex gap-2 justify-end">
               <button type="button" className="btn-secondary" disabled={quoteBusy(acceptQuote.id)} onClick={() => setAcceptQuote(null)}>Cancel</button>
-              <button type="button" className="btn-primary inline-flex items-center gap-1.5" disabled={quoteBusy(acceptQuote.id)} onClick={() => decide(acceptQuote, 'accepted', pickedExtras)}>
-                {actionBusy(acceptQuote.id, 'accepted') ? <><Loader2 size={14} className="animate-spin" /> Saving…</> : 'Confirm acceptance'}
+              <button type="button" className="btn-primary inline-flex items-center gap-1.5" disabled={quoteBusy(acceptQuote.id)} onClick={confirmExtrasThenAccept}>
+                {actionBusy(acceptQuote.id, 'accepted') ? <><Loader2 size={14} className="animate-spin" /> Saving…</> : 'Accept quote'}
               </button>
             </div>
+          </div>
+        )}
+      </Modal>
+
+      <Modal
+        open={!!jobPrompt}
+        onClose={() => !busy && setJobPrompt(null)}
+        title="Next step: create a job"
+        subtitle={jobPrompt?.quote ? `${jobPrompt.quote.ref}${jobPrompt.quote.title ? ` · ${jobPrompt.quote.title}` : ''}` : null}
+        footer={jobPrompt ? (
+          <>
+            <button
+              type="button"
+              className="btn-secondary"
+              disabled={quoteBusy(jobPrompt.quote.id)}
+              onClick={() => setJobPrompt(null)}
+            >
+              Not now
+            </button>
+            <button
+              type="button"
+              className="btn-primary inline-flex items-center gap-1.5"
+              disabled={quoteBusy(jobPrompt.quote.id)}
+              onClick={() => decide(jobPrompt.quote, 'accepted', {
+                accepted_extra_indexes: jobPrompt.extras,
+                create_job: true,
+              })}
+            >
+              {actionBusy(jobPrompt.quote.id, 'accepted')
+                ? <><Loader2 size={14} className="animate-spin" /> Creating…</>
+                : <><Briefcase size={14} /> Create job</>}
+            </button>
+          </>
+        ) : null}
+      >
+        {jobPrompt && (
+          <div className="space-y-3 text-sm leading-relaxed text-slate-600">
+            <p>
+              <span className="font-medium text-slate-800">{jobPrompt.quote.ref}</span> is accepted and the customer is Won.
+            </p>
+            <p>
+              A job is what you put on the diary — dates, lads, and the work itself. Create it now, or come back to this quote when you are ready.
+            </p>
           </div>
         )}
       </Modal>

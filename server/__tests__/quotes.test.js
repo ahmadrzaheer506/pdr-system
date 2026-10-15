@@ -396,6 +396,73 @@ describe('quote revisions and extras on accept (requirement 6.5)', () => {
     expect(resolveQuoteFollowupTask).toHaveBeenCalledWith(20);
   });
 
+  test('accepting without create_job marks won and does not create a job', async () => {
+    const quoteRow = {
+      id: 20,
+      customer_id: 9,
+      ref: 'Q-2026-0020',
+      title: 'Re-roof',
+      total: 1200,
+      notes: null,
+      site_id: null,
+      phone_id: null,
+      email_id: null,
+      optional_extras: [],
+      update: jest.fn(async function patch(fields) { Object.assign(this, fields); }),
+    };
+    Quote.findByPk.mockResolvedValue(quoteRow);
+    contacts.loadCustomerWithContacts.mockResolvedValue({ id: 9, name: 'Dave', sites: [] });
+    Followup.update.mockResolvedValue([1]);
+    Job.findOne.mockResolvedValue(null);
+
+    const res = await request(app).post('/api/quotes/20/decision').send({
+      decision: 'accepted',
+      create_job: false,
+    });
+    expect(res.status).toBe(200);
+    expect(res.body.job_id).toBeNull();
+    expect(Job.create).not.toHaveBeenCalled();
+    const { ensureTask, setStage } = { ensureTask: require('../services/taskEngine').ensureTask, setStage: require('../services/pipeline').setStage };
+    expect(setStage).toHaveBeenCalledWith(9, 'WON', 1, expect.stringMatching(/accepted/), expect.anything());
+    expect(ensureTask).toHaveBeenCalledWith(expect.objectContaining({
+      ruleKey: 'create_job:quote:20',
+      title: expect.stringMatching(/create job/i),
+    }));
+  });
+
+  test('a later create_job on an accepted quote creates the job once', async () => {
+    const quoteRow = {
+      id: 20,
+      customer_id: 9,
+      status: 'accepted',
+      ref: 'Q-2026-0020',
+      title: 'Re-roof',
+      total: 1200,
+      notes: null,
+      site_id: null,
+      phone_id: null,
+      email_id: null,
+      accepted_optional_extras: [{ description: 'Velux', amount: 640 }],
+      optional_extras: [{ description: 'Velux', amount: 640 }],
+      update: jest.fn(),
+    };
+    Quote.findByPk.mockResolvedValue(quoteRow);
+    contacts.loadCustomerWithContacts.mockResolvedValue({ id: 9, name: 'Dave', sites: [] });
+    Job.findOne.mockResolvedValue(null);
+    Job.create.mockResolvedValue({ id: 88 });
+
+    const res = await request(app).post('/api/quotes/20/decision').send({
+      decision: 'accepted',
+      create_job: true,
+    });
+    expect(res.status).toBe(200);
+    expect(res.body.job_id).toBe(88);
+    expect(Job.create).toHaveBeenCalledTimes(1);
+    expect(quoteRow.update).not.toHaveBeenCalled();
+    const { setStage } = require('../services/pipeline');
+    expect(setStage).not.toHaveBeenCalled();
+  });
+
   test('a second accept returns the existing job and does not create another (requirement 7.1)', async () => {
     Quote.findByPk.mockResolvedValue({ id: 20, customer_id: 9, status: 'accepted' });
     Job.findOne.mockResolvedValue({ id: 77, value: 1840 });
