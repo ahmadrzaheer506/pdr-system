@@ -1,8 +1,7 @@
 const path = require('path');
 
 const root = __dirname;
-const logs = path.join(root, 'data-staging', 'logs');
-const envFile = path.join(root, '.env.staging');
+const logs = path.join(root, 'data', 'logs');
 
 const common = {
   cwd: root,
@@ -37,7 +36,6 @@ module.exports = {
         HOST: '127.0.0.1',
         PORT: '5001',
         SERVE_FRONTEND: '0',
-        ENV_FILE: envFile,
       },
     },
     {
@@ -52,7 +50,6 @@ module.exports = {
         FRONTEND_PORT: '5000',
         API_HOST: '127.0.0.1',
         API_PORT: '5001',
-        ENV_FILE: envFile,
       },
     },
   ],

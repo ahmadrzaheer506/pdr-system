@@ -4,8 +4,6 @@
 # pdr-staging-web (loopback :5000). Nginx (sites-available/frontend-staging)
 # proxies the staging host to pdr-staging-web.
 #
-# Uses .env.staging (not .env) so production env, database, and JWT stay untouched.
-#
 #   ./scripts/deploy-staging.sh
 set -euo pipefail
 
@@ -14,14 +12,12 @@ cd "$ROOT"
 
 API_PORT="${API_PORT:-5001}"
 WEB_PORT="${WEB_PORT:-5000}"
-ENV_FILE="${ENV_FILE:-$ROOT/.env.staging}"
-export ENV_FILE
 
 fail() { printf 'Error: %s\n' "$*" >&2; exit 1; }
 
 command -v node >/dev/null && command -v npm >/dev/null || fail "Node and npm are required"
 command -v pm2 >/dev/null || fail "PM2 is required"
-[ -f "$ENV_FILE" ] || fail ".env.staging is missing. Copy .env.example to .env.staging and set APP_ENV=staging, a separate DATABASE_URL, JWT_SECRET, APP_URL, and DATA_DIR=./data-staging"
+[ -f "$ROOT/.env" ] || fail ".env is missing"
 
 install_deps() {
   local dir="$1"
@@ -32,7 +28,6 @@ install_deps() {
   )
 }
 
-echo "[deploy-staging] env $ENV_FILE"
 echo "[deploy-staging] installing dependencies"
 install_deps "$ROOT/server" --omit=dev
 install_deps "$ROOT/client"
@@ -47,7 +42,7 @@ echo "[deploy-staging] frontend build"
 )
 [ -f "$ROOT/client/dist/index.html" ] || fail "Frontend build failed (client/dist/index.html missing)"
 
-mkdir -p "$ROOT/data-staging/files" "$ROOT/data-staging/logs"
+mkdir -p "$ROOT/data/files" "$ROOT/data/logs"
 
 if pm2 describe pdr-staging-api >/dev/null 2>&1 && pm2 describe pdr-staging-web >/dev/null 2>&1; then
   echo "[deploy-staging] reloading PM2 apps"

@@ -108,7 +108,7 @@ On a droplet where Node, PM2 and Nginx are already installed:
 
 That installs dependencies, applies pending Sequelize migrations, builds the frontend, then starts or reloads both PM2 apps from `ecosystem.config.cjs`. Do not run `npm run dev` on a live database. With `APP_ENV=production`, `npm run seed` (or `seed:clean`) loads catalogue/settings only — never dummy customers. Visit `http://<droplet-ip>/`, not port 4000.
 
-Staging on the same droplet uses different loopback ports so production stays on `:4000` / `:4001`. Copy `.env.example` to `.env.staging` with `APP_ENV=staging`, a **separate** `DATABASE_URL` and `JWT_SECRET`, `DATA_DIR=./data-staging`, and `APP_URL` of the staging host. Copy `scripts/nginx/frontend-staging` to `/etc/nginx/sites-available/frontend-staging` and enable it.
+Staging on the same droplet uses the same `.env` and different loopback ports so production stays on `:4000` / `:4001`. Copy `scripts/nginx/frontend-staging` to `/etc/nginx/sites-available/frontend-staging` and enable it.
 
 ```bash
 ./scripts/deploy-staging.sh

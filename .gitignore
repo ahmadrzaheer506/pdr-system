@@ -2,14 +2,12 @@
 
 # Secrets: live API keys, tokens, JWT secret
 .env
-.env.staging
 .env.local
 .env.*.local
 !.env.example
 
 # The database: real customer data, staff logins, quotes, invoices
 data/
-data-staging/
 *.db
 *.db-shm
 *.db-wal
