@@ -169,16 +169,15 @@ async function ingestInbound({ source, channel = null, name = null, phone = null
       if (!lists.error) await contacts.saveContactLists(customerId, lists);
       await logActivity(customerId, null, 'customer_created', `New customer created from ${source} enquiry`);
     } else {
-      const existing = await contacts.listContacts(customerId);
-      if (phone && !existing.phones.length) {
-        await contacts.addPhone(customerId, { value: phone, type: 'mobile', is_primary: true }, { skipDuplicateCheck: true });
-      }
-      if (em && !existing.emails.length) {
-        await contacts.addEmail(customerId, { value: em, type: 'personal', is_primary: true }, { skipDuplicateCheck: true });
-      }
-      if (address && !existing.sites.length) {
-        await contacts.addSite(customerId, { address, is_primary: true });
-      }
+      const attached = await contacts.ensureInboundContacts(customerId, {
+        phone,
+        email: em,
+        address,
+        postcode,
+        phone_type,
+        email_type,
+      });
+      meta_ = { ...meta_, ...attached };
     }
   }
 

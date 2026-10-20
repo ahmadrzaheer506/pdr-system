@@ -112,6 +112,21 @@ function enforceOnePrimary(items, label) {
   return items;
 }
 
+function foldKey(value) {
+  return String(value || '').trim().toLowerCase().replace(/\s+/g, ' ');
+}
+
+function foldPostcode(value) {
+  return String(value || '').trim().toLowerCase().replace(/\s+/g, '');
+}
+
+/** True when two sites are the same address + postcode (ignore spacing/case). */
+function sitesMatch(site, address, postcode) {
+  if (!site) return false;
+  return foldKey(site.address) === foldKey(address)
+    && foldPostcode(site.postcode) === foldPostcode(postcode);
+}
+
 function parseSiteItem(row) {
   if (!row || typeof row !== 'object') return { error: 'Invalid site entry' };
   const address = String(row.address || '').trim();
@@ -623,12 +638,89 @@ async function createMissingContacts(customerId, customer, body = {}) {
   return { value: next };
 }
 
+/**
+ * Matched inbound enquiry: reuse phone/email/site when they already exist,
+ * otherwise add the missing ones. A new site is not made primary if the
+ * customer already has one.
+ *
+ * @returns {Promise<{ site_id: number|null, phone_id: number|null, email_id: number|null }>}
+ */
+async function ensureInboundContacts(customerId, {
+  phone = null,
+  email = null,
+  address = null,
+  postcode = null,
+  phone_type = null,
+  email_type = null,
+} = {}) {
+  const listed = await listContacts(customerId);
+  const ids = { site_id: null, phone_id: null, email_id: null };
+
+  const phoneVal = String(phone || '').trim();
+  if (phoneVal) {
+    const normalised = normalisePhone(phoneVal);
+    const found = listed.phones.find((row) => {
+      const existing = normalisePhone(row.value);
+      return (normalised && existing && existing === normalised)
+        || foldKey(row.value) === foldKey(phoneVal);
+    });
+    if (found) {
+      ids.phone_id = found.id;
+    } else {
+      const added = await addPhone(customerId, {
+        value: phoneVal,
+        type: phone_type || 'mobile',
+        is_primary: listed.phones.length === 0,
+      }, { skipDuplicateCheck: true });
+      if (!added.error) ids.phone_id = added.phone.id;
+    }
+  }
+
+  const emailVal = String(email || '').trim();
+  if (emailVal) {
+    const found = listed.emails.find((row) => foldKey(row.value) === foldKey(emailVal));
+    if (found) {
+      ids.email_id = found.id;
+    } else {
+      const added = await addEmail(customerId, {
+        value: emailVal,
+        type: email_type || 'personal',
+        is_primary: listed.emails.length === 0,
+      }, { skipDuplicateCheck: true });
+      if (!added.error) ids.email_id = added.email.id;
+    }
+  }
+
+  const addr = String(address || '').trim();
+  if (addr) {
+    const found = listed.sites.find((row) => sitesMatch(row, addr, postcode));
+    if (found) {
+      ids.site_id = found.id;
+    } else {
+      const added = await addSite(customerId, {
+        address: addr,
+        postcode: postcode == null || String(postcode).trim() === '' ? null : String(postcode).trim(),
+        is_primary: listed.sites.length === 0,
+      });
+      if (!added.error) ids.site_id = added.site.id;
+    }
+  }
+
+  const latest = await listContacts(customerId);
+  return {
+    site_id: ids.site_id || pickPrimary(latest.sites)?.id || null,
+    phone_id: ids.phone_id || pickPrimary(latest.phones)?.id || null,
+    email_id: ids.email_id || pickPrimary(latest.emails)?.id || null,
+  };
+}
+
 module.exports = {
   PHONE_TYPES,
   EMAIL_TYPES,
   CONTACT_INCLUDE,
   CONTACT_ORDER,
   formatSite,
+  sitesMatch,
   applyPrimaryContacts,
   applySelectedContacts,
   enforceOnePrimary,
@@ -645,6 +737,7 @@ module.exports = {
   applyLeadContacts,
   resolveLeadContactsForCreate,
   createMissingContacts,
+  ensureInboundContacts,
   addSite,
   updateSite,
   removeSite,

@@ -70,6 +70,7 @@ const SOURCE_FILTERS = [
   { value: 'facebook', label: 'Facebook' },
   { value: 'facebook_lead', label: 'Facebook lead' },
   { value: 'sms', label: 'SMS' },
+  { value: 'website', label: 'Website' },
 ];
 
 export default function Inbox() {

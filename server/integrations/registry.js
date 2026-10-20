@@ -7,6 +7,24 @@ const gcal = require('./gcal');
 const quickbooks = require('./quickbooks');
 const ai = require('./ai');
 
+function websiteStatus() {
+  const secret = String(process.env.WEBSITE_ENQUIRY_SECRET || '').trim();
+  const configured = !!(secret && secret !== 'change-me');
+  const base = process.env.APP_URL || 'http://localhost:4000';
+  return {
+    id: 'website',
+    name: 'Website enquiry form',
+    configured,
+    connected: configured,
+    mode: configured ? 'live' : 'simulated',
+    env_needed: ['WEBSITE_ENQUIRY_SECRET'],
+    webhook_url: configured ? `${base}/api/webhooks/website` : null,
+    detail: configured
+      ? 'Live — landing-page enquiries create inbox leads; photos upload as files (not URLs).'
+      : 'Add WEBSITE_ENQUIRY_SECRET so the public contact form can post into the inbox.',
+  };
+}
+
 function telephonyStatus() {
   const configured = !!(process.env.TWILIO_ACCOUNT_SID && process.env.TWILIO_AUTH_TOKEN);
   return {
@@ -31,6 +49,7 @@ async function all(userId) {
     whatsapp.status(),
     ai.status(),
     meta.status(),
+    websiteStatus(),
     telephonyStatus(),
   ];
 }

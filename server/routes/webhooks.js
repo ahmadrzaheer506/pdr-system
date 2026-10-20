@@ -1,7 +1,8 @@
 const express = require('express');
-const { logIntegrationEvent } = require('../models');
+const { logIntegrationEvent, Lead } = require('../models');
 const { ingestInbound } = require('../services/messenger');
 const meta = require('../integrations/meta');
+const websiteEnquiry = require('../services/websiteEnquiry');
 
 const router = express.Router();
 
@@ -130,6 +131,57 @@ router.post('/twilio/sms', express.urlencoded({ extended: false }), async (req, 
     await logEvent('telephony', 'sms.received', { from: From });
   } catch (err) {
     await logEvent('telephony', 'webhook.error', { error: String(err.message) }, 'error');
+  }
+});
+
+router.post('/website', (req, res, next) => {
+  if (!websiteEnquiry.secretConfigured() || !websiteEnquiry.secretMatches(req)) {
+    return res.status(403).json({ error: 'Forbidden' });
+  }
+  return websiteEnquiry.handleWebsiteUpload(req, res, next);
+}, async (req, res) => {
+  const body = websiteEnquiry.enquiryBodyFromRequest(req);
+  if (body.__parseError) return res.status(400).json({ error: body.__parseError });
+  const parsed = websiteEnquiry.parseWebsiteEnquiry(body);
+  if (parsed.error) return res.status(parsed.status || 400).json({ error: parsed.error });
+  const photos = websiteEnquiry.collectEnquiryPhotos(req);
+  if (photos.files.length) {
+    parsed.value.meta.photo_count = photos.files.length;
+    parsed.value.body = `${parsed.value.body}\n\nPhotos: ${photos.files.length} attached`.slice(0, 2000);
+  }
+  try {
+    const result = await ingestInbound(parsed.value);
+    const stored = await websiteEnquiry.saveEnquiryPhotos(result.customerId, photos.files);
+    const photo_ids = stored.saved.map((f) => f.id);
+    const photo_names = stored.saved.map((f) => f.original_name);
+    if (result.leadId && photo_ids.length) {
+      await Lead.update({
+        meta: {
+          ...parsed.value.meta,
+          photo_count: photo_ids.length,
+          photo_file_ids: photo_ids,
+          photo_names,
+        },
+      }, { where: { id: result.leadId } });
+    }
+    const warnings = [...photos.warnings, ...stored.warnings];
+    await logEvent('website', 'enquiry.received', {
+      ref: parsed.value.meta.external_ref,
+      leadId: result.leadId,
+      matched: result.matched,
+      photos: photo_ids.length,
+    });
+    res.status(200).json({
+      ok: true,
+      matched: result.matched,
+      customerId: result.customerId,
+      leadId: result.leadId,
+      photos: photo_ids.length,
+      ...(warnings.length ? { warnings } : {}),
+    });
+  } catch (err) {
+    await logEvent('website', 'webhook.error', { error: String(err.message) }, 'error');
+    res.status(500).json({ error: 'Could not save this enquiry' });
   }
 });
 

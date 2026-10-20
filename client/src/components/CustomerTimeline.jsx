@@ -4,6 +4,7 @@ import {
 } from 'lucide-react';
 import { fmtDateTime, fmtTimeAgo } from '../lib/api';
 import { TIMELINE_LABELS } from '../lib/timeline';
+import WebsiteEnquiryDetails from './WebsiteEnquiryDetails.jsx';
 
 const ICONS = {
   message: MessageCircle,
@@ -37,7 +38,10 @@ function MessageBubble({ item }) {
           {item.meta?.status === 'simulated' && <span className="opacity-80">(simulated)</span>}
           <span>· {fmtDateTime(item.at)}</span>
         </div>
-        <div className="whitespace-pre-wrap break-words">{item.summary}</div>
+        <WebsiteEnquiryDetails
+          className="mt-1.5"
+          lead={{ source: item.meta?.channel, message: item.summary, meta: item.meta }}
+        />
       </div>
     </div>
   );

@@ -24,12 +24,19 @@ const {
   applyLeadContacts,
   leadContactSelection,
   formatSite,
+  sitesMatch,
 } = require('../customerContacts');
 
 describe('contact helpers (requirement 2.2)', () => {
   test('phone types are mobile, landline, work; email types are personal, work', () => {
     expect(PHONE_TYPES).toEqual(['mobile', 'landline', 'work']);
     expect(EMAIL_TYPES).toEqual(['personal', 'work']);
+  });
+
+  test('sitesMatch ignores case and spacing so a new job address is stored', () => {
+    const existing = { address: 'sui gas road ishtashm colony st#2 gujranwala', postcode: 'ER4 3DF' };
+    expect(sitesMatch(existing, 'sui gas road ishtashm colony st#2 gujranwala', 'ER4 3DF')).toBe(true);
+    expect(sitesMatch(existing, 'TEst Address', 'ER4 3DV')).toBe(false);
   });
 
   test('formatSite joins address and postcode', () => {

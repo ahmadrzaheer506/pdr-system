@@ -130,6 +130,14 @@ Cheapest reliable route (no change visible to customers):
 
 If wanted: a **Twilio** account (`TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN`, `TWILIO_NUMBER`) with a UK number that the office number forwards to (or that becomes the advertised number). Webhooks: `{APP_URL}/api/webhooks/twilio/voice` and `/api/webhooks/twilio/sms`. UK numbers require Twilio's regulatory bundle (proof of business address) — allow a day.
 
+## 10. Website enquiry form (public landing page)
+
+**Powers:** “Tell us about the job” on the marketing site creates an inbox lead.
+
+Set `WEBSITE_ENQUIRY_SECRET` and POST to `{APP_URL}/api/webhooks/website` with header `X-Enquiry-Secret`. CRM source is always `website`; the form’s Google/Facebook/etc. value is stored as `heard_from`. Consent, a name, and a phone or email are required.
+
+**Photos:** do **not** send URLs or landing-page filenames. The CRM stores files on the customer record (JPEG, PNG or WebP, up to 4 files, 8MB each). Preferred: `multipart/form-data` with JSON field `enquiry` plus file field `photos`. Alternative: JSON body with `photos: [{ filename, mime, data }]` where `data` is base64 (or a `data:image/jpeg;base64,…` string). String URLs are ignored. HEIC is not stored — convert to JPEG/PNG first.
+
 ---
 
 ## What I do NOT need from you

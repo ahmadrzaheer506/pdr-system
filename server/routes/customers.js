@@ -317,6 +317,7 @@ router.get('/:id', asyncHandler(async (req, res) => {
       phone: chosen.phone,
       email: chosen.email,
       address: chosen.address,
+      postcode: chosen.postcode,
       site_id: chosen.site_id,
       phone_id: chosen.phone_id,
       email_id: chosen.email_id,

@@ -86,4 +86,27 @@ describe('CustomerTimeline (requirement 2.3)', () => {
     expect(feed.className).toMatch(/overflow-y-auto/);
     expect(feed.className).toMatch(/max-h-\[32rem\]/);
   });
+
+  it('labels property type and roof type on a website enquiry', () => {
+    render(<CustomerTimeline items={[{
+      id: 'message-web',
+      type: 'message',
+      at: '2026-10-20T23:02:00Z',
+      summary: 'Fascias · House · Pitched, slate · Emergency\nThis is developer testing,',
+      meta: {
+        channel: 'website',
+        direction: 'in',
+        service: 'Fascias, Soffits & Guttering',
+        property_type: 'House',
+        roof_type: 'Pitched, slate',
+        urgency: 'Emergency',
+        enquiry_message: 'This is developer testing,',
+      },
+    }]} />);
+    expect(screen.getByText('Property type')).toBeInTheDocument();
+    expect(screen.getByText('House')).toBeInTheDocument();
+    expect(screen.getByText('Roof type')).toBeInTheDocument();
+    expect(screen.getByText('Pitched, slate')).toBeInTheDocument();
+    expect(screen.queryByText(/Fascias · House/)).not.toBeInTheDocument();
+  });
 });

@@ -14,6 +14,9 @@ jest.mock('../customerContacts', () => ({
   addPhone: jest.fn(),
   addEmail: jest.fn(),
   addSite: jest.fn(),
+  ensureInboundContacts: jest.fn(async () => ({
+    site_id: null, phone_id: null, email_id: null,
+  })),
   resolveLeadContactsForCreate: jest.fn(async () => ({
     site_id: null, phone_id: null, email_id: null, site: null, phone: null, email: null,
   })),
@@ -26,7 +29,8 @@ jest.mock('../db', () => ({
   nextRef: jest.fn(async () => 'L-0041'),
 }));
 
-const { Customer, Lead, Message } = require('../models');
+const { Customer, Lead, Message, CustomerPhone } = require('../models');
+const contacts = require('../customerContacts');
 const { ingestInbound } = require('../services/messenger');
 
 describe('ingestInbound leads (requirement 3.3)', () => {
@@ -74,5 +78,35 @@ describe('ingestInbound leads (requirement 3.3)', () => {
       email_id: null,
     }));
     expect(result.leadId).toBe(41);
+  });
+
+  test('matched website enquiry attaches a new site when the address is different', async () => {
+    CustomerPhone.findOne.mockResolvedValue({ customer_id: 9 });
+    contacts.ensureInboundContacts.mockResolvedValue({ site_id: 22, phone_id: 3, email_id: 4 });
+    contacts.resolveLeadContactsForCreate.mockResolvedValue({
+      site_id: 22, phone_id: 3, email_id: 4, site: null, phone: null, email: null,
+    });
+    Lead.findOne.mockResolvedValue(null);
+    await ingestInbound({
+      source: 'website',
+      phone: '07700 900005',
+      email: 'testmjh@gmail.com',
+      address: 'TEst Address',
+      postcode: 'ER4 3DV',
+      forceNewLead: true,
+      body: 'Flat roofs',
+    });
+    expect(contacts.ensureInboundContacts).toHaveBeenCalledWith(9, expect.objectContaining({
+      phone: '07700 900005',
+      email: 'testmjh@gmail.com',
+      address: 'TEst Address',
+      postcode: 'ER4 3DV',
+    }));
+    expect(Lead.create).toHaveBeenCalledWith(expect.objectContaining({
+      customer_id: 9,
+      site_id: 22,
+      phone_id: 3,
+      email_id: 4,
+    }));
   });
 });

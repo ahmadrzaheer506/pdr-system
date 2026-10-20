@@ -222,6 +222,9 @@ async function yesNo(question, defaultYes = true) {
   if (env.FB_PAGE_ACCESS_TOKEN) webhooks.push(['Facebook', `${env.APP_URL}/api/webhooks/facebook`]);
   if (env.MAILGUN_API_KEY) webhooks.push(['Inbound email', `${env.APP_URL}/api/webhooks/email?secret=${env.EMAIL_INBOUND_SECRET}`]);
   if (env.TWILIO_ACCOUNT_SID) webhooks.push(['Twilio voice', `${env.APP_URL}/api/webhooks/twilio/voice`], ['Twilio SMS', `${env.APP_URL}/api/webhooks/twilio/sms`]);
+  if (env.WEBSITE_ENQUIRY_SECRET && env.WEBSITE_ENQUIRY_SECRET !== 'change-me') {
+    webhooks.push(['Website form', `${env.APP_URL}/api/webhooks/website`]);
+  }
   if (webhooks.length) {
     console.log(`\n  ${C.bold}Webhook URLs to paste into each provider${C.reset}`);
     for (const [name, url] of webhooks) console.log(`  ${C.dim}${name}:${C.reset}\n    ${url}`);

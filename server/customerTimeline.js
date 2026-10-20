@@ -65,6 +65,7 @@ function buildCustomerTimeline(messages, activities) {
       entity_type: 'message',
       entity_id: m.id,
       meta: {
+        ...(m.meta && typeof m.meta === 'object' && !Array.isArray(m.meta) ? m.meta : {}),
         channel: m.channel,
         direction: m.direction,
         status: m.status,

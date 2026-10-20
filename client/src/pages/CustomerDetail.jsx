@@ -13,6 +13,7 @@ import QuoteBuilder from '../components/QuoteBuilder.jsx';
 import BookVisit from '../components/BookVisit.jsx';
 import JobModal from '../components/JobModal.jsx';
 import CustomerTimeline from '../components/CustomerTimeline.jsx';
+import WebsiteEnquiryDetails from '../components/WebsiteEnquiryDetails.jsx';
 import CustomerInternalNotes from '../components/CustomerInternalNotes.jsx';
 import CustomerAttachments from '../components/CustomerAttachments.jsx';
 import InvoiceTaxDetail from '../components/InvoiceTaxDetail.jsx';
@@ -183,7 +184,7 @@ export default function CustomerDetail() {
           <div className="mt-3 text-sm bg-rose-50 text-rose-700 rounded-lg px-3 py-2">Lost: {lostReason}</div>
         )}
         {activeLead && (
-          <div className="mt-3 rounded-xl bg-slate-50 px-3 py-2.5">
+          <div className="mt-3 rounded-xl bg-slate-50 px-3 py-2">
             <div className="flex flex-wrap items-center gap-2">
               <StatusBadge status={activeLead.status} className="capitalize" />
               <span className="text-xs font-medium text-slate-600">{leadSourceLabel(activeLead.source)}</span>
@@ -191,9 +192,7 @@ export default function CustomerDetail() {
                 <span className="text-[11px] font-medium text-amber-800">Next: {activeLead.next_action}</span>
               ) : null}
             </div>
-            {activeLead.message ? (
-              <p className="mt-1.5 text-sm text-slate-700 whitespace-pre-wrap">{activeLead.message}</p>
-            ) : null}
+            <WebsiteEnquiryDetails className="mt-2" lead={activeLead} hidePlace />
           </div>
         )}
       </div>
