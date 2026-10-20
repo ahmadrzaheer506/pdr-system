@@ -1,7 +1,7 @@
 import React, { useRef, useState } from 'react';
 import { Mic, Square, Sparkles, AlertTriangle, Check, X as XIcon } from 'lucide-react';
 import { api } from '../lib/api';
-import { Avatar, ModeBadge } from './ui.jsx';
+import { Avatar, ModeBadge, avatarUrl } from './ui.jsx';
 import DatePicker from './DatePicker.jsx';
 import { localIsoDate, proposalCrewConflicts } from '../lib/schedule';
 import CrewConflictModal from './CrewConflictModal.jsx';
@@ -237,7 +237,7 @@ export default function AiAssistant({ proposeDate, setProposeDate, onApproved, s
                                 : 'bg-amber-50 text-amber-800 ring-amber-200'
                           }`}
                         >
-                          <Avatar name={s.name} color={s.color} size={5} /> {s.name.split(' ')[0]}
+                          <Avatar name={s.name} color={s.color} size={5} src={avatarUrl(s)} /> {s.name.split(' ')[0]}
                           {s.on_holiday && <span className="text-[10px] uppercase tracking-wide">holiday</span>}
                           {!s.on_holiday && (s.busy_on || []).length > 0 && (
                             <span className="text-[10px] uppercase tracking-wide">booked</span>

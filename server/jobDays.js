@@ -105,6 +105,7 @@ function mapSlot(row) {
     user_id: o.user_id,
     name: user.name || null,
     color: user.color || null,
+    avatar_file: user.avatar_file || null,
     is_driver: !!user.is_driver,
     skills: Array.isArray(user.skills) ? user.skills : [],
   };
@@ -112,7 +113,7 @@ function mapSlot(row) {
 
 const userInclude = {
   model: User,
-  attributes: ['id', 'name', 'color', 'is_driver', 'skills'],
+  attributes: ['id', 'name', 'color', 'avatar_file', 'is_driver', 'skills'],
 };
 
 async function listDayAssignments(jobId) {

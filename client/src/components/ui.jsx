@@ -62,28 +62,35 @@ export function ModeBadge({ mode }) {
   );
 }
 
+/** Shown in add/edit user and anywhere a person has no uploaded photo. */
+export const DEFAULT_USER_AVATAR = '/default-user.svg';
+
 export function avatarUrl(user) {
   if (!user?.avatar_file) return null;
   const params = new URLSearchParams({ v: String(user.avatar_file) });
-  if (user.id != null && user.id !== '') params.set('user', String(user.id));
+  const id = user.id != null && user.id !== '' ? user.id : user.user_id;
+  if (id != null && id !== '') params.set('user', String(id));
   return `/api/auth/avatar?${params.toString()}`;
 }
 
-export function Avatar({ name, color, size = 8, src }) {
+export function Avatar({ name, color, size = 8, src, fallbackSrc = DEFAULT_USER_AVATAR }) {
   const [failed, setFailed] = React.useState(false);
   React.useEffect(() => { setFailed(false); }, [src]);
   const px = size * 4;
   const initials = (name || '?').split(' ').map((p) => p[0]).slice(0, 2).join('').toUpperCase();
   const box = { width: px, height: px, fontSize: size * 1.4 };
-  if (src && !failed) {
+  const shown = src && !failed ? src : fallbackSrc;
+  if (shown) {
     return (
       <img
-        src={src}
-        alt={name || ''}
+        src={shown}
+        alt={name || 'Default user photo'}
         title={name}
         className="flex-shrink-0 rounded-full object-cover bg-slate-200"
         style={box}
-        onError={() => setFailed(true)}
+        onError={() => {
+          if (src && !failed) setFailed(true);
+        }}
       />
     );
   }
@@ -304,7 +311,7 @@ export function HoverTooltip({ text, children, className = 'inline-flex' }) {
 export function Toast({ message, type = 'ok', onClose }) {
   if (!message) return null;
   return (
-    <div className={`fixed bottom-5 right-5 z-[120] px-4 py-3 rounded-lg shadow-lg text-sm font-medium text-white ${type === 'error' ? 'bg-red-600' : 'bg-slate-900'}`} onClick={onClose}>
+    <div className={`fixed bottom-5 right-5 z-[140] px-4 py-3 rounded-lg shadow-lg text-sm font-medium text-white ${type === 'error' ? 'bg-red-600' : 'bg-slate-900'}`} onClick={onClose}>
       {message}
     </div>
   );

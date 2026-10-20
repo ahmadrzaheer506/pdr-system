@@ -3,7 +3,7 @@ import { Camera, Lock, Mail, Shield, Trash2, Calendar } from 'lucide-react';
 import { api } from '../lib/api';
 import { useAuth } from '../lib/auth.jsx';
 import { ROLES } from '../lib/roles';
-import { Avatar, PageLoading, useToast, Toast, ConfirmModal, avatarUrl } from '../components/ui.jsx';
+import { Avatar, PageLoading, useToast, Toast, ConfirmModal, avatarUrl, DEFAULT_USER_AVATAR } from '../components/ui.jsx';
 import ChangePasswordForm from '../components/ChangePasswordForm.jsx';
 import NotificationPrefsForm from '../components/NotificationPrefsForm.jsx';
 
@@ -176,7 +176,7 @@ export default function Profile() {
       <section className="rounded-2xl border border-slate-200/80 bg-white p-6 shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
         <div className="flex flex-col sm:flex-row sm:items-center gap-5">
           <div className="relative w-fit">
-            <Avatar name={name || user.name} color={user.color} src={avatarUrl(user)} size={20} />
+            <Avatar name={name || user.name} color={user.color} src={avatarUrl(user) || DEFAULT_USER_AVATAR} size={20} />
             <button
               type="button"
               onClick={() => fileRef.current?.click()}
@@ -274,7 +274,7 @@ export default function Profile() {
         <ChangePasswordForm bare />
       </section>
 
-      {user.role === ROLES.STAFF && <NotificationPrefsForm />}
+      {user.role === ROLES.STAFF && <NotificationPrefsForm compact />}
 
       <GoogleCalendarCard show={show} />
 

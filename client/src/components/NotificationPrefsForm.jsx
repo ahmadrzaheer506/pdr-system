@@ -19,11 +19,11 @@ const KIND_META = {
   crew_removed: { hint: 'When you are taken off a job.', Icon: UserMinus },
 };
 
-function PrefToggle({ checked, onChange, label, caption }) {
+function PrefToggle({ checked, onChange, label, caption, compact }) {
   return (
-    <label className="inline-flex min-h-11 cursor-pointer select-none items-center gap-2.5">
-      {caption ? <span className="text-xs font-medium text-slate-500">{caption}</span> : null}
-      <span className="relative inline-flex h-6 w-11 shrink-0 items-center">
+    <label className={`inline-flex cursor-pointer select-none items-center ${compact ? 'min-h-8 gap-1.5' : 'min-h-11 gap-2.5'}`}>
+      {caption ? <span className={`font-medium text-slate-500 ${compact ? 'text-[11px]' : 'text-xs'}`}>{caption}</span> : null}
+      <span className={`relative inline-flex shrink-0 items-center ${compact ? 'h-5 w-9' : 'h-6 w-11'}`}>
         <input
           type="checkbox"
           className="peer sr-only"
@@ -32,7 +32,9 @@ function PrefToggle({ checked, onChange, label, caption }) {
           aria-label={label}
         />
         <span className="pointer-events-none absolute inset-0 rounded-full bg-slate-200 transition-colors peer-checked:bg-brand-500 peer-focus-visible:ring-2 peer-focus-visible:ring-brand-500/35" />
-        <span className="pointer-events-none absolute left-0.5 top-0.5 h-5 w-5 rounded-full bg-white shadow-sm ring-1 ring-slate-900/5 transition-transform peer-checked:translate-x-5" />
+        <span className={`pointer-events-none absolute left-0.5 top-0.5 rounded-full bg-white shadow-sm ring-1 ring-slate-900/5 transition-transform ${
+          compact ? 'h-4 w-4 peer-checked:translate-x-4' : 'h-5 w-5 peer-checked:translate-x-5'
+        }`} />
       </span>
     </label>
   );
@@ -42,7 +44,7 @@ function PrefToggle({ checked, onChange, label, caption }) {
  * Per-user notification opt-in (requirement 13.2). All kinds start off.
  * Email toggles exist only for field staff on crew add/remove.
  */
-export default function NotificationPrefsForm() {
+export default function NotificationPrefsForm({ compact = false }) {
   const { toast, show } = useToast();
   const [kinds, setKinds] = useState(null);
   const [prefs, setPrefs] = useState({ in_app: {}, email: {} });
@@ -135,8 +137,9 @@ export default function NotificationPrefsForm() {
                     {meta.hint ? <p className="mt-0.5 text-xs leading-relaxed text-slate-500">{meta.hint}</p> : null}
                   </div>
                 </div>
-                <div className="flex shrink-0 flex-col items-end gap-1 sm:flex-row sm:items-center sm:gap-x-5">
+                <div className={`flex shrink-0 flex-col items-end sm:flex-row sm:items-center ${compact ? 'gap-1 sm:gap-x-3' : 'gap-1 sm:gap-x-5'}`}>
                   <PrefToggle
+                    compact={compact}
                     caption="In-app"
                     label={`${kind.title} in-app`}
                     checked={prefs.in_app?.[kind.id] === true}
@@ -144,6 +147,7 @@ export default function NotificationPrefsForm() {
                   />
                   {kind.email && (
                     <PrefToggle
+                      compact={compact}
                       caption="Email"
                       label={`${kind.title} email`}
                       checked={prefs.email?.[kind.id] === true}

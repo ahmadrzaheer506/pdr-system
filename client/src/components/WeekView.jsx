@@ -1,5 +1,5 @@
 import React from 'react';
-import { Avatar, PriorityBadge, HoverTooltip } from './ui.jsx';
+import { Avatar, PriorityBadge, HoverTooltip, avatarUrl } from './ui.jsx';
 import {
   startOfWeekMonday, localIsoDate, jobOnDate, crewForDate,
   holidaysOnDate, bookingsFromJobs, staffDayFlags, crewConflictLabel, jobConflictCaption,
@@ -28,22 +28,30 @@ export function JobChip({ job, dateIso, onJobClick, holidays = [], bookings = []
         </div>
       ) : null}
       {crew.length > 0 ? (
-        <div className="mt-1 flex flex-wrap items-center gap-1">
-          {crew.map((c) => {
-            const flags = staffDayFlags({
-              holidays, bookings, userId: c.user_id, iso: dateIso, excludeJobId: job.id,
-            });
-            const conflict = crewConflictLabel(flags);
-            return (
-              <span
-                key={c.user_id}
-                className={`relative rounded-full ${conflict ? 'ring-2 ring-amber-400' : ''}`}
-                title={conflict ? `${c.name} — ${conflict}` : c.name}
-              >
-                <Avatar name={c.name} color={c.color} size={4.5} />
-              </span>
-            );
-          })}
+        <div className="mt-1.5">
+          <p className="text-[9px] font-semibold uppercase tracking-wide text-slate-400">Assignees</p>
+          <div className="mt-0.5 flex flex-wrap items-center gap-1">
+            {crew.map((c) => {
+              const flags = staffDayFlags({
+                holidays, bookings, userId: c.user_id, iso: dateIso, excludeJobId: job.id,
+              });
+              const conflict = crewConflictLabel(flags);
+              return (
+                <span
+                  key={c.user_id}
+                  className={`relative rounded-full ${conflict ? 'ring-2 ring-amber-400' : ''}`}
+                  title={conflict ? `${c.name} — ${conflict}` : c.name}
+                >
+                  <Avatar
+                    name={c.name}
+                    color={c.color}
+                    size={6}
+                    src={avatarUrl({ id: c.user_id, avatar_file: c.avatar_file })}
+                  />
+                </span>
+              );
+            })}
+          </div>
         </div>
       ) : null}
       {conflictNote && (

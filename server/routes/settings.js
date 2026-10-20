@@ -14,8 +14,10 @@ const jobChecklists = require('../jobChecklists');
 const timesheetRules = require('../timesheetRules');
 const branding = require('../branding');
 const registry = require('../integrations/registry');
+const { buildIntegrationGuidePdf, DOWNLOAD_NAME } = require('../services/integrationGuidePdf');
 const { logSecurityEvent, SECURITY_ACTIONS, nextTokenVersion } = require('../securityAudit');
 const skillsLib = require('../skills');
+const avatars = require('../avatars');
 const { issueResetEmail, sendWelcomeCredentials } = require('../passwordMail');
 
 /** Keys Company / Templates may persist. Branding is file-upload only. */
@@ -185,6 +187,15 @@ router.post('/logo', requireAdmin, branding.handleUpload, asyncHandler(async (re
 
 router.get('/integrations', requireOffice, asyncHandler(async (req, res) => {
   res.json({ integrations: await registry.all(req.user.id), events: await registry.recentEvents(30) });
+}));
+
+router.get('/integrations/guide.pdf', requireOffice, asyncHandler(async (req, res) => {
+  const company = (await getSetting('company')) || {};
+  const pdf = await buildIntegrationGuidePdf(company);
+  res.setHeader('Content-Type', 'application/pdf');
+  res.setHeader('Content-Disposition', `attachment; filename="${DOWNLOAD_NAME}"`);
+  res.setHeader('Cache-Control', 'no-store');
+  res.send(pdf);
 }));
 
 router.get('/users', requireOffice, asyncHandler(async (req, res) => {
@@ -417,6 +428,7 @@ router.delete('/users/:id', requireAdmin, asyncHandler(async (req, res) => {
       return res.status(400).json({ error: 'Cannot delete the last administrator' });
     }
   }
+  avatars.removeAvatar(u.id);
   await destroyStaffUser(u.id);
   await logSecurityEvent({
     actorUserId: req.user.id,
@@ -424,6 +436,25 @@ router.delete('/users/:id', requireAdmin, asyncHandler(async (req, res) => {
     action: SECURITY_ACTIONS.USER_DELETE,
     detail: u.email || u.name,
   });
+  res.json({ ok: true });
+}));
+
+router.post('/users/:id/avatar', requireAdmin, avatars.handleUpload, asyncHandler(async (req, res) => {
+  const u = await User.findByPk(req.params.id);
+  if (!u) return res.status(404).json({ error: 'User not found' });
+  const saved = avatars.saveAvatar(u.id, req.file);
+  if (saved.error) return res.status(saved.status || 400).json({ error: saved.error });
+  u.avatar_file = saved.avatar_file;
+  await u.save();
+  res.json({ ok: true, avatar_file: saved.avatar_file });
+}));
+
+router.delete('/users/:id/avatar', requireAdmin, asyncHandler(async (req, res) => {
+  const u = await User.findByPk(req.params.id);
+  if (!u) return res.status(404).json({ error: 'User not found' });
+  avatars.removeAvatar(u.id);
+  u.avatar_file = null;
+  await u.save();
   res.json({ ok: true });
 }));
 

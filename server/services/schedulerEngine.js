@@ -9,7 +9,7 @@ const skillsLib = require('../skills');
 async function buildContext(forDate) {
   const staffRows = await User.findAll({
     where: { role: 'STAFF', active: true },
-    attributes: ['id', 'name', 'skills', 'is_driver', 'color'],
+    attributes: ['id', 'name', 'skills', 'is_driver', 'color', 'avatar_file'],
   });
   const staff = staffRows.map((s) => {
     const o = plain(s);

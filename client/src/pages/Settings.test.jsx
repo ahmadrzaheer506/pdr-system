@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import Settings from './Settings.jsx';
 import { api } from '../lib/api';
@@ -24,6 +24,7 @@ vi.mock('../lib/api', () => ({
     put: vi.fn(),
     del: vi.fn(),
     upload: vi.fn(),
+    download: vi.fn(),
   },
   fmtTimeAgo: () => '',
   fmtDateTime: (d) => d || '',
@@ -640,6 +641,15 @@ describe('Settings Mailgun email', () => {
     expect(screen.getByText(/Needs: MAILGUN_API_KEY/)).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /^connect$/i })).toBeNull();
   });
+
+  it('does not show the integration setup guide download on the integrations tab', async () => {
+    const user = userEvent.setup();
+    render(<Settings />);
+    await user.click(await screen.findByRole('button', { name: /^integrations$/i }));
+    expect(await screen.findByText('Email (Mailgun + inbound parse)')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /download pdf/i })).toBeNull();
+    expect(screen.queryByText(/account & keys setup guide/i)).toBeNull();
+  });
 });
 
 describe('Settings VAT rates (requirement 6.3)', () => {
@@ -1096,6 +1106,61 @@ describe('Settings timesheet rules, holiday allowance, and branding (requirement
     expect(api.put).toHaveBeenCalledWith('/settings/users/3', expect.objectContaining({
       holiday_allowance: 22,
     }));
+  });
+
+  it('shows the default user photo in add user and uploads after create', async () => {
+    const user = userEvent.setup({ delay: null });
+    render(<Settings />);
+    await user.click(screen.getByRole('button', { name: /staff & users/i }));
+    await user.click(await screen.findByRole('button', { name: /add user/i }));
+    expect(within(screen.getByRole('dialog')).getByRole('img', { name: /default user photo/i })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /upload photo/i })).toBeInTheDocument();
+    const file = new File(['png'], 'jamie.png', { type: 'image/png' });
+    await user.upload(screen.getByLabelText(/upload profile photo/i), file);
+    await user.type(screen.getByLabelText(/^name$/i), 'New Hand');
+    await user.type(screen.getByLabelText(/email/i), 'new@example.com');
+    await user.type(screen.getByLabelText(/temporary password/i), 'password123');
+    await user.click(screen.getAllByRole('button', { name: /^add user$/i }).at(-1));
+    expect(api.post).toHaveBeenCalledWith('/settings/users', expect.objectContaining({
+      name: 'New Hand',
+      email: 'new@example.com',
+    }));
+    expect(api.upload).toHaveBeenCalled();
+    const [path, fd] = api.upload.mock.calls.find((c) => c[0] === '/settings/users/99/avatar');
+    expect(path).toBe('/settings/users/99/avatar');
+    expect(fd.get('file')).toBe(file);
+  });
+
+  it('lets an admin change a user photo on edit', async () => {
+    const user = userEvent.setup({ delay: null });
+    render(<Settings />);
+    await user.click(screen.getByRole('button', { name: /staff & users/i }));
+    await screen.findByText('Jamie Staff');
+    await user.click(screen.getByRole('button', { name: /more actions for jamie staff/i }));
+    await user.click(screen.getByRole('button', { name: /^edit$/i }));
+    expect(within(screen.getByRole('dialog')).getByRole('img', { name: /jamie staff|default user photo/i })).toBeInTheDocument();
+    const file = new File(['jpg'], 'jamie.jpg', { type: 'image/jpeg' });
+    await user.upload(screen.getByLabelText(/upload profile photo/i), file);
+    await user.click(screen.getByRole('button', { name: /save changes/i }));
+    expect(api.put).toHaveBeenCalledWith('/settings/users/3', expect.objectContaining({
+      name: 'Jamie Staff',
+    }));
+    const [path, fd] = api.upload.mock.calls.find((c) => c[0] === '/settings/users/3/avatar');
+    expect(path).toBe('/settings/users/3/avatar');
+    expect(fd.get('file')).toBe(file);
+  });
+
+  it('toasts when adding a user fails because the email is already in use', async () => {
+    api.post.mockRejectedValueOnce(new Error('That email is already in use'));
+    const user = userEvent.setup({ delay: null });
+    render(<Settings />);
+    await user.click(screen.getByRole('button', { name: /staff & users/i }));
+    await user.click(await screen.findByRole('button', { name: /add user/i }));
+    await user.type(screen.getByLabelText(/^name$/i), 'Dup');
+    await user.type(screen.getByLabelText(/email/i), 'jamie@example.com');
+    await user.type(screen.getByLabelText(/temporary password/i), 'password123');
+    await user.click(screen.getAllByRole('button', { name: /^add user$/i }).at(-1));
+    expect(await screen.findAllByText('That email is already in use')).not.toHaveLength(0);
   });
 
   it('lets an admin upload a PNG logo', async () => {

@@ -1,8 +1,36 @@
-import React from 'react';
+import React, { useMemo, useState } from 'react';
 import { Briefcase, PlaneTakeoff, UserCheck, Users } from 'lucide-react';
 import { Avatar, avatarUrl } from './ui.jsx';
-import { skillLabel } from '../lib/skills';
+import { LEVEL_RANK, parseLevel, requirementId, skillName } from '../lib/skills';
+import { useSkillCatalogue } from '../lib/useSkillCatalogue';
 import { localIsoDate, teamAvailabilityRows } from '../lib/schedule';
+
+const SKILL_PREVIEW = 4;
+
+function levelChipClass(level) {
+  if (level === 'advanced') return 'bg-emerald-50 text-emerald-800 ring-emerald-100';
+  if (level === 'competent') return 'bg-sky-50 text-sky-800 ring-sky-100';
+  if (level === 'trainee') return 'bg-slate-50 text-slate-600 ring-slate-200/80';
+  return 'bg-slate-50 text-slate-600 ring-slate-200/70';
+}
+
+function personSkillChips(person, catalogue) {
+  const list = Array.isArray(person?.skills) ? person.skills : [];
+  return list
+    .map((entry, index) => {
+      const name = skillName(entry, catalogue);
+      const level = entry && typeof entry === 'object' && entry.level ? parseLevel(entry.level) : null;
+      const id = requirementId(entry);
+      return {
+        key: `${id ?? name}-${level || 'none'}-${index}`,
+        name,
+        level,
+        levelLabel: level ? level.charAt(0).toUpperCase() + level.slice(1) : null,
+      };
+    })
+    .filter((row) => row.name)
+    .sort((a, b) => (LEVEL_RANK[b.level] || 0) - (LEVEL_RANK[a.level] || 0) || a.name.localeCompare(b.name));
+}
 
 const GROUPS = [
   {
@@ -50,41 +78,82 @@ function formatBoardDate(iso) {
   });
 }
 
-function PersonRow({ row }) {
+function PersonRow({ row, catalogue, expanded, onToggleSkills }) {
   const { person, status, jobs } = row;
-  const jobTitles = jobs.map((job) => job.job_title).filter(Boolean).join(' · ');
-  const skills = (person.skills || []).map(skillLabel);
+  const jobList = (jobs || []).filter((job) => job.job_title);
+  const chips = useMemo(() => personSkillChips(person, catalogue), [person, catalogue]);
+  const hidden = Math.max(0, chips.length - SKILL_PREVIEW);
+  const visible = expanded ? chips : chips.slice(0, SKILL_PREVIEW);
+  const nameEl = hidden > 0 ? (
+    <button
+      type="button"
+      className="block max-w-full truncate text-left text-sm font-semibold text-slate-900 hover:text-slate-700"
+      onClick={onToggleSkills}
+    >
+      {person.name}
+    </button>
+  ) : (
+    <div className="truncate text-sm font-semibold text-slate-900">{person.name}</div>
+  );
 
   return (
-    <li className="flex items-start gap-2.5 rounded-xl bg-white px-2.5 py-2 shadow-[0_1px_2px_rgba(15,23,42,0.04)] ring-1 ring-black/[0.04]">
-      <Avatar name={person.name} color={person.color} size={9} src={avatarUrl(person)} />
-      <div className="min-w-0 flex-1">
-        <div className="truncate text-sm font-semibold text-slate-900">{person.name}</div>
-        <div className="mt-1 flex flex-wrap gap-1">
-          {person.is_driver ? (
-            <span className="rounded-md bg-sky-50 px-1.5 py-0.5 text-[10px] font-semibold text-sky-700 ring-1 ring-sky-100">
-              Driver
-            </span>
+    <li className={`rounded-xl bg-white px-2.5 py-2 shadow-[0_1px_2px_rgba(15,23,42,0.04)] ring-1 ${expanded ? 'ring-slate-300' : 'ring-black/[0.04]'}`}>
+      <div className="flex items-start gap-2.5">
+        <Avatar name={person.name} color={person.color} size={9} src={avatarUrl(person)} />
+        <div className="min-w-0 flex-1">
+          {status === 'busy' ? (
+            <p className="text-[10px] font-semibold uppercase tracking-wide text-slate-400">Job assignee</p>
           ) : null}
-          {skills.length ? skills.map((skill) => (
-            <span key={skill} className="rounded-md bg-slate-50 px-1.5 py-0.5 text-[10px] font-medium text-slate-600 ring-1 ring-slate-200/70">
-              {skill}
-            </span>
-          )) : !person.is_driver ? (
-            <span className="text-[11px] text-slate-400">No skills tagged</span>
+          {nameEl}
+          <div className="mt-1 flex flex-wrap gap-1">
+            {person.is_driver ? (
+              <span className="rounded-md bg-sky-50 px-1.5 py-0.5 text-[10px] font-semibold text-sky-700 ring-1 ring-sky-100">
+                Driver
+              </span>
+            ) : null}
+            {visible.map((skill) => (
+              <span
+                key={skill.key}
+                className={`inline-flex max-w-full items-center rounded-md px-1.5 py-0.5 text-[10px] font-medium ring-1 ${levelChipClass(skill.level)}`}
+                title={skill.levelLabel ? `${skill.name} — ${skill.levelLabel}` : skill.name}
+              >
+                <span className="truncate">
+                  {skill.levelLabel ? `${skill.name} — ${skill.levelLabel}` : skill.name}
+                </span>
+              </span>
+            ))}
+            {hidden > 0 ? (
+              <button
+                type="button"
+                className="rounded-md bg-white px-1.5 py-0.5 text-[10px] font-semibold text-slate-700 ring-1 ring-slate-200 hover:bg-slate-50"
+                aria-expanded={expanded}
+                aria-label={expanded ? `Hide extra skills for ${person.name}` : `Show all ${chips.length} skills for ${person.name}`}
+                onClick={onToggleSkills}
+              >
+                {expanded ? 'Show less' : `+${hidden} more`}
+              </button>
+            ) : null}
+            {!chips.length && !person.is_driver ? (
+              <span className="text-[11px] text-slate-400">No skills tagged</span>
+            ) : null}
+          </div>
+          {status === 'busy' && jobList.length ? (
+            <div className="mt-2 border-t border-amber-100 pt-1.5">
+              <p className="text-[10px] font-semibold uppercase tracking-wide text-amber-800/70">
+                {jobList.length === 1 ? 'Assigned job' : 'Assigned jobs'}
+              </p>
+              <p className="mt-0.5 text-xs font-medium leading-snug text-amber-900" title={jobList.map((job) => job.job_title).join(', ')}>
+                {jobList.map((job) => job.job_title).join(', ')}
+              </p>
+            </div>
           ) : null}
         </div>
-        {status === 'busy' && jobTitles ? (
-          <p className="mt-1.5 truncate text-xs font-medium text-amber-800" title={jobTitles}>
-            {jobTitles}
-          </p>
-        ) : null}
       </div>
     </li>
   );
 }
 
-function StatusColumn({ group, rows }) {
+function StatusColumn({ group, rows, catalogue, openSkillsId, onToggleSkills }) {
   const Icon = group.Icon;
   return (
     <section className={`relative flex h-full min-h-[12rem] flex-col overflow-hidden rounded-2xl p-3 ring-1 ${group.column}`}>
@@ -106,7 +175,13 @@ function StatusColumn({ group, rows }) {
       ) : (
         <ul className="max-h-[22rem] space-y-2 overflow-y-auto overscroll-contain pr-0.5" aria-label={group.title}>
           {rows.map((row) => (
-            <PersonRow key={row.person.id} row={row} />
+            <PersonRow
+              key={row.person.id}
+              row={row}
+              catalogue={catalogue}
+              expanded={openSkillsId === row.person.id}
+              onToggleSkills={() => onToggleSkills(row.person.id)}
+            />
           ))}
         </ul>
       )}
@@ -117,7 +192,10 @@ function StatusColumn({ group, rows }) {
 /**
  * Schedule board: who is free, already on a job, or off today.
  */
-export default function TeamAvailability({ staff, holidays, jobs, today = localIsoDate() }) {
+export default function TeamAvailability({ staff, holidays, jobs, today = localIsoDate(), catalogue: catalogueProp }) {
+  const loaded = useSkillCatalogue();
+  const catalogue = catalogueProp || loaded.skills;
+  const [openSkillsId, setOpenSkillsId] = useState(null);
   const rows = teamAvailabilityRows(staff, holidays, jobs, today);
   const available = rows.filter((row) => row.status === 'available').length;
   const busy = rows.filter((row) => row.status === 'busy').length;
@@ -156,6 +234,9 @@ export default function TeamAvailability({ staff, holidays, jobs, today = localI
             <StatusColumn
               key={group.status}
               group={group}
+              catalogue={catalogue}
+              openSkillsId={openSkillsId}
+              onToggleSkills={(id) => setOpenSkillsId((cur) => (cur === id ? null : id))}
               rows={rows.filter((row) => row.status === group.status)}
             />
           ))}

@@ -1,6 +1,6 @@
 import React from 'react';
 import { Check } from 'lucide-react';
-import { Avatar, HoverTooltip } from './ui.jsx';
+import { Avatar, HoverTooltip, avatarUrl } from './ui.jsx';
 import { staffDayFlags, crewConflictLabel, crewSaveConflicts, crewConflictSummaryLine, crewChipHoverHint } from '../lib/schedule';
 import { staffMatchesRequiredSkills, skillLabel, sortStaffForJob } from '../lib/skills';
 import { useSkillCatalogue } from '../lib/useSkillCatalogue';
@@ -125,7 +125,7 @@ export default function CrewChips({
               selected, onHoliday, busy: busyOn.length > 0, matches,
             })} ${disabled ? 'opacity-60 cursor-not-allowed' : ''}`}
           >
-            <Avatar name={s.name} color={s.color} size={5} /> {s.name.split(' ')[0]}
+            <Avatar name={s.name} color={s.color} size={5} src={avatarUrl(s)} /> {s.name.split(' ')[0]}
             {matches && <span className="text-[10px] uppercase tracking-wide">match</span>}
             {s.is_driver && <span className="text-[10px] uppercase tracking-wide">driver</span>}
             {conflict && <span className="text-[10px] uppercase tracking-wide">{conflict}</span>}

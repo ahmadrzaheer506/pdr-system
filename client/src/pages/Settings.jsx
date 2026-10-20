@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { Plug, Building2, Users, Plus, ExternalLink, Copy, Shield, Trash2, Bell, Package, FileText, Search, MoreHorizontal, Landmark, Percent, Image, Clock, Mail, Upload, Wrench, ChevronDown } from 'lucide-react';
+import { Plug, Building2, Users, Plus, ExternalLink, Copy, Shield, Trash2, Bell, Package, FileText, Search, MoreHorizontal, Landmark, Percent, Image, Clock, Mail, Upload, Wrench, ChevronDown, Camera } from 'lucide-react';
 import { api, fmtTimeAgo, fmtDate, money } from '../lib/api';
-import { PageLoading, LoadError, ModeBadge, Avatar, Modal, ConfirmModal, useToast, Toast, avatarUrl } from '../components/ui.jsx';
+import { PageLoading, LoadError, ModeBadge, Avatar, Modal, ConfirmModal, useToast, Toast, avatarUrl, DEFAULT_USER_AVATAR } from '../components/ui.jsx';
 import { useAuth } from '../lib/auth.jsx';
 import { ROLES } from '../lib/roles';
 import { staffSkillLine } from '../lib/skills';
@@ -824,6 +824,12 @@ function cisShort(status) {
   return found.label;
 }
 
+function showFormError(setError, show, message) {
+  const text = message || 'Something went wrong';
+  setError(text);
+  show?.(text, 'error');
+}
+
 function FormSection({ title, hint, children }) {
   return (
     <section className="space-y-3">
@@ -1174,7 +1180,7 @@ function StaffTab({ canEdit }) {
                   <tr key={u.id} className="border-t border-slate-100 last:border-0">
                     <td className="px-5 py-3.5">
                       <div className="flex items-center gap-3 min-w-[12rem]">
-                        <Avatar name={u.name} color={u.color} size={10} src={avatarUrl(u)} />
+                        <Avatar name={u.name} color={u.color} size={10} src={avatarUrl(u) || DEFAULT_USER_AVATAR} />
                         <div className="min-w-0">
                           <div className={`truncate font-medium ${u.active ? 'text-slate-900' : 'text-slate-400 line-through'}`}>
                             {u.name}
@@ -1225,17 +1231,20 @@ function StaffTab({ canEdit }) {
       <AddStaffModal
         open={addOpen}
         onClose={() => setAddOpen(false)}
+        show={show}
         onSaved={(result) => {
           setAddOpen(false);
           load();
-          if (result && result.emailed === false) {
+          if (result && result.photoError) {
+            show(`Account created, but the photo could not be saved: ${result.photoError}`, 'error');
+          } else if (result && result.emailed === false) {
             show('Account created, but the welcome email could not be sent.', 'error');
           } else {
             show('Account created. Login details were emailed.');
           }
         }}
       />
-      <EditUserModal user={editUser} lockRole={!!editUser && (isLastActiveAdmin(editUser) || !!editUser.protected)} onClose={() => setEditUser(null)} onSaved={() => { setEditUser(null); load(); show('Account updated'); }} />
+      <EditUserModal user={editUser} lockRole={!!editUser && (isLastActiveAdmin(editUser) || !!editUser.protected)} onClose={() => setEditUser(null)} show={show} onSaved={() => { setEditUser(null); load(); show('Account updated'); }} />
       <ConfirmModal
         open={!!deleteUser}
         title="Delete user"
@@ -1265,15 +1274,126 @@ function StaffTab({ canEdit }) {
   );
 }
 
+const PHOTO_MAX_BYTES = 2 * 1024 * 1024;
+
+function photoFileError(file) {
+  if (!file) return 'Choose a PNG or JPEG photo';
+  if (file.type !== 'image/png' && file.type !== 'image/jpeg') return 'Only PNG and JPEG photos are allowed';
+  if (file.size > PHOTO_MAX_BYTES) return 'Photo must be 2MB or smaller';
+  return null;
+}
+
+async function uploadUserPhoto(userId, file) {
+  const fd = new FormData();
+  fd.append('file', file);
+  return api.upload(`/settings/users/${userId}/avatar`, fd);
+}
+
+function UserPhotoField({
+  inputId,
+  name,
+  color,
+  existingSrc,
+  file,
+  onFile,
+  onRemove,
+  busy,
+}) {
+  const inputRef = useRef(null);
+  const [blobUrl, setBlobUrl] = useState(null);
+
+  useEffect(() => {
+    if (!file || typeof URL.createObjectURL !== 'function') {
+      setBlobUrl(null);
+      return undefined;
+    }
+    const url = URL.createObjectURL(file);
+    setBlobUrl(url);
+    return () => {
+      if (typeof URL.revokeObjectURL === 'function') URL.revokeObjectURL(url);
+    };
+  }, [file]);
+
+  const src = blobUrl || existingSrc || DEFAULT_USER_AVATAR;
+  const hasCustom = !!(file || existingSrc);
+
+  const pick = (e) => {
+    const next = e.target.files?.[0];
+    e.target.value = '';
+    if (!next) return;
+    const err = photoFileError(next);
+    if (err) {
+      onFile(null, err);
+      return;
+    }
+    onFile(next, null);
+  };
+
+  return (
+    <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+      <div className="relative w-fit shrink-0">
+        <Avatar name={name} color={color} src={src} size={20} />
+        <button
+          type="button"
+          onClick={() => inputRef.current?.click()}
+          disabled={busy}
+          className="absolute -bottom-0.5 -right-0.5 flex h-8 w-8 items-center justify-center rounded-full border-2 border-white bg-navy-900 text-white shadow-sm hover:bg-slate-800 disabled:opacity-50"
+          aria-label="Change profile photo"
+          title="Change photo"
+        >
+          <Camera size={14} />
+        </button>
+        <input
+          ref={inputRef}
+          id={inputId}
+          type="file"
+          accept="image/png,image/jpeg"
+          className="sr-only"
+          aria-label="Upload profile photo"
+          onChange={pick}
+        />
+      </div>
+      <div className="min-w-0">
+        <p className="text-sm font-semibold text-slate-900">Profile photo</p>
+        <p className="mt-0.5 text-xs leading-relaxed text-slate-500">
+          PNG or JPEG, up to 2MB. If you skip this, the default photo is used.
+        </p>
+        <div className="mt-2 flex flex-wrap items-center gap-2">
+          <button
+            type="button"
+            className="btn-secondary text-xs"
+            disabled={busy}
+            onClick={() => inputRef.current?.click()}
+          >
+            {hasCustom ? 'Change photo' : 'Upload photo'}
+          </button>
+          {hasCustom ? (
+            <button
+              type="button"
+              className="inline-flex items-center gap-1 text-xs font-medium text-rose-600 hover:text-rose-700 disabled:opacity-50"
+              disabled={busy}
+              onClick={onRemove}
+            >
+              <Trash2 size={12} />
+              Use default
+            </button>
+          ) : null}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 const ADD_STAFF_BLANK = {
   name: '', email: '', phone: '', password: '', role: ROLES.STAFF, skills: [], is_driver: false,
   color: '#0ea5e9', financials_restricted: false, hourly_cost: 0, cis_status: 'none', holiday_allowance: '',
 };
 
-function AddStaffModal({ open, onClose, onSaved }) {
+function AddStaffModal({ open, onClose, onSaved, show }) {
   const [form, setForm] = useState(ADD_STAFF_BLANK);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
+  const [photoFile, setPhotoFile] = useState(null);
   const [defaultAllowance, setDefaultAllowance] = useState(28);
   const set = (k) => (e) => setForm({ ...form, [k]: e.target.value });
   const setSkills = (skills) => setForm((f) => ({ ...f, skills }));
@@ -1281,6 +1401,7 @@ function AddStaffModal({ open, onClose, onSaved }) {
   useEffect(() => {
     if (!open) return undefined;
     setForm(ADD_STAFF_BLANK);
+    setPhotoFile(null);
     setError('');
     let cancelled = false;
     api.get('/settings').then((d) => {
@@ -1305,8 +1426,16 @@ function AddStaffModal({ open, onClose, onSaved }) {
         body.holiday_allowance = Number(rawAllowance);
       }
       const result = await api.post('/settings/users', body);
+      if (photoFile && result?.id) {
+        try {
+          await uploadUserPhoto(result.id, photoFile);
+        } catch (photoErr) {
+          onSaved({ ...result, photoError: photoErr.message || 'Photo could not be saved' });
+          return;
+        }
+      }
       onSaved(result);
-    } catch (err) { setError(err.message); }
+    } catch (err) { showFormError(setError, show, err.message); }
     finally { setSaving(false); }
   };
 
@@ -1330,6 +1459,20 @@ function AddStaffModal({ open, onClose, onSaved }) {
       <form id="add-user-form" onSubmit={submit} className="space-y-6">
         {error && <div className="bg-red-50 text-red-700 text-sm rounded-lg px-3 py-2">{error}</div>}
         <FormSection title="Account" hint="This email is their login.">
+          <UserPhotoField
+            inputId="add-user-photo"
+            name={form.name}
+            color={form.color}
+            existingSrc={null}
+            file={photoFile}
+            busy={saving}
+            onFile={(next, err) => {
+              if (err) { showFormError(setError, show, err); return; }
+              setError('');
+              setPhotoFile(next);
+            }}
+            onRemove={() => { setPhotoFile(null); setError(''); }}
+          />
           <div>
             <label className="label" htmlFor="add-user-name">Name</label>
             <input id="add-user-name" className="input" value={form.name} onChange={set('name')} required />
@@ -1378,12 +1521,13 @@ function AddStaffModal({ open, onClose, onSaved }) {
   );
 }
 
-function EditUserModal({ user, lockRole, onClose, onSaved }) {
-  const { toast, show } = useToast();
+function EditUserModal({ user, lockRole, onClose, onSaved, show }) {
   const [form, setForm] = useState({ name: '', email: '', phone: '', role: ROLES.STAFF, financials_restricted: false, skills: [], is_driver: false, hourly_cost: 0, cis_status: 'none', holiday_allowance: '' });
   const [saving, setSaving] = useState(false);
   const [resetting, setResetting] = useState(false);
   const [error, setError] = useState('');
+  const [photoFile, setPhotoFile] = useState(null);
+  const [removePhoto, setRemovePhoto] = useState(false);
   const set = (k) => (e) => setForm({ ...form, [k]: e.target.value });
   const setSkills = (skills) => setForm((f) => ({ ...f, skills }));
 
@@ -1401,6 +1545,8 @@ function EditUserModal({ user, lockRole, onClose, onSaved }) {
       cis_status: user.cis_status || 'none',
       holiday_allowance: user.holiday_allowance ?? '',
     });
+    setPhotoFile(null);
+    setRemovePhoto(false);
     setError('');
   }, [user]);
 
@@ -1423,15 +1569,20 @@ function EditUserModal({ user, lockRole, onClose, onSaved }) {
       if (form.holiday_allowance !== '' && form.holiday_allowance !== undefined) {
         const n = Number(form.holiday_allowance);
         if (!Number.isFinite(n) || n < 0 || n > 365) {
-          setError('Holiday allowance must be 0–365 days');
+          showFormError(setError, show, 'Holiday allowance must be 0–365 days');
           setSaving(false);
           return;
         }
         body.holiday_allowance = n;
       }
       await api.put(`/settings/users/${user.id}`, body);
+      if (photoFile) {
+        await uploadUserPhoto(user.id, photoFile);
+      } else if (removePhoto && user.avatar_file) {
+        await api.del(`/settings/users/${user.id}/avatar`);
+      }
       onSaved();
-    } catch (err) { setError(err.message); }
+    } catch (err) { showFormError(setError, show, err.message); }
     finally { setSaving(false); }
   };
 
@@ -1443,7 +1594,7 @@ function EditUserModal({ user, lockRole, onClose, onSaved }) {
       await api.post(`/settings/users/${user.id}/reset-password`);
       show('Reset link sent to their email.');
     } catch (err) {
-      setError(err.message || 'Could not send the reset email');
+      showFormError(setError, show, err.message || 'Could not send the reset email');
     } finally {
       setResetting(false);
     }
@@ -1476,6 +1627,25 @@ function EditUserModal({ user, lockRole, onClose, onSaved }) {
       <form id="edit-user-form" onSubmit={submit} className="space-y-6">
         {error && <div className="bg-red-50 text-red-700 text-sm rounded-lg px-3 py-2">{error}</div>}
         <FormSection title="Account" hint="This email is their login.">
+          <UserPhotoField
+            inputId="edit-user-photo"
+            name={form.name}
+            color={user?.color}
+            existingSrc={!removePhoto ? avatarUrl(user) : null}
+            file={photoFile}
+            busy={busy}
+            onFile={(next, err) => {
+              if (err) { showFormError(setError, show, err); return; }
+              setError('');
+              setPhotoFile(next);
+              setRemovePhoto(false);
+            }}
+            onRemove={() => {
+              setPhotoFile(null);
+              setRemovePhoto(true);
+              setError('');
+            }}
+          />
           <div>
             <label className="label" htmlFor="edit-user-name">Name</label>
             <input id="edit-user-name" className="input" value={form.name} onChange={set('name')} required />
@@ -1517,7 +1687,6 @@ function EditUserModal({ user, lockRole, onClose, onSaved }) {
           <PayFields form={form} set={set} idPrefix="edit-user" />
         </FormSection>
       </form>
-      <Toast {...toast} />
     </Modal>
   );
 }

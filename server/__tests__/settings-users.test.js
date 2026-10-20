@@ -25,6 +25,11 @@ jest.mock('../integrations/registry', () => ({
 jest.mock('../integrations/email', () => ({
   send: jest.fn(async () => ({ simulated: true })),
 }));
+jest.mock('../avatars', () => ({
+  handleUpload: (req, _res, next) => next(),
+  saveAvatar: jest.fn(() => ({ ok: true, avatar_file: 'avatar-5.png' })),
+  removeAvatar: jest.fn(),
+}));
 jest.mock('../auth', () => {
   const actual = jest.requireActual('../auth');
   return {
@@ -43,6 +48,7 @@ const settings = require('../routes/settings');
 const { ROLE_VALUES } = require('../roles');
 const { getSetting } = require('../db');
 const email = require('../integrations/email');
+const avatars = require('../avatars');
 
 const app = express();
 app.use(express.json());
@@ -556,5 +562,36 @@ describe('DELETE /api/settings/users/:id', () => {
     expect(res.status).toBe(400);
     expect(res.body.error).toBe('Cannot delete the last administrator');
     expect(destroyStaffUser).not.toHaveBeenCalled();
+  });
+});
+
+describe('admin user photo (requirement 1.4)', () => {
+  beforeEach(() => jest.clearAllMocks());
+
+  test('uploads a photo for another user', async () => {
+    const save = jest.fn();
+    User.findByPk.mockResolvedValue({ id: 5, avatar_file: null, save });
+    avatars.saveAvatar.mockReturnValue({ ok: true, avatar_file: 'avatar-5.png' });
+    const res = await request(app).post('/api/settings/users/5/avatar');
+    expect(res.status).toBe(200);
+    expect(res.body.avatar_file).toBe('avatar-5.png');
+    expect(avatars.saveAvatar).toHaveBeenCalledWith(5, undefined);
+    expect(save).toHaveBeenCalled();
+  });
+
+  test('returns 404 when the user is missing', async () => {
+    User.findByPk.mockResolvedValue(null);
+    const res = await request(app).post('/api/settings/users/99/avatar');
+    expect(res.status).toBe(404);
+    expect(avatars.saveAvatar).not.toHaveBeenCalled();
+  });
+
+  test('clears a user photo back to the default', async () => {
+    const save = jest.fn();
+    User.findByPk.mockResolvedValue({ id: 5, avatar_file: 'avatar-5.png', save });
+    const res = await request(app).delete('/api/settings/users/5/avatar');
+    expect(res.status).toBe(200);
+    expect(avatars.removeAvatar).toHaveBeenCalledWith(5);
+    expect(save).toHaveBeenCalled();
   });
 });
