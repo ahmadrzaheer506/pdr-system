@@ -642,13 +642,16 @@ describe('Settings Mailgun email', () => {
     expect(screen.queryByRole('button', { name: /^connect$/i })).toBeNull();
   });
 
-  it('does not show the integration setup guide download on the integrations tab', async () => {
+  it('downloads the integration setup guide as a PDF', async () => {
+    api.download.mockResolvedValue(undefined);
     const user = userEvent.setup();
     render(<Settings />);
     await user.click(await screen.findByRole('button', { name: /^integrations$/i }));
-    expect(await screen.findByText('Email (Mailgun + inbound parse)')).toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: /download pdf/i })).toBeNull();
-    expect(screen.queryByText(/account & keys setup guide/i)).toBeNull();
+    await user.click(await screen.findByRole('button', { name: /download pdf/i }));
+    expect(api.download).toHaveBeenCalledWith(
+      '/settings/integrations/guide.pdf',
+      'CRM-integration-setup-guide.pdf',
+    );
   });
 });
 

@@ -68,7 +68,7 @@ function drawHeader(doc, companyName) {
   doc.fill('#ffffff').font('Helvetica-Bold').fontSize(13)
     .text('Integration setup guide', M + 250, 24, { width: CONTENT_W - 250, align: 'right' });
   doc.font('Helvetica').fontSize(8.5).fill('#cbd5e1')
-    .text('Accounts, keys and Connect steps for office / owners', M + 250, 44, {
+    .text('How to create accounts and collect keys', M + 250, 44, {
       width: CONTENT_W - 250, align: 'right',
     });
 

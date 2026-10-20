@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { Plug, Building2, Users, Plus, ExternalLink, Copy, Shield, Trash2, Bell, Package, FileText, Search, MoreHorizontal, Landmark, Percent, Image, Clock, Mail, Upload, Wrench, ChevronDown, Camera } from 'lucide-react';
+import { Plug, Building2, Users, Plus, ExternalLink, Copy, Shield, Trash2, Bell, Package, FileText, Search, MoreHorizontal, Landmark, Percent, Image, Clock, Mail, Upload, Wrench, ChevronDown, Camera, Download } from 'lucide-react';
 import { api, fmtTimeAgo, fmtDate, money } from '../lib/api';
 import { PageLoading, LoadError, ModeBadge, Avatar, Modal, ConfirmModal, useToast, Toast, avatarUrl, DEFAULT_USER_AVATAR } from '../components/ui.jsx';
 import { useAuth } from '../lib/auth.jsx';
@@ -167,6 +167,7 @@ function IntegrationsTab() {
   const [data, setData] = useState(null);
   const [confirmDisconnect, setConfirmDisconnect] = useState(null);
   const [disconnecting, setDisconnecting] = useState(false);
+  const [guideBusy, setGuideBusy] = useState(false);
   const { toast, show } = useToast();
   const load = () => api.get('/settings/integrations').then(setData).catch((err) => {
     show(err.message, 'error');
@@ -209,9 +210,37 @@ function IntegrationsTab() {
   };
   const canConnectQuickbooks = user?.role === ROLES.ADMIN;
   const copy = (text) => { navigator.clipboard?.writeText(text); show('Copied to clipboard'); };
+  const downloadGuide = async () => {
+    setGuideBusy(true);
+    try {
+      await api.download('/settings/integrations/guide.pdf', 'CRM-integration-setup-guide.pdf');
+    } catch (err) {
+      show(err.message || 'Could not download the setup guide', 'error');
+    } finally {
+      setGuideBusy(false);
+    }
+  };
 
   return (
     <div className="min-w-0 space-y-5 overflow-x-hidden">
+      <div className="flex min-w-0 flex-col gap-3 rounded-2xl border border-slate-200 bg-white p-4 sm:flex-row sm:items-center sm:justify-between sm:p-5">
+        <div className="min-w-0">
+          <div className="font-semibold text-slate-900">Account & keys setup guide</div>
+          <p className="mt-1 text-sm text-slate-500">
+            Step-by-step for Google Calendar, Mailgun, QuickBooks, WhatsApp, Facebook, AI and Twilio.
+            Please collect the keys, send them to your developer, then click Connect where shown.
+          </p>
+        </div>
+        <button
+          type="button"
+          onClick={downloadGuide}
+          disabled={guideBusy}
+          className="btn-secondary inline-flex shrink-0 items-center justify-center gap-1.5 !py-2 !px-3 text-sm"
+        >
+          <Download size={15} />
+          {guideBusy ? 'Preparing PDF…' : 'Download PDF'}
+        </button>
+      </div>
       <div className="grid min-w-0 gap-4 md:grid-cols-2">
         {data.integrations.map((intg) => (
           <div key={intg.id} className="min-w-0 overflow-hidden rounded-2xl border border-slate-200 bg-white p-5">
