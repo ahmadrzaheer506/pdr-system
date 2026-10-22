@@ -714,6 +714,25 @@ describe('Settings VAT rates (requirement 6.3)', () => {
       }),
     }));
   });
+
+  it('lets an admin delete a default VAT rate', async () => {
+    const user = userEvent.setup();
+    render(<Settings />);
+    await user.click(screen.getByRole('button', { name: /company/i }));
+    expect(await screen.findByRole('heading', { name: /VAT rates/i })).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Remove VAT rate 1' }));
+    expect(screen.queryByDisplayValue('standard')).not.toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: /save changes/i }));
+    expect(api.put).toHaveBeenCalledWith('/settings', expect.objectContaining({
+      uk: expect.objectContaining({
+        vat_rates: [
+          expect.objectContaining({ code: 'reduced' }),
+          expect.objectContaining({ code: 'zero' }),
+          expect.objectContaining({ code: 'exempt' }),
+        ],
+      }),
+    }));
+  });
 });
 
 describe('Settings quote follow-ups (requirement 12.1)', () => {

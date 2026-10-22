@@ -231,6 +231,12 @@ describe('GET /api/invoices', () => {
     expect(res.body.invoices[0].customer_name).toBe('Fiona Whitmore');
     expect(res.body.invoices[0].Job).toBeUndefined();
   });
+
+  test('rejects an invalid created_from date', async () => {
+    const res = await request(app).get('/api/invoices?created_from=22-09-2026');
+    expect(res.status).toBe(400);
+    expect(res.body.error).toBe('Invalid created_from date');
+  });
 });
 
 describe('PUT /api/invoices/:id/tax (requirement 11.2)', () => {

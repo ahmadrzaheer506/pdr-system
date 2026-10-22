@@ -9,7 +9,7 @@ export const RANGE_PRESETS = [7, 30, 90];
 export const LIVE_REPORTS = Object.freeze([
   'lead-volume', 'win-loss', 'pipeline-value', 'customers', 'jobs', 'invoices', 'profitability',
 ]);
-export const GENERATE_REPORTS = Object.freeze(['customers', 'jobs', 'invoices', 'profitability']);
+export const GENERATE_REPORTS = Object.freeze([]);
 export const ADMIN_REPORTS = Object.freeze(['profitability']);
 
 export const REPORT_CARDS = Object.freeze([

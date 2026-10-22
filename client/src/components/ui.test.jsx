@@ -16,5 +16,9 @@ describe('StatusBadge', () => {
     expect(screen.getByText('Cancelled')).toBeInTheDocument();
     rerender(<StatusBadge status="done" />);
     expect(screen.getByText('Done')).toBeInTheDocument();
+    rerender(<StatusBadge status="part_paid" />);
+    expect(screen.getByText('Part Paid')).toBeInTheDocument();
+    rerender(<StatusBadge status="overdue" />);
+    expect(screen.getByText('Overdue')).toBeInTheDocument();
   });
 });

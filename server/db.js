@@ -10,7 +10,7 @@ const fs = require('fs');
 const { Umzug, SequelizeStorage } = require('umzug');
 const { Sequelize } = require('sequelize');
 const { sequelize, Setting, Quote, Invoice, Lead } = require('./models');
-const { DEFAULT_VAT_RATES, mergeVatRates } = require('./services/ukTax');
+const { DEFAULT_VAT_RATES, settingsVatRates } = require('./services/ukTax');
 
 const DATA_DIR = process.env.DATA_DIR
   ? path.resolve(__dirname, '..', process.env.DATA_DIR)
@@ -159,7 +159,7 @@ async function getSetting(key) {
     return {
       ...fallback,
       ...value,
-      vat_rates: mergeVatRates(value.vat_rates),
+      vat_rates: settingsVatRates(value.vat_rates),
     };
   }
   if (key === 'company') {
@@ -196,7 +196,7 @@ async function allSettings() {
     out.uk = {
       ...DEFAULT_SETTINGS.uk,
       ...out.uk,
-      vat_rates: mergeVatRates(out.uk.vat_rates),
+      vat_rates: settingsVatRates(out.uk.vat_rates),
     };
   }
   if (out.company) {

@@ -34,13 +34,23 @@ describe('db helpers', () => {
     await expect(getSetting('vat_rate')).resolves.toBe(20);
   });
 
-  test('getSetting merges seeded VAT rates onto stored uk settings', async () => {
+  test('getSetting seeds VAT rates when none are stored', async () => {
     Setting.findByPk.mockResolvedValue({ key: 'uk', value: { vat_registered: true, default_cis_rate: 20 } });
     const uk = await getSetting('uk');
     expect(uk.vat_registered).toBe(true);
     expect(uk.vat_rates).toEqual(expect.arrayContaining([
       expect.objectContaining({ code: 'standard', rate: 20 }),
     ]));
+  });
+
+  test('getSetting keeps a stored VAT list that omitted a core code', async () => {
+    Setting.findByPk.mockResolvedValue({
+      key: 'uk',
+      value: { vat_rates: [{ code: 'green', rate: 5, short: '5%', label: 'Green 5%' }] },
+    });
+    const uk = await getSetting('uk');
+    expect(uk.vat_rates).toEqual([expect.objectContaining({ code: 'green', rate: 5 })]);
+    expect(uk.vat_rates.some((r) => r.code === 'standard')).toBe(false);
   });
 
   test('getSetting merges company defaults so bank keys exist (requirement 17.1)', async () => {

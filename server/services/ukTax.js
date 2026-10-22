@@ -102,6 +102,19 @@ function mergeVatRates(custom) {
   return [...byCode.values()];
 }
 
+/**
+ * VAT rates as shown in Settings. A saved list is used as-is so deleted
+ * core codes stay gone; missing or empty lists fall back to the UK seed.
+ * Tax lookups for old documents still use mergeVatRates.
+ */
+function settingsVatRates(custom) {
+  if (Array.isArray(custom) && custom.length) {
+    const parsed = parseVatRates(custom);
+    if (!parsed.error) return parsed.value;
+  }
+  return DEFAULT_VAT_RATES.map((r) => ({ ...r }));
+}
+
 function ratesTable(custom) {
   if (custom && typeof custom === 'object' && !Array.isArray(custom) && custom.standard) {
     return custom;
@@ -423,6 +436,7 @@ module.exports = {
   parseVatRate,
   parseVatRates,
   mergeVatRates,
+  settingsVatRates,
   vatShort,
   taxDefaultsForCustomer,
   resolveTaxOpts,

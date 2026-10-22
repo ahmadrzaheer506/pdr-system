@@ -710,7 +710,7 @@ function FollowupsEditor({ followups, onChange, canEdit }) {
             <div className="flex items-center justify-between gap-2">
               <span className="text-sm font-semibold text-slate-900">Step {i + 1}</span>
               {canEdit && (
-                <button type="button" onClick={() => removeStep(i)} className="btn-ghost !py-1 !px-2 text-xs inline-flex items-center gap-1">
+                <button type="button" onClick={() => removeStep(i)} className="btn-ghost !py-1 !px-2 text-xs inline-flex items-center gap-1 !text-rose-600 hover:!bg-rose-50 hover:!text-rose-700">
                   <Trash2 size={12} /> Remove
                 </button>
               )}
@@ -770,7 +770,7 @@ function VatRatesEditor({ rates, onChange, canEdit }) {
   };
   const add = () => onChange([...rates, { code: '', rate: 0, short: '', label: '', help: '' }]);
   const remove = (i) => {
-    if (CORE_VAT_CODES.includes(rates[i]?.code)) return;
+    if (rates.length <= 1) return;
     onChange(rates.filter((_, idx) => idx !== i));
   };
 
@@ -819,8 +819,8 @@ function VatRatesEditor({ rates, onChange, canEdit }) {
                 aria-label={`VAT label ${i + 1}`}
                 placeholder="Label"
               />
-              {canEdit && !lockedCode ? (
-                <button type="button" onClick={() => remove(i)} className="inline-flex h-8 w-8 items-center justify-center rounded-lg text-slate-400 hover:bg-rose-50 hover:text-rose-600" aria-label={`Remove VAT rate ${i + 1}`}>
+              {canEdit && rates.length > 1 ? (
+                <button type="button" onClick={() => remove(i)} className="inline-flex h-8 w-8 items-center justify-center rounded-lg text-rose-600 hover:bg-rose-50 hover:text-rose-700" aria-label={`Remove VAT rate ${i + 1}`}>
                   <Trash2 size={14} />
                 </button>
               ) : <span />}

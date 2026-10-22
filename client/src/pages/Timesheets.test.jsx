@@ -109,6 +109,18 @@ describe('Timesheets live board (requirement 9.3)', () => {
     expect(await screen.findByRole('link', { name: /csv/i })).toBeInTheDocument();
   });
 
+  it('puts date range and CSV inside Job profitability, not beside the heading', async () => {
+    const user = userEvent.setup();
+    render(<Timesheets />);
+    await screen.findByText(/nobody on the clock/i);
+    expect(screen.queryByRole('link', { name: /csv/i })).toBeNull();
+    await user.click(screen.getByRole('button', { name: /job profitability/i }));
+    expect(await screen.findByRole('link', { name: /csv/i })).toBeInTheDocument();
+    expect(screen.getByLabelText(/^from$/i)).toBeInTheDocument();
+    expect(screen.getByLabelText(/^to$/i)).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: /csv/i }).getAttribute('href')).toContain('/api/timesheets/export.csv');
+  });
+
   it('shows elapsed time, on-break, far-from-site, no-location, and missing crew', async () => {
     live = {
       work_date: '2026-09-25',
@@ -325,7 +337,7 @@ describe('Timesheets review (requirement 9.4)', () => {
     expect(screen.queryByRole('checkbox', { name: /approved only/i })).toBeNull();
     expect(screen.getByRole('link', { name: /csv/i }).getAttribute('href')).not.toContain('status=approved');
 
-    await user.click(screen.getByRole('button', { name: '1 Approved' }));
+    await pickSelectOption(user, 'Status', /^approved$/i);
     expect(screen.getByText('Jamie')).toBeInTheDocument();
     expect(screen.queryByText('Liam')).toBeNull();
     expect(screen.getByRole('link', { name: /csv/i }).getAttribute('href')).toContain('status=approved');

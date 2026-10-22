@@ -4,6 +4,7 @@ import {
 } from 'lucide-react';
 import { fmtDateTime, fmtTimeAgo } from '../lib/api';
 import { TIMELINE_LABELS } from '../lib/timeline';
+import { websiteEnquiryView } from '../lib/websiteEnquiry.js';
 import WebsiteEnquiryDetails from './WebsiteEnquiryDetails.jsx';
 
 const ICONS = {
@@ -29,19 +30,22 @@ function MessageBubble({ item }) {
   const channel = item.meta?.channel || 'message';
   const icons = { whatsapp: MessageCircle, email: Mail, facebook: MessageCircle, note: StickyNote, phone: Phone, sms: Phone };
   const Icon = icons[channel] || MessageCircle;
+  const lead = { source: item.meta?.channel, message: item.summary, meta: item.meta };
+  const enquiry = websiteEnquiryView(lead);
   return (
     <div className={`flex ${out ? 'justify-end' : 'justify-start'}`}>
       <div className={`max-w-[80%] rounded-xl px-3.5 py-2.5 text-sm ${out ? 'bg-navy-900 text-white' : 'bg-slate-100 text-slate-800'}`}>
-        <div className="flex items-center gap-1.5 text-[11px] mb-1 opacity-70">
+        <div className={`flex items-center gap-1.5 text-[11px] mb-1 ${out ? 'text-white/70' : 'text-slate-500'}`}>
           <Icon size={11} />
           <span>{TIMELINE_LABELS[item.type]}</span>
           {item.meta?.status === 'simulated' && <span className="opacity-80">(simulated)</span>}
           <span>· {fmtDateTime(item.at)}</span>
         </div>
-        <WebsiteEnquiryDetails
-          className="mt-1.5"
-          lead={{ source: item.meta?.channel, message: item.summary, meta: item.meta }}
-        />
+        {enquiry ? (
+          <WebsiteEnquiryDetails className="mt-1.5" lead={lead} />
+        ) : (
+          <p className="whitespace-pre-wrap">{item.summary}</p>
+        )}
       </div>
     </div>
   );

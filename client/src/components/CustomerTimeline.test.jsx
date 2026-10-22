@@ -70,6 +70,18 @@ describe('CustomerTimeline (requirement 2.3)', () => {
     expect(screen.getAllByText('Invoice').length).toBeGreaterThanOrEqual(1);
   });
 
+  it('shows outbound email body on the dark bubble', () => {
+    render(<CustomerTimeline items={[{
+      id: 'message-email-out',
+      type: 'message',
+      at: '2026-10-21T00:47:00Z',
+      summary: 'Hi Sahil,\n\nThank you for the opportunity to quote.',
+      meta: { channel: 'email', direction: 'out', status: 'sent' },
+    }]} />);
+    expect(screen.getByText(/thank you for the opportunity to quote/i)).toBeInTheDocument();
+    expect(screen.getByText(/hi sahil/i)).toBeInTheDocument();
+  });
+
   it('shows empty state when there are no items', () => {
     render(<CustomerTimeline items={[]} />);
     expect(screen.getByText(/no activity yet/i)).toBeInTheDocument();

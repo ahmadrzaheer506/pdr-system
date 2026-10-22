@@ -1,13 +1,11 @@
 import React, { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { Plus, Search, Trash2, Users } from 'lucide-react';
+import { Pencil, Plus, Trash2, Users } from 'lucide-react';
 import { api, money, fmtTimeAgo } from '../lib/api';
 import { PageLoading, EmptyState, ConfirmModal, useToast, Toast } from '../components/ui.jsx';
 import NewCustomerModal from '../components/NewCustomerModal.jsx';
-import SelectMenu from '../components/SelectMenu.jsx';
-import DatePicker from '../components/DatePicker.jsx';
+import ListFilterBar from '../components/ListFilterBar.jsx';
 import { leadSourceLabel } from '../lib/leads.js';
-import ScrollTabBar from '../components/ScrollTabBar.jsx';
 
 const TYPE_FILTERS = [
   { value: 'ALL', label: 'All' },
@@ -94,64 +92,24 @@ export default function Customers() {
         <p className="mt-0.5 text-sm text-slate-500">Every customer record — domestic and commercial — in one list.</p>
       </div>
 
-      <div className="card p-3">
-        <div className="flex w-full flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-          <ScrollTabBar
-            value={type}
-            fadeFrom="from-slate-100"
-            className="min-w-0 rounded-lg bg-slate-100 p-1 lg:max-w-none"
-            trackClassName="h-8 gap-1 sm:h-9"
-          >
-            {TYPE_FILTERS.map((s) => (
-              <button
-                key={s.value}
-                type="button"
-                data-tab={s.value}
-                onClick={() => setType(s.value)}
-                className={`h-full shrink-0 whitespace-nowrap rounded-md px-3 text-sm font-medium ${type === s.value ? 'bg-navy-900 text-white' : 'text-slate-500 hover:bg-white'}`}
-              >
-                {s.label}
-              </button>
-            ))}
-          </ScrollTabBar>
-          <div className="flex min-w-0 items-center justify-end gap-2 overflow-x-auto">
-            <div className="relative w-40 shrink-0">
-              <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
-              <input
-                className="input !pl-9 w-full"
-                placeholder="Search…"
-                value={q}
-                onChange={(e) => setQ(e.target.value)}
-                aria-label="Search customers"
-              />
-            </div>
-            <SelectMenu
-              className="w-40 shrink-0"
-              label="Filter by source"
-              value={source}
-              onChange={setSource}
-              options={SOURCE_FILTERS}
-            />
-            <div className="flex shrink-0 items-center gap-2">
-              <DatePicker
-                className="w-[10.5rem]"
-                label="Created from"
-                value={createdFrom}
-                onChange={setCreatedFrom}
-                placeholder="From"
-              />
-              <span className="text-xs text-slate-400">to</span>
-              <DatePicker
-                className="w-[10.5rem]"
-                label="Created to"
-                value={createdTo}
-                onChange={setCreatedTo}
-                placeholder="To"
-              />
-            </div>
-          </div>
-        </div>
-      </div>
+      <ListFilterBar
+        tabs={TYPE_FILTERS}
+        value={type}
+        onChange={setType}
+        searchValue={q}
+        onSearchChange={setQ}
+        searchLabel="Search customers"
+        select={{
+          label: 'Filter by source',
+          value: source,
+          onChange: setSource,
+          options: SOURCE_FILTERS,
+        }}
+        from={createdFrom}
+        to={createdTo}
+        onFromChange={setCreatedFrom}
+        onToChange={setCreatedTo}
+      />
 
       {!data ? <PageLoading /> : data.length === 0 ? (
         <EmptyState icon={Users} title="No customers found" detail="Try a different search, or add a new customer." />
@@ -169,7 +127,7 @@ export default function Customers() {
                   <th className="text-left px-4 py-2.5 font-medium whitespace-nowrap w-[12%]">Source</th>
                   <th className="text-right px-4 py-2.5 font-medium whitespace-nowrap w-[9%]">Quoted</th>
                   <th className="text-left px-4 py-2.5 font-medium whitespace-nowrap w-[8%]">Updated</th>
-                  <th className="text-right px-4 py-2.5 font-medium whitespace-nowrap w-[5%]"><span className="sr-only">Actions</span></th>
+                  <th className="text-right px-4 py-2.5 font-medium whitespace-nowrap w-[8%]"><span className="sr-only">Actions</span></th>
                 </tr>
               </thead>
               <tbody>
@@ -203,14 +161,23 @@ export default function Customers() {
                     </td>
                     <td className="px-4 py-3 align-middle text-slate-400 whitespace-nowrap">{fmtTimeAgo(c.updated_at)}</td>
                     <td className="px-4 py-3 align-middle text-right">
-                      <button
-                        type="button"
-                        className="inline-flex h-8 w-8 items-center justify-center rounded-lg text-slate-400 hover:bg-rose-50 hover:text-rose-600"
-                        aria-label={`Delete ${c.name}`}
-                        onClick={() => openDelete(c)}
-                      >
-                        <Trash2 size={15} />
-                      </button>
+                      <div className="inline-flex items-center justify-end gap-0.5">
+                        <Link
+                          to={`/customers/${c.id}`}
+                          className="inline-flex h-8 w-8 items-center justify-center rounded-lg text-slate-500 hover:bg-slate-100 hover:text-navy-900"
+                          aria-label={`Edit ${c.name}`}
+                        >
+                          <Pencil size={15} />
+                        </Link>
+                        <button
+                          type="button"
+                          className="inline-flex h-8 w-8 items-center justify-center rounded-lg text-rose-600 hover:bg-rose-50 hover:text-rose-700"
+                          aria-label={`Delete ${c.name}`}
+                          onClick={() => openDelete(c)}
+                        >
+                          <Trash2 size={15} />
+                        </button>
+                      </div>
                     </td>
                   </tr>
                 ))}

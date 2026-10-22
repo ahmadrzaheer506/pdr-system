@@ -59,6 +59,9 @@ describe('Customers list', () => {
   it('renders all customers with type, contact, and source, without a pipeline stage column', async () => {
     render(<MemoryRouter><Customers /></MemoryRouter>);
     expect(await screen.findByRole('link', { name: 'Dave Whitfield' })).toHaveAttribute('href', '/customers/9');
+    expect(screen.getByRole('link', { name: 'Edit Dave Whitfield' })).toHaveAttribute('href', '/customers/9');
+    expect(screen.getByRole('link', { name: 'Edit Jane Site' })).toHaveAttribute('href', '/customers/10');
+    expect(screen.getByRole('button', { name: 'Delete Dave Whitfield' })).toBeInTheDocument();
     expect(screen.getByRole('heading', { name: 'Customers' })).toBeInTheDocument();
     expect(screen.getByRole('link', { name: 'Jane Site' })).toHaveAttribute('href', '/customers/10');
     expect(screen.getAllByText('Domestic').length).toBeGreaterThanOrEqual(1);

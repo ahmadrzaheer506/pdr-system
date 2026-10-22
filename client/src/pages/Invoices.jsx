@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { Search, Send, PoundSterling, Download, Loader2 } from 'lucide-react';
+import { Send, PoundSterling, Download, Loader2, Receipt } from 'lucide-react';
 import { api, money, fmtDate } from '../lib/api';
 import { PageLoading, StatusBadge, EmptyState, useToast, Toast } from '../components/ui.jsx';
 import InvoiceTaxDetail from '../components/InvoiceTaxDetail.jsx';
@@ -8,15 +8,23 @@ import { InvoicePaymentModal } from '../components/InvoicePaymentForm.jsx';
 import { canEmailInvoice, downloadInvoicePdf } from '../lib/invoicePdf';
 import { invoiceSentMessage, isLiveQboId } from '../lib/quickbooks';
 import { canRecordPayment } from '../lib/invoicePayments';
-import { Receipt } from 'lucide-react';
 import { leadPath } from '../lib/customerRoutes.js';
-import ScrollTabBar from '../components/ScrollTabBar.jsx';
+import ListFilterBar from '../components/ListFilterBar.jsx';
 
-const FILTERS = ['ALL', 'draft', 'sent', 'part_paid', 'paid', 'overdue'];
+const FILTERS = [
+  { value: 'ALL', label: 'All' },
+  { value: 'draft', label: 'Draft' },
+  { value: 'sent', label: 'Sent' },
+  { value: 'part_paid', label: 'Part paid' },
+  { value: 'paid', label: 'Paid' },
+  { value: 'overdue', label: 'Overdue' },
+];
 
 export default function Invoices() {
   const [status, setStatus] = useState('ALL');
   const [q, setQ] = useState('');
+  const [createdFrom, setCreatedFrom] = useState('');
+  const [createdTo, setCreatedTo] = useState('');
   const [data, setData] = useState(null);
   const [ready, setReady] = useState([]);
   const [creatingId, setCreatingId] = useState(null);
@@ -27,14 +35,19 @@ export default function Invoices() {
   const { toast, show } = useToast();
 
   const load = () => {
-    api.get(`/invoices?status=${status}${q ? `&q=${encodeURIComponent(q)}` : ''}`).then((d) => setData(d.invoices)).catch((err) => {
+    const params = new URLSearchParams();
+    params.set('status', status);
+    if (q.trim()) params.set('q', q.trim());
+    if (createdFrom) params.set('created_from', createdFrom);
+    if (createdTo) params.set('created_to', createdTo);
+    api.get(`/invoices?${params.toString()}`).then((d) => setData(d.invoices)).catch((err) => {
       show(err.message, 'error');
       setData([]);
     });
     api.get('/invoices/ready').then((d) => setReady(d.jobs || [])).catch(() => setReady([]));
     api.get('/invoices/summary').then(setSummary).catch(() => setSummary(null));
   };
-  useEffect(() => { const t = setTimeout(load, 200); return () => clearTimeout(t); }, [status, q]);
+  useEffect(() => { const t = setTimeout(load, 200); return () => clearTimeout(t); }, [status, q, createdFrom, createdTo]);
 
   const createFromJob = async (job) => {
     setCreatingId(job.id);
@@ -141,29 +154,18 @@ export default function Invoices() {
         )}
       </div>
 
-      <div className="flex min-w-0 flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <div className="min-w-0 w-full sm:flex-1">
-          <div className="min-w-0 rounded-lg border border-slate-200 bg-white p-1">
-            <ScrollTabBar value={status} fadeFrom="from-white" trackClassName="gap-1">
-              {FILTERS.map((s) => (
-                <button
-                  key={s}
-                  type="button"
-                  data-tab={s}
-                  onClick={() => setStatus(s)}
-                  className={`shrink-0 whitespace-nowrap rounded-md px-3 py-1.5 text-sm font-medium capitalize ${status === s ? 'bg-navy-900 text-white' : 'text-slate-500 hover:bg-slate-50'}`}
-                >
-                  {s.replace('_', ' ')}
-                </button>
-              ))}
-            </ScrollTabBar>
-          </div>
-        </div>
-        <div className="relative w-full shrink-0 sm:w-56">
-          <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
-          <input className="input !pl-9 w-full" placeholder="Search invoices…" value={q} onChange={(e) => setQ(e.target.value)} />
-        </div>
-      </div>
+      <ListFilterBar
+        tabs={FILTERS}
+        value={status}
+        onChange={setStatus}
+        searchValue={q}
+        onSearchChange={setQ}
+        searchLabel="Search invoices"
+        from={createdFrom}
+        to={createdTo}
+        onFromChange={setCreatedFrom}
+        onToChange={setCreatedTo}
+      />
 
       {!data ? <PageLoading /> : data.length === 0 ? (
         <EmptyState icon={Receipt} title="No invoices found" detail="Invoices are created from completed jobs, or from the invoicing prompt in Tasks." />
@@ -197,7 +199,7 @@ export default function Invoices() {
                   <td className="px-4 py-3 text-right text-slate-500">{money(inv.amount_paid)}</td>
                   <td className="px-4 py-3 text-slate-500">{fmtDate(inv.due_date)}</td>
                   <td className="px-4 py-3">
-                    <div className="flex flex-col gap-0.5">
+                    <div className="flex flex-col items-start gap-0.5">
                       <StatusBadge status={inv.status} />
                       {isLiveQboId(inv.qbo_id) && (
                         <span className="text-[10px] uppercase tracking-wide text-emerald-700">QuickBooks</span>

@@ -1,14 +1,12 @@
 import React, { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { Search, CalendarDays } from 'lucide-react';
+import { CalendarDays } from 'lucide-react';
 import { api, fmtDateTime } from '../lib/api';
 import { PageLoading, StatusBadge, EmptyState, useToast, Toast } from '../components/ui.jsx';
-import SelectMenu from '../components/SelectMenu.jsx';
-import DatePicker from '../components/DatePicker.jsx';
+import ListFilterBar from '../components/ListFilterBar.jsx';
 import { leadPath } from '../lib/customerRoutes.js';
 import { leadDisplayName } from '../lib/leads.js';
 import { VISIT_TYPES, visitTypeLabel } from '../lib/visitTypes';
-import ScrollTabBar from '../components/ScrollTabBar.jsx';
 
 const STATUS_FILTERS = [
   { value: 'ALL', label: 'All' },
@@ -105,63 +103,26 @@ export default function Visits() {
         <p className="text-slate-500 text-sm mt-0.5">Every booked, completed and cancelled visit — filter by type, date or lead.</p>
       </div>
 
-      <div className="card p-3">
-        <div className="space-y-3">
-          <ScrollTabBar value={status} fadeFrom="from-slate-100" className="rounded-lg bg-slate-100 p-1" trackClassName="h-9 gap-1 sm:h-10">
-            {STATUS_FILTERS.map((s) => (
-              <button
-                key={s.value}
-                type="button"
-                data-tab={s.value}
-                onClick={() => setStatus(s.value)}
-                className={`h-full shrink-0 whitespace-nowrap rounded-md px-3 text-sm font-medium ${status === s.value ? 'bg-navy-900 text-white' : 'text-slate-500 hover:bg-white'}`}
-              >
-                {s.label}
-                {s.value === 'ALL' && counts.all ? ` (${counts.all})` : ''}
-                {s.value === 'booked' && counts.booked ? ` (${counts.booked})` : ''}
-                {s.value === 'done' && counts.done ? ` (${counts.done})` : ''}
-                {s.value === 'cancelled' && counts.cancelled ? ` (${counts.cancelled})` : ''}
-              </button>
-            ))}
-          </ScrollTabBar>
-          <div className="flex flex-col gap-2 lg:flex-row lg:flex-wrap lg:items-center lg:justify-end">
-            <div className="relative w-full lg:w-48 lg:shrink-0">
-              <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
-              <input
-                className="input !pl-9 w-full"
-                placeholder="Search visits…"
-                value={q}
-                onChange={(e) => setQ(e.target.value)}
-                aria-label="Search visits"
-              />
-            </div>
-            <SelectMenu
-              className="w-full lg:w-44 lg:shrink-0"
-              label="Visit type"
-              value={visitType}
-              onChange={setVisitType}
-              options={TYPE_FILTERS}
-            />
-            <div className="grid w-full grid-cols-2 gap-2 lg:flex lg:w-auto lg:items-center">
-              <DatePicker
-                className="w-full lg:w-[10.5rem]"
-                label="From date"
-                value={from}
-                onChange={setFrom}
-                placeholder="From"
-              />
-              <span className="hidden text-xs text-slate-400 lg:inline">to</span>
-              <DatePicker
-                className="w-full lg:w-[10.5rem]"
-                label="To date"
-                value={to}
-                onChange={setTo}
-                placeholder="To"
-              />
-            </div>
-          </div>
-        </div>
-      </div>
+      <ListFilterBar
+        tabs={STATUS_FILTERS}
+        value={status}
+        onChange={setStatus}
+        searchValue={q}
+        onSearchChange={setQ}
+        searchLabel="Search visits"
+        select={{
+          label: 'Filter by type',
+          value: visitType,
+          onChange: setVisitType,
+          options: TYPE_FILTERS,
+        }}
+        from={from}
+        to={to}
+        onFromChange={setFrom}
+        onToChange={setTo}
+        fromLabel="From date"
+        toLabel="To date"
+      />
 
       {!data ? <PageLoading /> : data.length === 0 ? (
         <EmptyState icon={CalendarDays} title="No visits found" detail="Try a different status, type or date range." />

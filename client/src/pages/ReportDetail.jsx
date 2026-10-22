@@ -4,7 +4,7 @@ import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGri
 import { TrendingUp, TrendingDown } from 'lucide-react';
 import { api, money, fmtDate } from '../lib/api';
 import {
-  isLiveReport, isGenerateReport, isAdminReport, isoRange, effectiveRange, matchingPreset,
+  isLiveReport, isAdminReport, isoRange, effectiveRange, matchingPreset,
   reportCsvPath, reportCsvFilename,
 } from '../lib/reports.js';
 import { PageLoading, StageBadge, StatusBadge, EmptyState, useToast, Toast } from '../components/ui.jsx';
@@ -51,18 +51,15 @@ export default function ReportDetail() {
   const { type } = useParams();
   const { user } = useAuth();
   const { toast, show } = useToast();
-  const generate = isGenerateReport(type);
   const pipeline = type === 'pipeline-value';
   const initialRange = isoRange(30);
   const [preset, setPreset] = useState(30);
   const [from, setFrom] = useState(initialRange.from);
   const [to, setTo] = useState(initialRange.to);
   const [data, setData] = useState(null);
-  const [loading, setLoading] = useState(!generate);
-  const [generating, setGenerating] = useState(generate);
+  const [loading, setLoading] = useState(true);
   const [downloading, setDownloading] = useState(false);
   const [downloadingLabour, setDownloadingLabour] = useState(false);
-  const [generatedRange, setGeneratedRange] = useState(null);
 
   useEffect(() => {
     const range = isoRange(30);
@@ -70,36 +67,11 @@ export default function ReportDetail() {
     setTo(range.to);
     setPreset(30);
     setData(null);
-    setGeneratedRange(null);
-    setLoading(!isGenerateReport(type) && isLiveReport(type));
-    if (isAdminReport(type) && user?.role !== ROLES.ADMIN) {
-      setGenerating(false);
-      return undefined;
-    }
-    if (!isGenerateReport(type)) {
-      setGenerating(false);
-      return undefined;
-    }
-    let cancelled = false;
-    setGenerating(true);
-    api.get(`/reports/${type}?from=${range.from}&to=${range.to}`)
-      .then((d) => {
-        if (cancelled) return;
-        setData(d);
-        setGeneratedRange({ from: range.from, to: range.to });
-      })
-      .catch((err) => {
-        if (cancelled) return;
-        show(err.message || 'Could not generate report', 'error');
-      })
-      .finally(() => {
-        if (!cancelled) setGenerating(false);
-      });
-    return () => { cancelled = true; };
-  }, [type, user?.role]);
+  }, [type]);
 
   useEffect(() => {
-    if (!isLiveReport(type) || isGenerateReport(type)) return undefined;
+    if (!isLiveReport(type)) return undefined;
+    if (isAdminReport(type) && user?.role !== ROLES.ADMIN) return undefined;
     let cancelled = false;
     setLoading(true);
     const range = effectiveRange(preset, from, to);
@@ -116,7 +88,7 @@ export default function ReportDetail() {
       setLoading(false);
     });
     return () => { cancelled = true; };
-  }, [type, preset, from, to]);
+  }, [type, preset, from, to, user?.role]);
 
   if (isAdminReport(type) && user?.role !== ROLES.ADMIN) {
     return <Navigate to="/reports" replace />;
@@ -129,52 +101,16 @@ export default function ReportDetail() {
   const custom = Boolean(from && to);
   const pillValue = matchingPreset(from, to) ?? (custom ? null : preset);
 
-  const loadGenerated = async (range) => {
-    setGenerating(true);
-    try {
-      const d = await api.get(`/reports/${type}?from=${range.from}&to=${range.to}`);
-      setData(d);
-      setGeneratedRange({ from: range.from, to: range.to });
-    } catch (err) {
-      show(err.message || 'Could not generate report', 'error');
-    } finally {
-      setGenerating(false);
-    }
-  };
-
   const onPreset = (days) => {
     setPreset(days);
     const range = isoRange(days);
     setFrom(range.from);
     setTo(range.to);
-    if (generate) loadGenerated(range);
-  };
-
-  const onFrom = (value) => {
-    setFrom(value);
-    if (generate) setPreset(null);
-  };
-
-  const onTo = (value) => {
-    setTo(value);
-    if (generate) setPreset(null);
-  };
-
-  const onGenerate = async () => {
-    if (!from || !to) {
-      show('Choose from and to dates before generating', 'error');
-      return;
-    }
-    if (from > to) {
-      show('From must be on or before to', 'error');
-      return;
-    }
-    await loadGenerated({ from, to });
   };
 
   const onDownload = async (opts = {}) => {
     const labour = Boolean(opts.labour);
-    const range = pipeline ? null : (generate ? generatedRange : effectiveRange(preset, from, to));
+    const range = pipeline ? null : effectiveRange(preset, from, to);
     if (!pipeline && !range) return;
     const setBusy = labour ? setDownloadingLabour : setDownloading;
     setBusy(true);
@@ -187,7 +123,7 @@ export default function ReportDetail() {
     }
   };
 
-  const csvReady = pipeline ? Boolean(data) : (generate ? Boolean(generatedRange) : Boolean(data));
+  const csvReady = Boolean(data);
 
   return (
     <div className="space-y-5">
@@ -211,10 +147,8 @@ export default function ReportDetail() {
             from={from}
             to={to}
             onPreset={onPreset}
-            onFrom={onFrom}
-            onTo={onTo}
-            onGenerate={generate ? onGenerate : undefined}
-            generating={generating}
+            onFrom={setFrom}
+            onTo={setTo}
             onDownload={type === 'profitability' ? undefined : onDownload}
             downloadDisabled={!csvReady}
             downloading={downloading}
@@ -232,18 +166,14 @@ export default function ReportDetail() {
         )}
       </div>
 
-      {generate && !data && !generating && (
-        <EmptyState title="Choose a date range, then Generate" detail="From and To are required. The 7/30/90 pills fill those dates and reload the list. Rows use created date." />
-      )}
-
-      {(loading || generating) && <PageLoading />}
-      {!loading && !generating && type === 'lead-volume' && data && <LeadVolumeReport data={data} />}
-      {!loading && !generating && type === 'win-loss' && data && <WinLossReport data={data} />}
-      {!loading && !generating && type === 'pipeline-value' && data && <PipelineValueReport data={data} />}
-      {!loading && !generating && type === 'customers' && data && <CustomersReport data={data} />}
-      {!loading && !generating && type === 'jobs' && data && <JobsReport data={data} />}
-      {!loading && !generating && type === 'invoices' && data && <InvoicesReport data={data} />}
-      {!loading && !generating && type === 'profitability' && data && <ProfitabilityReport data={data} />}
+      {loading && <PageLoading />}
+      {!loading && type === 'lead-volume' && data && <LeadVolumeReport data={data} />}
+      {!loading && type === 'win-loss' && data && <WinLossReport data={data} />}
+      {!loading && type === 'pipeline-value' && data && <PipelineValueReport data={data} />}
+      {!loading && type === 'customers' && data && <CustomersReport data={data} />}
+      {!loading && type === 'jobs' && data && <JobsReport data={data} />}
+      {!loading && type === 'invoices' && data && <InvoicesReport data={data} />}
+      {!loading && type === 'profitability' && data && <ProfitabilityReport data={data} />}
       <Toast {...toast} />
     </div>
   );

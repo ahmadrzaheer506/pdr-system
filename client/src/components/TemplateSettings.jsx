@@ -246,7 +246,7 @@ export default function TemplateSettings({ canEdit }) {
                   {canEdit && (
                     <button
                       type="button"
-                      className="btn-ghost !px-2 !py-1 text-xs inline-flex items-center gap-1"
+                      className="btn-ghost !px-2 !py-1 text-xs inline-flex items-center gap-1 !text-rose-600 hover:!bg-rose-50 hover:!text-rose-700"
                       onClick={() => setSettings({
                         ...settings,
                         templates: { ...settings.templates, custom: custom.filter((_, idx) => idx !== i) },
@@ -306,7 +306,7 @@ export default function TemplateSettings({ canEdit }) {
                   {canEdit && (
                     <button
                       type="button"
-                      className="btn-ghost !px-2 !py-1 text-xs inline-flex items-center gap-1 shrink-0"
+                      className="btn-ghost !px-2 !py-1 text-xs inline-flex items-center gap-1 shrink-0 !text-rose-600 hover:!bg-rose-50 hover:!text-rose-700"
                       onClick={() => setSettings({
                         ...settings,
                         checklist_templates: settings.checklist_templates.filter((t) => t.id !== tpl.id),

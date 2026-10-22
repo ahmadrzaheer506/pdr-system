@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { Clock, MapPin, AlertTriangle, Check, Download, TrendingUp, TrendingDown, Radio, Square, Coffee, X, Pencil, Layers, CheckCircle2, XCircle } from 'lucide-react';
+import { Clock, MapPin, AlertTriangle, Check, Download, TrendingUp, TrendingDown, Radio, Square, Coffee, X, Pencil } from 'lucide-react';
 import { api, money, fmtDate } from '../lib/api';
 import { formatClockTime } from '../lib/clockTime';
 import { PageLoading, StatusBadge, Avatar, EmptyState, Modal, useToast, Toast } from '../components/ui.jsx';
@@ -74,59 +74,6 @@ function DateRangeFields({ from, to, setFrom, setTo }) {
 }
 const LIVE_POLL_MS = 10000;
 
-const REVIEW_VIEWS = [
-  {
-    id: 'ALL',
-    label: 'All shifts',
-    countKey: 'all',
-    Icon: Layers,
-    rail: 'bg-slate-400',
-    iconWrap: 'bg-slate-100 text-slate-600',
-    active: 'bg-slate-50 ring-2 ring-slate-400/70',
-    idle: 'bg-white hover:bg-slate-50/80',
-  },
-  {
-    id: 'completed',
-    label: 'Awaiting approval',
-    countKey: 'completed',
-    Icon: Clock,
-    rail: 'bg-amber-400',
-    iconWrap: 'bg-amber-100 text-amber-700',
-    active: 'bg-amber-50 ring-2 ring-amber-400/80',
-    idle: 'bg-white hover:bg-amber-50/50',
-  },
-  {
-    id: 'flagged',
-    label: 'Flagged',
-    countKey: 'flagged',
-    Icon: AlertTriangle,
-    rail: 'bg-orange-400',
-    iconWrap: 'bg-orange-100 text-orange-700',
-    active: 'bg-orange-50 ring-2 ring-orange-400/80',
-    idle: 'bg-white hover:bg-orange-50/50',
-  },
-  {
-    id: 'approved',
-    label: 'Approved',
-    countKey: 'approved',
-    Icon: CheckCircle2,
-    rail: 'bg-emerald-400',
-    iconWrap: 'bg-emerald-100 text-emerald-700',
-    active: 'bg-emerald-50 ring-2 ring-emerald-400/80',
-    idle: 'bg-white hover:bg-emerald-50/50',
-  },
-  {
-    id: 'rejected',
-    label: 'Rejected',
-    countKey: 'rejected',
-    Icon: XCircle,
-    rail: 'bg-rose-400',
-    iconWrap: 'bg-rose-100 text-rose-700',
-    active: 'bg-rose-50 ring-2 ring-rose-400/80',
-    idle: 'bg-white hover:bg-rose-50/50',
-  },
-];
-
 const REVIEW_STATUS_OPTIONS = [
   { value: 'ALL', label: 'All statuses' },
   { value: 'completed', label: 'Awaiting approval' },
@@ -155,18 +102,6 @@ function matchesReviewView(row, view) {
   if (!view || view === 'ALL') return true;
   if (view === 'flagged') return Boolean(row.location_flag);
   return row.status === view;
-}
-
-function reviewCounts(rows) {
-  const list = rows || [];
-  return {
-    all: list.length,
-    completed: list.filter((t) => t.status === 'completed').length,
-    flagged: list.filter((t) => t.location_flag).length,
-    approved: list.filter((t) => t.status === 'approved').length,
-    rejected: list.filter((t) => t.status === 'rejected').length,
-    active: list.filter((t) => t.status === 'active').length,
-  };
 }
 
 function timesheetListQuery(from, to, userId) {
@@ -216,21 +151,11 @@ export default function Timesheets() {
 
   return (
     <div className="space-y-5">
-      <div className="flex items-center justify-between flex-wrap gap-3">
-        <div>
-          <h1 className="text-2xl font-bold text-slate-900">Timesheets</h1>
-          <p className="text-slate-500 text-sm mt-0.5">
-            {tab === 'live' ? 'Who is on site now, and who on today\'s crew has not clocked in.' : 'Hours the lads have clocked, and what each job actually cost.'}
-          </p>
-        </div>
-        {tab === 'costing' && (
-          <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row sm:flex-wrap sm:items-center">
-            <DateRangeFields from={from} to={to} setFrom={setFrom} setTo={setTo} />
-            <a href={timesheetCsvHref(from, to)} className="btn-secondary !py-1.5 w-full justify-center sm:w-auto">
-              <Download size={15} /> CSV
-            </a>
-          </div>
-        )}
+      <div>
+        <h1 className="text-2xl font-bold text-slate-900">Timesheets</h1>
+        <p className="text-slate-500 text-sm mt-0.5">
+          {tab === 'live' ? 'Who is on site now, and who on today\'s crew has not clocked in.' : 'Hours the lads have clocked, and what each job actually cost.'}
+        </p>
       </div>
 
       <div className="rounded-lg border border-slate-200 bg-white p-1">
@@ -252,7 +177,7 @@ export default function Timesheets() {
       {tab === 'live' && <LiveTab show={show} />}
       {tab === 'review' && <ReviewTab from={from} to={to} setFrom={setFrom} setTo={setTo} show={show} showCosts={showCosts} />}
       {tab === 'totals' && <TotalsTab from={from} to={to} setFrom={setFrom} setTo={setTo} showCosts={showCosts} />}
-      {tab === 'costing' && showCosts && <CostingTab />}
+      {tab === 'costing' && showCosts && <CostingTab from={from} to={to} setFrom={setFrom} setTo={setTo} />}
       <Toast {...toast} />
     </div>
   );
@@ -607,7 +532,6 @@ function ReviewTab({ from, to, setFrom, setTo, show, showCosts }) {
   if (!data) return <PageLoading />;
 
   const rows = data.timesheets || [];
-  const counts = reviewCounts(rows);
   const visible = rows.filter((t) => matchesReviewView(t, statusView));
   const pending = visible.filter((t) => t.status === 'completed');
   const filtering = Boolean(staffId || statusView !== 'ALL');
@@ -641,38 +565,6 @@ function ReviewTab({ from, to, setFrom, setTo, show, showCosts }) {
 
   return (
     <div className="space-y-4">
-      <div className="grid grid-cols-2 gap-2 sm:flex sm:flex-wrap sm:gap-3">
-        {REVIEW_VIEWS.map(({ id, label, countKey, Icon, rail, iconWrap, active, idle }) => {
-          const selectedView = statusView === id;
-          const count = counts[countKey] ?? 0;
-          return (
-            <button
-              key={id}
-              type="button"
-              onClick={() => setStatusView(id)}
-              aria-pressed={selectedView}
-              aria-label={`${count} ${label}`}
-              className={`relative overflow-hidden rounded-2xl px-4 py-3.5 text-left shadow-[0_1px_2px_rgba(15,23,42,0.04)] ring-1 transition sm:flex-1 sm:min-w-[8.5rem] ${
-                id === 'ALL' ? 'col-span-2 sm:col-auto' : ''
-              } ${selectedView ? active : `${idle} ring-slate-200/70 hover:ring-slate-300`}`}
-            >
-              <span className={`absolute inset-x-0 top-0 h-0.5 ${rail}`} aria-hidden="true" />
-              <div className="flex items-start justify-between gap-3">
-                <div className="min-w-0">
-                  <div className={`text-2xl font-semibold tabular-nums tracking-tight ${count === 0 && !selectedView ? 'text-slate-400' : 'text-slate-900'}`}>
-                    {count}
-                  </div>
-                  <div className="mt-0.5 text-xs font-medium text-slate-500">{label}</div>
-                </div>
-                <span className={`inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-xl ${iconWrap}`}>
-                  <Icon size={15} strokeWidth={2} />
-                </span>
-              </div>
-            </button>
-          );
-        })}
-      </div>
-
       <div className="rounded-2xl border border-slate-200/80 bg-white p-3 shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
         <div className="flex flex-col gap-2 lg:flex-row lg:flex-wrap lg:items-center">
           <SelectMenu
@@ -1044,7 +936,7 @@ function TotalsTab({ from, to, setFrom, setTo, showCosts }) {
   );
 }
 
-function CostingTab() {
+function CostingTab({ from, to, setFrom, setTo }) {
   const [jobs, setJobs] = useState(null);
   useEffect(() => {
     api.get('/timesheets/costing').then((d) => setJobs(d.jobs)).catch(() => setJobs([]));
@@ -1054,7 +946,15 @@ function CostingTab() {
   const withHours = jobs.filter((j) => j.actual_hours > 0);
 
   return (
-    <div className="space-y-3">
+    <div className="space-y-4">
+      <div className="rounded-2xl border border-slate-200/80 bg-white p-3 shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
+        <div className="flex flex-col gap-2 lg:flex-row lg:flex-wrap lg:items-center">
+          <DateRangeFields from={from} to={to} setFrom={setFrom} setTo={setTo} />
+          <a href={timesheetCsvHref(from, to)} className="btn-secondary !py-1.5 w-full justify-center sm:w-auto lg:ml-auto">
+            <Download size={15} /> CSV
+          </a>
+        </div>
+      </div>
       <p className="text-sm text-slate-500">
         Quoted value (excluding VAT) against the labour actually clocked.
         <strong className="text-slate-700"> This is before materials</strong> — it shows what's left to cover materials, overheads and profit,

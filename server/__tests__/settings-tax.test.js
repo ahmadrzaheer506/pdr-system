@@ -74,6 +74,20 @@ describe('PUT /api/settings VAT rates (requirement 6.3)', () => {
     expect(setSetting).toHaveBeenCalledWith('vat_rate', 21);
   });
 
+  test('saves a list that dropped a core VAT code', async () => {
+    const res = await request(app).put('/api/settings').send({
+      uk: {
+        vat_rates: [
+          { code: 'green', rate: 5, short: '5%', label: 'Green 5%' },
+        ],
+      },
+    });
+    expect(res.status).toBe(200);
+    expect(setSetting).toHaveBeenCalledWith('uk', expect.objectContaining({
+      vat_rates: [expect.objectContaining({ code: 'green', rate: 5 })],
+    }));
+  });
+
   test('rejects a duplicate VAT code', async () => {
     const res = await request(app).put('/api/settings').send({
       uk: { vat_rates: [{ code: 'x', rate: 10 }, { code: 'x', rate: 12 }] },

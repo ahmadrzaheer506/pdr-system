@@ -59,6 +59,15 @@ describe('UK tax engine (requirement 6.3)', () => {
     expect(r.vat_breakdown[0].code).toBe('green');
   });
 
+  test('settingsVatRates keeps a saved list that dropped a core code', () => {
+    expect(ukTax.settingsVatRates([
+      { code: 'green', rate: 5, short: '5%', label: 'Green 5%' },
+    ])).toEqual([expect.objectContaining({ code: 'green', rate: 5 })]);
+    expect(ukTax.settingsVatRates([])).toEqual(expect.arrayContaining([
+      expect.objectContaining({ code: 'standard', rate: 20 }),
+    ]));
+  });
+
   test('parseVatRates rejects a duplicate code', () => {
     const parsed = ukTax.parseVatRates([
       { code: 'standard', rate: 20, short: '20%', label: 'Standard' },

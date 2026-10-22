@@ -157,7 +157,7 @@ export default function CatalogueSettings({ canEdit }) {
                     <button type="button" className="btn-ghost !py-1 !px-2" aria-label={`Edit ${item.description}`} onClick={() => setDraft({ ...item, _existing: true })}>
                       <Pencil size={14} />
                     </button>
-                    <button type="button" className="btn-ghost !py-1 !px-2" aria-label={`Delete ${item.description}`} onClick={() => remove(item)}>
+                    <button type="button" className="btn-ghost !py-1 !px-2 !text-rose-600 hover:!bg-rose-50 hover:!text-rose-700" aria-label={`Delete ${item.description}`} onClick={() => remove(item)}>
                       <Trash2 size={14} />
                     </button>
                   </td>

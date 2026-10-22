@@ -210,6 +210,27 @@ describe('POST /api/quotes native types', () => {
   });
 });
 
+describe('GET /api/quotes', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    Quote.findAll.mockResolvedValue([]);
+  });
+
+  test('rejects an invalid created_from date', async () => {
+    const res = await request(app).get('/api/quotes?created_from=22-09-2026');
+    expect(res.status).toBe(400);
+    expect(res.body.error).toBe('Invalid created_from date');
+  });
+
+  test('filters the list by created date range', async () => {
+    const res = await request(app).get('/api/quotes?created_from=2026-09-01&created_to=2026-09-22');
+    expect(res.status).toBe(200);
+    expect(Quote.findAll).toHaveBeenCalledWith(expect.objectContaining({
+      where: expect.objectContaining({ created_at: expect.any(Object) }),
+    }));
+  });
+});
+
 describe('GET /api/quotes/meta/options (requirement 6.1)', () => {
   test('returns the catalogue for the quote builder', async () => {
     const res = await request(app).get('/api/quotes/meta/options');

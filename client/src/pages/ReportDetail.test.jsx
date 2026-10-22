@@ -103,8 +103,9 @@ describe('ReportDetail (requirements 14.1 / 14.2)', () => {
 
     await pickDate(user, 'From', '2026-09-01');
     await pickDate(user, 'To', '2026-09-28');
-    await user.click(screen.getByRole('button', { name: /^generate$/i }));
+    expect(await screen.findByText('Helen Ackroyd')).toBeInTheDocument();
     expect(api.get).toHaveBeenCalledWith('/reports/customers?from=2026-09-01&to=2026-09-28');
+    expect(screen.queryByRole('button', { name: /^generate$/i })).toBeNull();
 
     await user.click(screen.getByRole('button', { name: /download csv/i }));
     expect(api.download).toHaveBeenCalledWith(
@@ -159,8 +160,8 @@ describe('ReportDetail (requirements 14.1 / 14.2)', () => {
     expect(screen.getByLabelText('From')).toHaveAttribute('data-value', range.from);
     await pickDate(user, 'From', '2026-09-01');
     await pickDate(user, 'To', '2026-09-28');
-    await user.click(screen.getByRole('button', { name: /^generate$/i }));
     expect(await screen.findByText('INV-2026-0010')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /^generate$/i })).toBeNull();
     expect(screen.queryByText('Total')).toBeNull();
     expect(screen.queryByText('Amount due')).toBeNull();
     expect(screen.queryByText(/£/)).toBeNull();
@@ -188,8 +189,9 @@ describe('ReportDetail (requirements 14.1 / 14.2)', () => {
 
     await pickDate(user, 'From', '2026-09-01');
     await pickDate(user, 'To', '2026-09-28');
-    await user.click(screen.getByRole('button', { name: /^generate$/i }));
+    expect(await screen.findByText('Rear slope')).toBeInTheDocument();
     expect(api.get).toHaveBeenCalledWith('/reports/profitability?from=2026-09-01&to=2026-09-28');
+    expect(screen.queryByRole('button', { name: /^generate$/i })).toBeNull();
 
     await user.click(screen.getByRole('button', { name: /download jobs csv/i }));
     expect(api.download).toHaveBeenCalledWith(

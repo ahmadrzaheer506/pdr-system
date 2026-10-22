@@ -227,7 +227,7 @@ describe('Invoices balances and payments (requirement 11.4)', () => {
     );
     expect(await screen.findByText('Outstanding')).toBeInTheDocument();
     expect(screen.getByText('£1200')).toBeInTheDocument();
-    expect(screen.getByText('Overdue')).toBeInTheDocument();
+    expect(screen.getAllByText('Overdue').length).toBeGreaterThanOrEqual(1);
     expect(screen.getByText('£400')).toBeInTheDocument();
     expect(screen.getByText('2 invoices')).toBeInTheDocument();
     expect(screen.getByText('Paid in full')).toBeInTheDocument();

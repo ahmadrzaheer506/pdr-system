@@ -10,7 +10,7 @@ export default function WebsiteEnquiryDetails({ lead, className, hidePlace = fal
   if (!view) {
     if (!lead?.message) return null;
     return (
-      <p className={`text-sm text-slate-700 whitespace-pre-wrap ${className || 'mt-1.5'}`.trim()}>
+      <p className={`text-sm whitespace-pre-wrap ${className || 'mt-1.5'}`.trim()}>
         {lead.message}
       </p>
     );

@@ -11,7 +11,7 @@ describe('reports helpers (requirements 14.1–14.3)', () => {
       'lead-volume', 'win-loss', 'customers', 'jobs', 'invoices', 'profitability',
     ]);
     expect(isLiveReport('profitability')).toBe(true);
-    expect(isGenerateReport('profitability')).toBe(true);
+    expect(isGenerateReport('profitability')).toBe(false);
     expect(isAdminReport('profitability')).toBe(true);
     expect(visibleReportCards(false).map((c) => c.id)).not.toContain('profitability');
     expect(visibleReportCards(true).map((c) => c.id)).toContain('profitability');

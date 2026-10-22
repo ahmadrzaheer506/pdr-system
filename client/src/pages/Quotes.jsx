@@ -1,26 +1,39 @@
 import React, { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { Search } from 'lucide-react';
+import { FileText } from 'lucide-react';
 import { api, money, fmtDate } from '../lib/api';
 import { PageLoading, StatusBadge, EmptyState } from '../components/ui.jsx';
-import { FileText } from 'lucide-react';
+import ListFilterBar from '../components/ListFilterBar.jsx';
 import { leadPath } from '../lib/customerRoutes.js';
 import { isLiveQboId } from '../lib/quickbooks';
-import ScrollTabBar from '../components/ScrollTabBar.jsx';
 
-const FILTERS = ['ALL', 'draft', 'sent', 'accepted', 'declined', 'expired'];
+const FILTERS = [
+  { value: 'ALL', label: 'All' },
+  { value: 'draft', label: 'Draft' },
+  { value: 'sent', label: 'Sent' },
+  { value: 'accepted', label: 'Accepted' },
+  { value: 'declined', label: 'Declined' },
+  { value: 'expired', label: 'Expired' },
+];
 
 export default function Quotes() {
   const [status, setStatus] = useState('ALL');
   const [q, setQ] = useState('');
+  const [createdFrom, setCreatedFrom] = useState('');
+  const [createdTo, setCreatedTo] = useState('');
   const [data, setData] = useState(null);
 
   useEffect(() => {
     const t = setTimeout(() => {
-      api.get(`/quotes?status=${status}${q ? `&q=${encodeURIComponent(q)}` : ''}`).then((d) => setData(d.quotes)).catch(() => setData([]));
+      const params = new URLSearchParams();
+      params.set('status', status);
+      if (q.trim()) params.set('q', q.trim());
+      if (createdFrom) params.set('created_from', createdFrom);
+      if (createdTo) params.set('created_to', createdTo);
+      api.get(`/quotes?${params.toString()}`).then((d) => setData(d.quotes)).catch(() => setData([]));
     }, 200);
     return () => clearTimeout(t);
-  }, [status, q]);
+  }, [status, q, createdFrom, createdTo]);
 
   return (
     <div className="space-y-5">
@@ -29,29 +42,18 @@ export default function Quotes() {
         <p className="text-slate-500 text-sm mt-0.5">Every quotation sent, and how it's getting on.</p>
       </div>
 
-      <div className="flex min-w-0 flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <div className="min-w-0 w-full sm:flex-1">
-          <div className="min-w-0 rounded-lg border border-slate-200 bg-white p-1">
-            <ScrollTabBar value={status} fadeFrom="from-white" trackClassName="gap-1">
-              {FILTERS.map((s) => (
-                <button
-                  key={s}
-                  type="button"
-                  data-tab={s}
-                  onClick={() => setStatus(s)}
-                  className={`shrink-0 whitespace-nowrap rounded-md px-3 py-1.5 text-sm font-medium capitalize ${status === s ? 'bg-navy-900 text-white' : 'text-slate-500 hover:bg-slate-50'}`}
-                >
-                  {s}
-                </button>
-              ))}
-            </ScrollTabBar>
-          </div>
-        </div>
-        <div className="relative w-full shrink-0 sm:w-56">
-          <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
-          <input className="input !pl-9 w-full" placeholder="Search quotes…" value={q} onChange={(e) => setQ(e.target.value)} />
-        </div>
-      </div>
+      <ListFilterBar
+        tabs={FILTERS}
+        value={status}
+        onChange={setStatus}
+        searchValue={q}
+        onSearchChange={setQ}
+        searchLabel="Search quotes"
+        from={createdFrom}
+        to={createdTo}
+        onFromChange={setCreatedFrom}
+        onToChange={setCreatedTo}
+      />
 
       {!data ? <PageLoading /> : data.length === 0 ? (
         <EmptyState icon={FileText} title="No quotes found" />
@@ -79,7 +81,7 @@ export default function Quotes() {
                   <td className="px-4 py-3 text-slate-500">{qt.title}</td>
                   <td className="px-4 py-3 text-right font-medium">{money(qt.total)}</td>
                   <td className="px-4 py-3">
-                    <div className="flex flex-col gap-0.5">
+                    <div className="flex flex-col items-start gap-0.5">
                       <StatusBadge status={qt.status} />
                       {isLiveQboId(qt.qbo_id) && (
                         <span className="text-[10px] uppercase tracking-wide text-emerald-700">QuickBooks</span>

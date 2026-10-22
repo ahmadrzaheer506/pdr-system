@@ -123,7 +123,7 @@ describe('office Visits list', () => {
     const user = userEvent.setup();
     render(<MemoryRouter><Visits /></MemoryRouter>);
     expect(await screen.findByText('L-0008 - Sandra Cole')).toBeInTheDocument();
-    await pickSelectOption(user, /^visit type$/i, 'measure');
+    await pickSelectOption(user, /filter by type/i, 'measure');
     await waitFor(() => {
       expect(api.get).toHaveBeenCalledWith(expect.stringContaining('visit_type=measure'));
     });

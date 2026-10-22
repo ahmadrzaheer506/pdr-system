@@ -11,6 +11,7 @@ const { invoicePdf } = require('../services/pdf');
 const ukTax = require('../services/ukTax');
 const quickbooks = require('../integrations/quickbooks');
 const contacts = require('../customerContacts');
+const { parseCreatedRange } = require('../customerSearch');
 const invoiceFromJob = require('../invoiceFromJob');
 const invoiceTax = require('../invoiceTax');
 const invoicePayments = require('../invoicePayments');
@@ -51,8 +52,11 @@ router.use(requireAuth, requireOffice);
 
 router.get('/', asyncHandler(async (req, res) => {
   const { status, q } = req.query;
+  const dates = parseCreatedRange(req.query);
+  if (dates.error) return res.status(400).json({ error: dates.error });
   const where = {};
   if (status && status !== 'ALL') where.status = status;
+  if (dates.range) where.created_at = dates.range;
   if (q) {
     const like = `%${q}%`;
     where[Op.or] = [{ ref: { [Op.iLike]: like } }];

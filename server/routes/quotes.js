@@ -11,6 +11,7 @@ const { scheduleForQuote, render, cancelPendingForQuote, updateFollowupSchedule,
 const { resolveRule, ensureTask, resolveQuoteFollowupTask } = require('../services/taskEngine');
 const { quotePdf } = require('../services/pdf');
 const contacts = require('../customerContacts');
+const { parseCreatedRange } = require('../customerSearch');
 const geocode = require('../geocode');
 const quickbooks = require('../integrations/quickbooks');
 
@@ -97,13 +98,14 @@ async function generateAndStoreQuotePdf(quote) {
 
 router.get('/', asyncHandler(async (req, res) => {
   const { status, q } = req.query;
+  const dates = parseCreatedRange(req.query);
+  if (dates.error) return res.status(400).json({ error: dates.error });
   const where = {};
   if (status && status !== 'ALL') where.status = status;
-  const customerWhere = {};
+  if (dates.range) where.created_at = dates.range;
   if (q) {
     const like = `%${q}%`;
     where[Op.or] = [{ ref: { [Op.iLike]: like } }, { title: { [Op.iLike]: like } }];
-    customerWhere.name = { [Op.iLike]: like };
   }
   const rows = await Quote.findAll({
     where,
@@ -217,7 +219,7 @@ router.post('/preview', asyncHandler(async (req, res) => {
 router.get('/meta/options', asyncHandler(async (req, res) => {
   const uk = (await getSetting('uk')) || {};
   res.json({
-    vat_rates: ukTax.mergeVatRates(uk.vat_rates),
+    vat_rates: ukTax.settingsVatRates(uk.vat_rates),
     cis_rates: ukTax.CIS_RATES,
     uk,
     defaults: await getSetting('quote_defaults'),
