@@ -2,13 +2,13 @@ import React, { useEffect, useState, useCallback, useRef } from 'react';
 import { useParams, useSearchParams, Link } from 'react-router-dom';
 import { customerPath, leadBackLink } from '../lib/customerRoutes.js';
 import { leadDisplayName, leadSourceLabel } from '../lib/leads.js';
-import { enquiryWorkspaceStage, filterByLeadScope, leadWorkspaceScope } from '../lib/leadWorkspace.js';
+import { enquiryWorkspaceStage, filterByLeadScope, filterTasksForLead, leadWorkspaceScope } from '../lib/leadWorkspace.js';
 import {
   ArrowLeft, MapPin, Send, Calendar, FileText, Briefcase, Receipt,
-  Check, X, ChevronDown, Building2, Copy, Download, IdCard, Pencil, Trash2, Loader2, Users,
+  Check, CheckCircle2, X, ChevronDown, Building2, Copy, Download, IdCard, Pencil, Trash2, Loader2, Users, CheckSquare,
 } from 'lucide-react';
 import { api, money, fmtDate, fmtDateTime } from '../lib/api';
-import { PageLoading, LoadError, StageBadge, StatusBadge, Modal, useToast, Toast, HoverTooltip } from '../components/ui.jsx';
+import { PageLoading, LoadError, StageBadge, StatusBadge, PriorityBadge, Modal, useToast, Toast, HoverTooltip } from '../components/ui.jsx';
 import QuoteBuilder from '../components/QuoteBuilder.jsx';
 import BookVisit from '../components/BookVisit.jsx';
 import JobModal from '../components/JobModal.jsx';
@@ -20,6 +20,7 @@ import InvoiceTaxDetail from '../components/InvoiceTaxDetail.jsx';
 import InvoiceTaxSummary from '../components/InvoiceTaxSummary.jsx';
 import LostReasonModal from '../components/LostReasonModal.jsx';
 import LeadContacts from '../components/LeadContacts.jsx';
+import TaskFormModal from '../components/TaskFormModal.jsx';
 import { taskHref } from '../lib/taskList.js';
 import { ROLES } from '../lib/roles';
 import { canChangeVisit, canCompleteVisit, visitTypeLabel } from '../lib/visitTypes';
@@ -49,6 +50,10 @@ export default function CustomerDetail() {
   const [openInvoice, setOpenInvoice] = useState(null);
   const [payInvoice, setPayInvoice] = useState(null);
   const [staff, setStaff] = useState([]);
+  const [taskForm, setTaskForm] = useState(null);
+  const [pendingDoneTask, setPendingDoneTask] = useState(null);
+  const [pendingDeleteTask, setPendingDeleteTask] = useState(null);
+  const [taskBusy, setTaskBusy] = useState(false);
   const { toast, show } = useToast();
 
   const load = useCallback(() => api.get(`/customers/${id}`).then(setData).catch((err) => {
@@ -67,6 +72,7 @@ export default function CustomerDetail() {
   const scope = leadWorkspaceScope(leads, params.get('lead'));
   const quotes = filterByLeadScope(data.quotes, scope);
   const jobs = filterByLeadScope(data.jobs, scope);
+  const tasks = filterTasksForLead(data.tasks, scope, { quotes: data.quotes, jobs: data.jobs });
   const invoices = filterByLeadScope(data.invoices, scope);
   const appointments = filterByLeadScope(data.appointments, scope);
   const followups = filterByLeadScope(data.followups, scope);
@@ -152,20 +158,6 @@ export default function CustomerDetail() {
                 <Building2 size={13} className="text-slate-400" /> {customer.company_name}
               </div>
             )}
-            <div className="flex flex-wrap gap-x-4 gap-y-1 mt-2 text-sm text-slate-500">
-              <span className="flex items-center gap-1.5">
-                Owner {customer.owner_name || 'Unassigned'}
-              </span>
-              <LeadContacts
-                customer={customer}
-                lead={activeLead}
-                onSaved={() => { load(); show('Lead contacts updated'); }}
-                onError={(msg) => show(msg, 'error')}
-              />
-              {customer.customer_type === 'commercial' && customer.vat_number && (
-                <span>VAT {customer.vat_number}</span>
-              )}
-            </div>
           </div>
           <div className="grid w-full min-w-0 grid-cols-2 gap-2 sm:ml-auto sm:flex sm:w-auto sm:flex-wrap sm:justify-end">
             <Link
@@ -177,8 +169,25 @@ export default function CustomerDetail() {
               Customer record
             </Link>
             <button className="btn-secondary min-w-0 justify-center whitespace-nowrap" onClick={() => setVisitModal('new')}><Calendar size={15} /> Book visit</button>
+            <button type="button" className="btn-secondary min-w-0 justify-center whitespace-nowrap" onClick={() => setTaskForm('new')}><CheckSquare size={15} /> Add task</button>
             <button className="btn-primary col-span-2 min-w-0 justify-center whitespace-nowrap sm:col-span-1" onClick={() => setQuoteModal(true)}><FileText size={15} /> New quote</button>
           </div>
+        </div>
+        <div className="mt-2 space-y-1 text-sm text-slate-500">
+          <div className="flex flex-wrap items-center gap-x-4 gap-y-1">
+            <span className="inline-flex items-center gap-1.5">
+              Owner {customer.owner_name || 'Unassigned'}
+            </span>
+            {customer.customer_type === 'commercial' && customer.vat_number && (
+              <span>VAT {customer.vat_number}</span>
+            )}
+          </div>
+          <LeadContacts
+            customer={customer}
+            lead={activeLead}
+            onSaved={() => { load(); show('Lead contacts updated'); }}
+            onError={(msg) => show(msg, 'error')}
+          />
         </div>
         {lostReason && displayStage === 'LOST' && (
           <div className="mt-3 text-sm bg-rose-50 text-rose-700 rounded-lg px-3 py-2">Lost: {lostReason}</div>
@@ -214,12 +223,18 @@ export default function CustomerDetail() {
           <div className="card p-4">
             <h3 className="font-semibold text-slate-800 mb-4">Activity timeline</h3>
             <CustomerTimeline items={(timeline || []).filter((item) => item.type !== 'note')} />
-            <Composer customerId={id} onSent={() => { load(); show('Message sent'); }} onError={(e) => show(e, 'error')} />
+            <Composer customerId={id} leadId={activeLead?.id} onSent={() => { load(); show('Message sent'); }} onError={(e) => show(e, 'error')} />
           </div>
         </div>
 
         <div className="space-y-3">
           <StageHistoryCard rows={stageHistory} labels={data.labels} />
+          <TasksCard
+            tasks={tasks}
+            onEdit={(t) => setTaskForm(t)}
+            onDone={(t) => setPendingDoneTask(t)}
+            onDelete={(t) => setPendingDeleteTask(t)}
+          />
           <AppointmentsCard
             appts={appointments}
             onReschedule={setVisitModal}
@@ -305,6 +320,89 @@ export default function CustomerDetail() {
         onRecorded={() => { setPayInvoice(null); load(); show('Payment recorded'); }}
         onError={(msg) => show(msg, 'error')}
       />
+      <TaskFormModal
+        open={taskForm != null}
+        task={taskForm && taskForm !== 'new' ? taskForm : null}
+        lockedCustomer={activeLead ? {
+          id: customer.id,
+          name: customer.name,
+          enquiryId: activeLead.id,
+          label: leadDisplayName({ ...activeLead, customer_name: customer.name, name: customer.name }),
+          hint: activeLead.ref || '',
+        } : {
+          id: customer.id,
+          name: customer.name,
+        }}
+        onClose={() => setTaskForm(null)}
+        onSaved={(wasEdit) => {
+          setTaskForm(null);
+          load();
+          show(wasEdit ? 'Task updated' : 'Task added');
+        }}
+        onError={(msg) => show(msg, 'error')}
+      />
+      <Modal open={!!pendingDoneTask} onClose={() => !taskBusy && setPendingDoneTask(null)} title="Mark task done">
+        <p className="text-sm text-slate-600">
+          Are you sure you want to mark “{pendingDoneTask?.title}” as done?
+        </p>
+        <div className="mt-5 flex justify-end gap-2">
+          <button type="button" className="btn-secondary" disabled={taskBusy} onClick={() => setPendingDoneTask(null)}>
+            Cancel
+          </button>
+          <button
+            type="button"
+            className="btn-primary"
+            disabled={taskBusy}
+            onClick={async () => {
+              if (!pendingDoneTask?.id) return;
+              setTaskBusy(true);
+              try {
+                await api.put(`/tasks/${pendingDoneTask.id}`, { status: 'done' });
+                setPendingDoneTask(null);
+                load();
+                show('Task completed');
+              } catch (err) {
+                show(err.message, 'error');
+              } finally {
+                setTaskBusy(false);
+              }
+            }}
+          >
+            {taskBusy ? 'Saving…' : 'Mark done'}
+          </button>
+        </div>
+      </Modal>
+      <Modal open={!!pendingDeleteTask} onClose={() => !taskBusy && setPendingDeleteTask(null)} title="Delete task">
+        <p className="text-sm text-slate-600">
+          Are you sure you want to delete “{pendingDeleteTask?.title}”? This cannot be undone.
+        </p>
+        <div className="mt-5 flex justify-end gap-2">
+          <button type="button" className="btn-secondary" disabled={taskBusy} onClick={() => setPendingDeleteTask(null)}>
+            Cancel
+          </button>
+          <button
+            type="button"
+            className="btn-danger"
+            disabled={taskBusy}
+            onClick={async () => {
+              if (!pendingDeleteTask?.id) return;
+              setTaskBusy(true);
+              try {
+                await api.del(`/tasks/${pendingDeleteTask.id}`);
+                setPendingDeleteTask(null);
+                load();
+                show('Task deleted');
+              } catch (err) {
+                show(err.message, 'error');
+              } finally {
+                setTaskBusy(false);
+              }
+            }}
+          >
+            {taskBusy ? 'Deleting…' : 'Delete'}
+          </button>
+        </div>
+      </Modal>
       <Toast {...toast} />
     </div>
   );
@@ -394,7 +492,7 @@ function StageDropdown({ stage, onChange }) {
   );
 }
 
-function Composer({ customerId, onSent, onError }) {
+function Composer({ customerId, leadId, onSent, onError }) {
   const [channel, setChannel] = useState('whatsapp');
   const [body, setBody] = useState('');
   const [sending, setSending] = useState(false);
@@ -410,7 +508,11 @@ function Composer({ customerId, onSent, onError }) {
     if (!body.trim()) return;
     setSending(true);
     try {
-      await api.post(`/customers/${customerId}/messages`, { channel, body });
+      await api.post(`/customers/${customerId}/messages`, {
+        channel,
+        body,
+        ...(leadId ? { lead_id: leadId } : {}),
+      });
       setBody('');
       onSent();
     } catch (err) { onError(err.message); }
@@ -444,7 +546,7 @@ function Composer({ customerId, onSent, onError }) {
       )}
       <div className="flex gap-2">
         <textarea className="input flex-1 !py-2" rows={2} value={body} onChange={(e) => setBody(e.target.value)} placeholder={`Write a ${channel} message…`} />
-        <button onClick={send} disabled={sending || !body.trim()} className="btn-primary self-end"><Send size={15} /></button>
+        <button type="button" onClick={send} disabled={sending || !body.trim()} className="btn-primary self-end" aria-label="Send message"><Send size={15} /></button>
       </div>
     </div>
   );
@@ -800,6 +902,77 @@ function QuotesCard({ quotes, onEdit, onChanged, show }) {
           </div>
         )}
       </Modal>
+    </div>
+  );
+}
+
+const TASK_ICON_BTN = 'inline-flex h-8 w-8 items-center justify-center rounded-lg text-slate-500 transition hover:bg-white hover:shadow-sm';
+
+function TasksCard({ tasks, onEdit, onDone, onDelete }) {
+  const rows = tasks || [];
+  return (
+    <div className="card p-4">
+      <h3 id="lead-tasks-heading" className="mb-3 font-semibold text-slate-800 flex items-center gap-2">
+        <CheckSquare size={16} /> Tasks
+      </h3>
+      {rows.length === 0 && <p className="text-sm text-slate-400">No tasks on this enquiry yet.</p>}
+      {rows.length > 0 && (
+        <ScrollableLeadList labelledBy="lead-tasks-heading" count={rows.length} fallbackClass="max-h-[16rem]">
+          {rows.map((t) => (
+            <div key={t.id} role="listitem" className="rounded-xl border border-slate-100 bg-slate-50/40 p-3 text-sm">
+              <div className="flex items-center gap-3">
+                <div className="min-w-0 flex-1">
+                  <p className="truncate font-medium text-slate-800" title={t.title}>{t.title}</p>
+                  <div className="mt-1 flex flex-wrap items-center gap-1.5 text-xs text-slate-500">
+                    <PriorityBadge priority={t.priority} />
+                    <span>
+                      {t.due_date ? `Due ${fmtDate(t.due_date)}` : 'No due date'}
+                      {t.assignee_name ? ` · ${t.assignee_name}` : ''}
+                    </span>
+                  </div>
+                </div>
+                <div className="flex shrink-0 items-center gap-1.5">
+                  <StatusBadge status={t.status} />
+                  <div className="flex items-center rounded-xl bg-white p-0.5 ring-1 ring-slate-200/80">
+                    {t.status === 'open' ? (
+                      <HoverTooltip text="Mark done">
+                        <button
+                          type="button"
+                          className={`${TASK_ICON_BTN} hover:text-emerald-700`}
+                          aria-label={`Mark ${t.title} done`}
+                          onClick={() => onDone(t)}
+                        >
+                          <CheckCircle2 size={16} />
+                        </button>
+                      </HoverTooltip>
+                    ) : null}
+                    <HoverTooltip text="Edit">
+                      <button
+                        type="button"
+                        className={`${TASK_ICON_BTN} hover:text-slate-900`}
+                        aria-label={`Edit ${t.title}`}
+                        onClick={() => onEdit(t)}
+                      >
+                        <Pencil size={14} />
+                      </button>
+                    </HoverTooltip>
+                    <HoverTooltip text="Delete">
+                      <button
+                        type="button"
+                        className={`${TASK_ICON_BTN} hover:text-rose-600`}
+                        aria-label={`Delete ${t.title}`}
+                        onClick={() => onDelete(t)}
+                      >
+                        <Trash2 size={14} />
+                      </button>
+                    </HoverTooltip>
+                  </div>
+                </div>
+              </div>
+            </div>
+          ))}
+        </ScrollableLeadList>
+      )}
     </div>
   );
 }

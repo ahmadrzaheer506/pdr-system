@@ -1,49 +1,22 @@
 const express = require('express');
 const { Op, literal } = require('sequelize');
-const { sequelize, Task, User, Customer } = require('../models');
-const { todayStr, plain } = require('../db');
+const { sequelize, Task, User, Customer, Lead } = require('../models');
+const { todayStr } = require('../db');
 const { requireAuth, requireOffice, asyncHandler } = require('../auth');
 const { listWhere } = require('../taskList');
 const {
-  parseAssigneeIds, assertAssignableUsers, replaceAssignees, publicAssignees,
+  parseAssigneeIds, assertAssignableUsers, replaceAssignees,
 } = require('../taskAssignees');
+const { ASSIGNEE_INCLUDE, decorateTasks } = require('../taskDecorate');
 
 const router = express.Router();
 router.use(requireAuth, requireOffice);
-
-const ASSIGNEE_INCLUDE = {
-  model: User,
-  as: 'assignees',
-  attributes: ['id', 'name', 'role'],
-  through: { attributes: [] },
-};
 
 function parseLeadId(raw) {
   if (raw == null || raw === '') return { value: null };
   const n = Number(raw);
   if (!Number.isInteger(n) || n < 1) return { error: 'Invalid lead' };
   return { value: n };
-}
-
-async function leadNamesById(ids) {
-  if (!ids.length) return new Map();
-  const rows = await Customer.findAll({
-    where: { id: { [Op.in]: ids } },
-    attributes: ['id', 'name'],
-  });
-  return new Map(plain(rows).map((c) => [Number(c.id), c.name]));
-}
-
-function decorateTask(row, leadMap) {
-  const o = plain(row);
-  const assignees = publicAssignees(o.assignees);
-  o.assignees = assignees;
-  o.assignee_ids = assignees.map((a) => a.id);
-  o.assignee_name = assignees.map((a) => a.name).join(', ') || o.assignee?.name || null;
-  o.lead_id = o.entity_type === 'customer' ? o.entity_id : null;
-  o.lead_name = o.lead_id ? (leadMap.get(Number(o.lead_id)) || null) : null;
-  delete o.assignee;
-  return o;
 }
 
 router.get('/', asyncHandler(async (req, res) => {
@@ -64,11 +37,7 @@ router.get('/', asyncHandler(async (req, res) => {
     ],
     order,
   });
-  const leadIds = [...new Set(tasks.map((t) => {
-    const o = plain(t);
-    return o.entity_type === 'customer' && o.entity_id ? Number(o.entity_id) : null;
-  }).filter(Boolean))];
-  const leadMap = await leadNamesById(leadIds);
+  const decorated = await decorateTasks(tasks);
   const openWhere = { status: 'open' };
   const [open, overdue, todayCount, due, done] = await Promise.all([
     Task.count({ where: openWhere }),
@@ -78,24 +47,36 @@ router.get('/', asyncHandler(async (req, res) => {
     Task.count({ where: { status: { [Op.in]: ['done', 'dismissed'] } } }),
   ]);
   res.json({
-    tasks: tasks.map((t) => decorateTask(t, leadMap)),
+    tasks: decorated,
     counts: { open, overdue, today: todayCount, due, done },
   });
 }));
 
 router.post('/', asyncHandler(async (req, res) => {
-  const { title, detail, due_date, priority, assignee_id, assignee_ids, entity_type, entity_id, lead_id } = req.body || {};
+  const { title, detail, due_date, priority, assignee_id, assignee_ids, entity_type, entity_id, lead_id, enquiry_id } = req.body || {};
   if (!title) return res.status(400).json({ error: 'title required' });
   if (due_date && String(due_date).slice(0, 10) < todayStr()) {
     return res.status(400).json({ error: 'Due date cannot be in the past' });
   }
-  const lead = parseLeadId(lead_id != null ? lead_id : entity_id);
-  if (lead.error) return res.status(400).json({ error: lead.error });
-  if (!lead.value) return res.status(400).json({ error: 'Pick a lead' });
-  const found = await Customer.findByPk(lead.value, { attributes: ['id'] });
-  if (!found) return res.status(400).json({ error: 'Lead not found' });
-  if (entity_type && entity_type !== 'customer') {
-    return res.status(400).json({ error: 'Manual tasks belong to a lead' });
+  const enquiry = parseLeadId(enquiry_id);
+  if (enquiry.error) return res.status(400).json({ error: enquiry.error });
+  let entityType = 'customer';
+  let entityId = null;
+  if (enquiry.value) {
+    const row = await Lead.findByPk(enquiry.value, { attributes: ['id', 'customer_id'] });
+    if (!row) return res.status(400).json({ error: 'Lead not found' });
+    entityType = 'lead';
+    entityId = enquiry.value;
+  } else {
+    const lead = parseLeadId(lead_id != null ? lead_id : entity_id);
+    if (lead.error) return res.status(400).json({ error: lead.error });
+    if (!lead.value) return res.status(400).json({ error: 'Pick a lead' });
+    const found = await Customer.findByPk(lead.value, { attributes: ['id'] });
+    if (!found) return res.status(400).json({ error: 'Lead not found' });
+    if (entity_type && entity_type !== 'customer' && entity_type !== 'lead') {
+      return res.status(400).json({ error: 'Manual tasks belong to a lead' });
+    }
+    entityId = lead.value;
   }
 
   const parsed = parseAssigneeIds(assignee_ids != null ? assignee_ids : assignee_id);
@@ -111,8 +92,8 @@ router.post('/', asyncHandler(async (req, res) => {
       due_date: due_date || todayStr(),
       priority: priority || 'normal',
       assignee_id: allowed.ids[0] || null,
-      entity_type: 'customer',
-      entity_id: lead.value,
+      entity_type: entityType,
+      entity_id: entityId,
     }, { transaction });
     await replaceAssignees(row.id, allowed.ids, { transaction });
     return row;
@@ -124,7 +105,7 @@ router.post('/', asyncHandler(async (req, res) => {
 router.put('/:id', asyncHandler(async (req, res) => {
   const t = await Task.findByPk(req.params.id);
   if (!t) return res.status(404).json({ error: 'Task not found' });
-  const { status, title, detail, due_date, priority, assignee_ids, assignee_id, lead_id, entity_id } = req.body || {};
+  const { status, title, detail, due_date, priority, assignee_ids, assignee_id, lead_id, entity_id, enquiry_id } = req.body || {};
   const patch = {};
   if (status) {
     if (!['open', 'done', 'dismissed'].includes(status)) {
@@ -157,15 +138,26 @@ router.put('/:id', asyncHandler(async (req, res) => {
     patch.assignee_id = nextAssignees[0] || null;
   }
 
-  const leadRaw = lead_id !== undefined ? lead_id : entity_id;
-  if (leadRaw !== undefined && (t.type === 'manual' || t.entity_type === 'customer' || !t.entity_type)) {
-    const lead = parseLeadId(leadRaw);
-    if (lead.error) return res.status(400).json({ error: lead.error });
-    if (!lead.value) return res.status(400).json({ error: 'Pick a lead' });
-    const found = await Customer.findByPk(lead.value, { attributes: ['id'] });
-    if (!found) return res.status(400).json({ error: 'Lead not found' });
-    patch.entity_type = 'customer';
-    patch.entity_id = lead.value;
+  const canMove = t.type === 'manual' || t.entity_type === 'customer' || t.entity_type === 'lead' || !t.entity_type;
+  if (enquiry_id !== undefined && canMove) {
+    const enquiry = parseLeadId(enquiry_id);
+    if (enquiry.error) return res.status(400).json({ error: enquiry.error });
+    if (!enquiry.value) return res.status(400).json({ error: 'Pick a lead' });
+    const row = await Lead.findByPk(enquiry.value, { attributes: ['id'] });
+    if (!row) return res.status(400).json({ error: 'Lead not found' });
+    patch.entity_type = 'lead';
+    patch.entity_id = enquiry.value;
+  } else {
+    const leadRaw = lead_id !== undefined ? lead_id : entity_id;
+    if (leadRaw !== undefined && canMove) {
+      const lead = parseLeadId(leadRaw);
+      if (lead.error) return res.status(400).json({ error: lead.error });
+      if (!lead.value) return res.status(400).json({ error: 'Pick a lead' });
+      const found = await Customer.findByPk(lead.value, { attributes: ['id'] });
+      if (!found) return res.status(400).json({ error: 'Lead not found' });
+      patch.entity_type = 'customer';
+      patch.entity_id = lead.value;
+    }
   }
 
   await sequelize.transaction(async (transaction) => {

@@ -575,41 +575,42 @@ export default function QuoteBuilder({ open, onClose, customerId, customer, lead
             {saving ? 'Saving…' : existingQuote ? 'Save changes' : 'Create quote'}
           </button>
         )}
-        {!['accepted', 'declined'].includes(existingQuote?.status) && (
-          <div className="flex gap-1.5">
+        {existingQuote?.id ? (
+          <>
+            {!['accepted', 'declined'].includes(existingQuote.status) && (
+              <div className="flex gap-1.5">
+                <button
+                  type="button"
+                  className="btn-secondary flex-1 inline-flex items-center justify-center gap-1.5"
+                  aria-label="Send WhatsApp"
+                  aria-busy={sending === 'whatsapp' || undefined}
+                  disabled={saving || downloading || sending}
+                  onClick={() => sendQuote(['whatsapp'])}
+                >
+                  {sending === 'whatsapp' ? <><Loader2 size={14} className="animate-spin" /> Sending…</> : 'Send WhatsApp'}
+                </button>
+                <button
+                  type="button"
+                  className="btn-secondary flex-1 inline-flex items-center justify-center gap-1.5"
+                  aria-label="Send Email"
+                  aria-busy={sending === 'email' || undefined}
+                  disabled={saving || downloading || sending}
+                  onClick={() => sendQuote(['email'])}
+                >
+                  {sending === 'email' ? <><Loader2 size={14} className="animate-spin" /> Sending…</> : 'Send Email'}
+                </button>
+              </div>
+            )}
             <button
               type="button"
-              className="btn-secondary flex-1 inline-flex items-center justify-center gap-1.5"
-              aria-label="Send WhatsApp"
-              aria-busy={sending === 'whatsapp' || undefined}
-              disabled={saving || downloading || sending || !existingQuote?.id}
-              title={!existingQuote?.id ? 'Save the quote first' : undefined}
-              onClick={() => sendQuote(['whatsapp'])}
+              className="btn-secondary w-full inline-flex items-center justify-center gap-1.5"
+              disabled={saving || downloading || sending}
+              onClick={downloadPdf}
             >
-              {sending === 'whatsapp' ? <><Loader2 size={14} className="animate-spin" /> Sending…</> : 'Send WhatsApp'}
+              <Download size={14} /> {downloading ? 'Preparing PDF…' : 'Download PDF'}
             </button>
-            <button
-              type="button"
-              className="btn-secondary flex-1 inline-flex items-center justify-center gap-1.5"
-              aria-label="Send Email"
-              aria-busy={sending === 'email' || undefined}
-              disabled={saving || downloading || sending || !existingQuote?.id}
-              title={!existingQuote?.id ? 'Save the quote first' : undefined}
-              onClick={() => sendQuote(['email'])}
-            >
-              {sending === 'email' ? <><Loader2 size={14} className="animate-spin" /> Sending…</> : 'Send Email'}
-            </button>
-          </div>
-        )}
-        <button
-          type="button"
-          className="btn-secondary w-full inline-flex items-center justify-center gap-1.5"
-          disabled={saving || downloading || sending || !existingQuote?.id}
-          title={!existingQuote?.id ? 'Save the quote first' : undefined}
-          onClick={downloadPdf}
-        >
-          <Download size={14} /> {downloading ? 'Preparing PDF…' : 'Download PDF'}
-        </button>
+          </>
+        ) : null}
       </form>
     </Modal>
   );

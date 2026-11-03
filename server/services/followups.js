@@ -221,11 +221,13 @@ async function processDue() {
         await sendToCustomer(f.customer_id, 'whatsapp', body, {
           template: process.env.WHATSAPP_TEMPLATE_FOLLOWUP || 'quote_followup',
           templateParams: [vars.name, f.Quote.title],
+          leadId: f.Quote?.lead_id || null,
         });
       } else {
         const subjectTpl = followups?.email_subject || DEFAULT_EMAIL_SUBJECT;
         await sendToCustomer(f.customer_id, 'email', body, {
           subject: render(subjectTpl, vars),
+          leadId: f.Quote?.lead_id || null,
         });
       }
       f.status = 'sent';

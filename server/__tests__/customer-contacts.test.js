@@ -4,8 +4,9 @@ jest.mock('../models', () => ({
   CustomerSite: {},
   CustomerPhone: {},
   CustomerEmail: {},
-  Job: {},
-  Appointment: {},
+  Quote: { update: jest.fn() },
+  Job: { update: jest.fn() },
+  Appointment: { update: jest.fn() },
 }));
 jest.mock('../db', () => ({
   plain: (row) => (row && typeof row.toJSON === 'function' ? row.toJSON() : row),
@@ -23,6 +24,7 @@ const {
   applySelectedContacts,
   applyLeadContacts,
   leadContactSelection,
+  syncLinkedRecordsForLead,
   formatSite,
   sitesMatch,
 } = require('../customerContacts');
@@ -129,6 +131,19 @@ describe('contact helpers (requirement 2.2)', () => {
     expect(selected.postcode).toBe('RG2');
     expect(selected.phone).toBe('0118');
     expect(selected.email).toBe('work@example.com');
+    expect(applySelectedContacts(customer, { site_id: '6', phone_id: '2', email_id: '4' }).email).toBe('work@example.com');
+  });
+
+  test('syncLinkedRecordsForLead copies enquiry contacts onto quotes, jobs and visits', async () => {
+    const { Quote, Job, Appointment } = require('../models');
+    Quote.update.mockResolvedValue([1]);
+    Job.update.mockResolvedValue([1]);
+    Appointment.update.mockResolvedValue([1]);
+    await syncLinkedRecordsForLead(40, { site_id: 6, phone_id: 2, email_id: 4 });
+    const patch = { site_id: 6, phone_id: 2, email_id: 4 };
+    expect(Quote.update).toHaveBeenCalledWith(patch, { where: { lead_id: 40 } });
+    expect(Job.update).toHaveBeenCalledWith(patch, { where: { lead_id: 40 } });
+    expect(Appointment.update).toHaveBeenCalledWith(patch, { where: { lead_id: 40 } });
   });
 
   test('applyLeadContacts uses only the enquiry ids, not every customer contact', () => {

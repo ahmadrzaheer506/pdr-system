@@ -20,6 +20,7 @@ const invoiceTax = require('../invoiceTax');
 const invoicePayments = require('../invoicePayments');
 const visitAssignees = require('../appointmentAssignees');
 const { customerDeleteImpact, destroyCustomer } = require('../recordDelete');
+const { ASSIGNEE_INCLUDE, decorateTasks } = require('../taskDecorate');
 
 const router = express.Router();
 router.use(requireAuth, requireOffice);
@@ -310,6 +311,27 @@ router.get('/:id', asyncHandler(async (req, res) => {
     ...listed,
     owner_name: ownerName,
   });
+  const leadIds = leadRows.map((lead) => lead.id).filter(Boolean);
+  const quoteIdsForTasks = quoteRows.map((q) => q.id).filter(Boolean);
+  const jobIdsForTasks = jobs.map((j) => j.id).filter(Boolean);
+  const taskWhere = {
+    [Op.or]: [
+      { entity_type: 'customer', entity_id: id },
+      ...(leadIds.length ? [{ entity_type: 'lead', entity_id: { [Op.in]: leadIds } }] : []),
+      ...(quoteIdsForTasks.length ? [{ entity_type: 'quote', entity_id: { [Op.in]: quoteIdsForTasks } }] : []),
+      ...(jobIdsForTasks.length ? [{ entity_type: 'job', entity_id: { [Op.in]: jobIdsForTasks } }] : []),
+    ],
+  };
+  const taskRows = await Task.findAll({
+    where: taskWhere,
+    include: [
+      { model: User, as: 'assignee', attributes: ['name'] },
+      ASSIGNEE_INCLUDE,
+    ],
+    order: [['due_date', 'ASC NULLS LAST'], ['id', 'DESC']],
+  });
+  const tasks = await decorateTasks(taskRows);
+
   const leads = leadRows.map((lead) => {
     const chosen = contacts.applyLeadContacts(listed, lead);
     return {
@@ -325,7 +347,7 @@ router.get('/:id', asyncHandler(async (req, res) => {
   });
   res.json({
     customer, messages, activity, timeline, internal_notes, files: customer_files,
-    quotes, jobs, invoices, appointments, leads, followups, stageHistory,
+    quotes, jobs, invoices, appointments, leads, followups, stageHistory, tasks,
     stages: STAGES, labels: STAGE_LABELS,
   });
 }));
@@ -404,13 +426,17 @@ router.put('/:id/stage', asyncHandler(async (req, res) => {
 }));
 
 router.post('/:id/messages', asyncHandler(async (req, res) => {
-  const { channel, body, subject } = req.body || {};
+  const { channel, body, subject, lead_id } = req.body || {};
   if (!channel || !body) return res.status(400).json({ error: 'channel and body required' });
   if (channel === 'note') {
     return res.status(400).json({ error: 'Use internal notes — notes are not sent as messages' });
   }
   try {
-    const result = await sendToCustomer(Number(req.params.id), channel, body, { userId: req.user.id, subject });
+    const result = await sendToCustomer(Number(req.params.id), channel, body, {
+      userId: req.user.id,
+      subject,
+      ...(lead_id != null && lead_id !== '' ? { leadId: Number(lead_id) } : {}),
+    });
     res.json(result);
   } catch (err) {
     res.status(400).json({ error: err.message });

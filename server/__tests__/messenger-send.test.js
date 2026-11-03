@@ -1,6 +1,6 @@
 jest.mock('../models', () => ({
   Customer: { update: jest.fn() },
-  Lead: {},
+  Lead: { findByPk: jest.fn() },
   Message: { create: jest.fn(), findOne: jest.fn() },
   CustomerPhone: {},
   CustomerEmail: {},
@@ -8,6 +8,7 @@ jest.mock('../models', () => ({
 jest.mock('../services/pipeline', () => ({ logActivity: jest.fn() }));
 jest.mock('../customerContacts', () => ({
   loadCustomerWithContacts: jest.fn(),
+  applyLeadContacts: jest.fn(),
 }));
 jest.mock('../integrations/whatsapp', () => ({
   canMetaFetchMedia: jest.fn(),
@@ -21,9 +22,10 @@ jest.mock('../integrations/whatsapp', () => ({
 jest.mock('../integrations/email', () => ({ send: jest.fn() }));
 jest.mock('../integrations/meta', () => ({ sendPageMessage: jest.fn() }));
 
-const { Customer, Message } = require('../models');
+const { Customer, Lead, Message } = require('../models');
 const contacts = require('../customerContacts');
 const whatsapp = require('../integrations/whatsapp');
+const email = require('../integrations/email');
 const { sendToCustomer } = require('../services/messenger');
 
 describe('sendToCustomer WhatsApp', () => {
@@ -80,5 +82,31 @@ describe('sendToCustomer WhatsApp', () => {
       sendToCustomer(9, 'whatsapp', 'Quote body', { template: 'quote_sent' }),
     ).rejects.toMatchObject({ graphCode: 131047 });
     expect(whatsapp.sendText).not.toHaveBeenCalled();
+  });
+});
+
+describe('sendToCustomer email uses the enquiry address', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    contacts.loadCustomerWithContacts.mockResolvedValue({
+      id: 9,
+      email: 'old@example.com',
+      emails: [
+        { id: 2, value: 'old@example.com', is_primary: true },
+        { id: 9, value: 'new@example.com', is_primary: false },
+      ],
+    });
+    contacts.applyLeadContacts.mockReturnValue({ email: 'new@example.com', phone: null });
+    Lead.findByPk.mockResolvedValue({ id: 40, customer_id: 9, email_id: 9 });
+    Customer.update.mockResolvedValue([1]);
+    Message.create.mockResolvedValue({ id: 56 });
+    email.send.mockResolvedValue({ simulated: false });
+  });
+
+  test('sends to the lead email instead of the customer primary', async () => {
+    await sendToCustomer(9, 'email', 'Hello', { leadId: 40, subject: 'Quote' });
+    expect(Lead.findByPk).toHaveBeenCalledWith(40);
+    expect(contacts.applyLeadContacts).toHaveBeenCalled();
+    expect(email.send).toHaveBeenCalledWith('new@example.com', 'Quote', 'Hello', []);
   });
 });

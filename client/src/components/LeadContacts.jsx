@@ -5,9 +5,9 @@ import { formatSite, typeLabel, PHONE_TYPES, EMAIL_TYPES, contactIdsFromLead, fi
 import ContactPickers from './ContactPickers.jsx';
 import { Modal, HoverTooltip } from './ui.jsx';
 
-function Line({ icon: Icon, children }) {
+function Line({ icon: Icon, children, className = '' }) {
   return (
-    <span className="flex min-w-0 items-center gap-1.5">
+    <span className={`inline-flex min-w-0 items-center gap-1.5 ${className}`}>
       <Icon size={13} className="shrink-0 text-slate-400" />
       <span className="min-w-0 truncate">{children}</span>
     </span>
@@ -58,29 +58,29 @@ export default function LeadContacts({ customer, lead, onSaved, onError }) {
 
   return (
     <>
-      <div className="flex min-w-0 flex-wrap items-center gap-x-4 gap-y-1">
+      <div className="flex w-fit max-w-full flex-wrap items-center gap-x-4 gap-y-1">
         {phone ? (
-          <Line icon={Phone}>
+          <Line icon={Phone} className="shrink-0">
             {phone.value}
             <span className="text-slate-400"> ({typeLabel(PHONE_TYPES, phone.type)})</span>
           </Line>
         ) : null}
         {email ? (
-          <Line icon={Mail}>
+          <Line icon={Mail} className="min-w-0">
             {email.value}
             <span className="text-slate-400"> ({typeLabel(EMAIL_TYPES, email.type)})</span>
           </Line>
         ) : null}
         {site ? (
-          <Line icon={MapPin}>{formatSite(site)}</Line>
+          <Line icon={MapPin} className="min-w-0">{formatSite(site)}</Line>
         ) : null}
         {lead?.id ? (
-          <HoverTooltip text="Change site, phone or email">
+          <HoverTooltip text="Change site, phone or email" className="inline-flex shrink-0 self-center">
             <button
               type="button"
               onClick={startEdit}
               aria-label="Change"
-              className="inline-flex h-7 items-center gap-1.5 rounded-full bg-slate-100 pl-2 pr-2.5 text-xs font-semibold text-slate-700 transition-colors hover:bg-slate-200 hover:text-slate-900"
+              className="inline-flex h-7 shrink-0 items-center gap-1.5 rounded-full bg-slate-100 pl-2 pr-2.5 text-xs font-semibold leading-none text-slate-700 transition-colors hover:bg-slate-200 hover:text-slate-900"
             >
               <Pencil size={12} strokeWidth={2.25} />
               Change

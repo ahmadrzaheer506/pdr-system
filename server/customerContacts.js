@@ -9,6 +9,7 @@ const {
   CustomerSite,
   CustomerPhone,
   CustomerEmail,
+  Quote,
   Job,
   Appointment,
 } = require('./models');
@@ -81,11 +82,17 @@ function applyPrimaryContacts(obj) {
  * @param {object} customer hydrated customer with sites/phones/emails
  * @param {{ site_id?: number|null, phone_id?: number|null, email_id?: number|null }} selection
  */
+function contactById(list, id) {
+  const n = Number(id);
+  if (!Number.isInteger(n) || n < 1) return null;
+  return (list || []).find((item) => Number(item.id) === n) || null;
+}
+
 function applySelectedContacts(customer, selection = {}) {
   const c = applyPrimaryContacts({ ...customer, sites: customer.sites, phones: customer.phones, emails: customer.emails });
-  const site = (customer.sites || []).find((s) => s.id === selection.site_id);
-  const phone = (customer.phones || []).find((p) => p.id === selection.phone_id);
-  const email = (customer.emails || []).find((e) => e.id === selection.email_id);
+  const site = contactById(customer.sites, selection.site_id);
+  const phone = contactById(customer.phones, selection.phone_id);
+  const email = contactById(customer.emails, selection.email_id);
   if (site) {
     c.address = site.address;
     c.postcode = site.postcode;
@@ -93,6 +100,23 @@ function applySelectedContacts(customer, selection = {}) {
   if (phone) c.phone = phone.value;
   if (email) c.email = email.value;
   return c;
+}
+
+/**
+ * Keep quotes, jobs and visits on this enquiry on the same site/phone/email
+ * so Send quote / email uses the address shown on the lead.
+ */
+async function syncLinkedRecordsForLead(leadId, picked = {}) {
+  const id = Number(leadId);
+  if (!Number.isInteger(id) || id < 1) return;
+  const patch = {
+    site_id: picked.site_id ?? null,
+    phone_id: picked.phone_id ?? null,
+    email_id: picked.email_id ?? null,
+  };
+  await Quote.update(patch, { where: { lead_id: id } });
+  await Job.update(patch, { where: { lead_id: id } });
+  await Appointment.update(patch, { where: { lead_id: id } });
 }
 
 /**
@@ -430,9 +454,9 @@ function leadContactSelection(lead = {}) {
  */
 function applyLeadContacts(customer, lead) {
   const selection = leadContactSelection(lead);
-  const site = (customer?.sites || []).find((s) => s.id === selection.site_id) || null;
-  const phone = (customer?.phones || []).find((p) => p.id === selection.phone_id) || null;
-  const email = (customer?.emails || []).find((e) => e.id === selection.email_id) || null;
+  const site = contactById(customer?.sites, selection.site_id);
+  const phone = contactById(customer?.phones, selection.phone_id);
+  const email = contactById(customer?.emails, selection.email_id);
   return {
     ...selection,
     phone: phone ? phone.value : null,
@@ -723,6 +747,7 @@ module.exports = {
   sitesMatch,
   applyPrimaryContacts,
   applySelectedContacts,
+  syncLinkedRecordsForLead,
   enforceOnePrimary,
   parseSiteItem,
   parsePhoneItem,

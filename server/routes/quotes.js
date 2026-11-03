@@ -2,7 +2,7 @@ const express = require('express');
 const crypto = require('crypto');
 const path = require('path');
 const { Op } = require('sequelize');
-const { Quote, Customer, Followup, Job } = require('../models');
+const { Quote, Customer, Followup, Job, Lead } = require('../models');
 const { nextRef, getSetting, money, DATA_DIR, plain } = require('../db');
 const { requireAuth, requireOffice, asyncHandler } = require('../auth');
 const { setStage, logActivity, resolveLeadForCustomer } = require('../services/pipeline');
@@ -90,7 +90,12 @@ function publicPdfUrl(filename) {
 async function generateAndStoreQuotePdf(quote) {
   const customer = await contacts.loadCustomerWithContacts(quote.customer_id);
   if (!customer) return { error: 'Customer not found', status: 404 };
-  const forDoc = contacts.applySelectedContacts(customer, quote);
+  let selection = quote;
+  if (quote.lead_id) {
+    const lead = await Lead.findByPk(quote.lead_id);
+    if (lead) selection = contacts.leadContactSelection(lead);
+  }
+  const forDoc = contacts.applySelectedContacts(customer, selection);
   const filename = await quotePdf(plain(quote), forDoc);
   await quote.update({ pdf_file: filename });
   return { filename, customer, forDoc };
@@ -404,6 +409,7 @@ router.post('/:id/send', asyncHandler(async (req, res) => {
           template: process.env.WHATSAPP_TEMPLATE_QUOTE || 'quote_sent',
           templateParams: [vars.name],
           phone: forDoc.phone,
+          leadId: quote.lead_id,
         });
       } else if (ch === 'email') {
         results.email = await sendToCustomer(customer.id, 'email', render(templates.quote_email_body, vars), {
@@ -411,6 +417,7 @@ router.post('/:id/send', asyncHandler(async (req, res) => {
           subject: render(templates.quote_email_subject, vars),
           attachments: [{ filename: `${quote.ref}.pdf`, path: path.join(DATA_DIR, 'files', filename) }],
           email: forDoc.email,
+          leadId: quote.lead_id,
         });
       }
     } catch (err) {

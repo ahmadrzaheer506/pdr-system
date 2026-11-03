@@ -31,7 +31,7 @@ export default function TaskCard({
   const leadChip = task.lead_name ? (
     leadAsLink && task.lead_id ? (
       <Link
-        to={leadPath(task.lead_id, 'tasks')}
+        to={leadPath(task.lead_id, 'tasks', task.enquiry_id)}
         className="inline-flex items-center gap-1.5 rounded-full bg-brand-50 px-2.5 py-1 text-[11px] font-medium text-brand-800 ring-1 ring-brand-100 hover:bg-brand-100"
       >
         <UserRound size={12} strokeWidth={2} />

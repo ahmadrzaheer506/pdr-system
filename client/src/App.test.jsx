@@ -33,6 +33,7 @@ vi.mock('./pages/Customers.jsx', () => ({ default: () => <div>Customers page</di
 vi.mock('./pages/CustomerDetail.jsx', () => ({ default: () => <div>Lead workspace page</div> }));
 vi.mock('./pages/CustomerRecord.jsx', () => ({ default: () => <div>Customer record page</div> }));
 vi.mock('./pages/Quotes.jsx', () => ({ default: () => <div>Quotes page</div> }));
+vi.mock('./pages/Jobs.jsx', () => ({ default: () => <div>Jobs page</div> }));
 vi.mock('./pages/Visits.jsx', () => ({ default: () => <div>Visits page</div> }));
 vi.mock('./pages/Schedule.jsx', () => ({ default: () => <div>Schedule page</div> }));
 vi.mock('./pages/Invoices.jsx', () => ({ default: () => <div>Invoices page</div> }));
@@ -100,6 +101,13 @@ describe('App route enforcement (requirement 1.5)', () => {
     renderAt('/visits');
     expect(screen.getByTestId('office-shell')).toBeInTheDocument();
     expect(screen.getByText('Visits page')).toBeInTheDocument();
+  });
+
+  it('lets OFFICE open the jobs list', () => {
+    auth.user = { role: 'OFFICE', name: 'Lisa' };
+    renderAt('/jobs');
+    expect(screen.getByTestId('office-shell')).toBeInTheDocument();
+    expect(screen.getByText('Jobs page')).toBeInTheDocument();
   });
 
   it('lets OFFICE use the office app', () => {

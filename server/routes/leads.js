@@ -173,6 +173,13 @@ router.put('/:id', asyncHandler(async (req, res) => {
     patch.meta = { ...meta, site_id: picked.site_id, phone_id: picked.phone_id, email_id: picked.email_id };
   }
   if (Object.keys(patch).length) await lead.update(patch);
+  if (changingContacts) {
+    await contacts.syncLinkedRecordsForLead(lead.id, {
+      site_id: patch.site_id,
+      phone_id: patch.phone_id,
+      email_id: patch.email_id,
+    });
+  }
   res.json({ ok: true });
 }));
 

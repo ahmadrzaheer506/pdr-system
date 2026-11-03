@@ -218,6 +218,30 @@ describe('CustomerDetail type (requirement 2.1)', () => {
     });
   });
 
+  it('sends the composer email to this enquiry, not only the customer primary', async () => {
+    const user = userEvent.setup();
+    api.get.mockResolvedValue({
+      ...DETAIL,
+      leads: [{
+        id: 40, ref: 'L-0001', source: 'manual', status: 'NEW', stage: 'ENQUIRY',
+        email_id: 9, created_at: '2026-01-01T08:00:00Z',
+      }],
+    });
+    api.post.mockResolvedValue({ ok: true });
+    renderDetail('/leads/9?lead=40');
+    await screen.findByText('Activity timeline');
+    await user.click(screen.getByRole('button', { name: /^email$/i }));
+    await user.type(screen.getByPlaceholderText(/write a email message/i), 'test send');
+    await user.click(screen.getByRole('button', { name: /send message/i }));
+    await waitFor(() => {
+      expect(api.post).toHaveBeenCalledWith('/customers/9/messages', {
+        channel: 'email',
+        body: 'test send',
+        lead_id: 40,
+      });
+    });
+  });
+
   it('renders the unified activity timeline (requirement 2.3)', async () => {
     renderDetail();
     expect(await screen.findByText('Activity timeline')).toBeInTheDocument();
@@ -416,6 +440,72 @@ describe('CustomerDetail type (requirement 2.1)', () => {
     const visits = await screen.findByRole('heading', { name: 'Site visits' });
     const quotes = screen.getByRole('heading', { name: 'Quotes' });
     expect(visits.compareDocumentPosition(quotes) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+
+  it('lets office add a task on this enquiry', async () => {
+    const user = userEvent.setup();
+    api.get.mockImplementation((path) => {
+      if (String(path).includes('/settings/users')) {
+        return Promise.resolve({ users: [{ id: 2, name: 'Lisa Grant', role: 'OFFICE', active: true }] });
+      }
+      if (path === '/settings') return Promise.resolve({ settings: { templates: { custom: [] } } });
+      return Promise.resolve({
+        ...DETAIL,
+        leads: [{
+          id: 40, ref: 'L-0001', source: 'manual', status: 'NEW', stage: 'ENQUIRY',
+          created_at: '2026-01-01T08:00:00Z',
+        }],
+        tasks: [{
+          id: 87, title: 'Call back', status: 'open', priority: 'normal', due_date: '2026-11-10',
+          enquiry_id: 40, entity_type: 'lead', entity_id: 40, assignee_name: 'Lisa Grant',
+        }],
+      });
+    });
+    api.post.mockResolvedValue({ id: 99 });
+    renderDetail('/leads/9?lead=40');
+    expect(await screen.findByRole('heading', { name: 'Tasks' })).toBeInTheDocument();
+    expect(screen.getByText('Call back')).toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: /^open$/i })).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /delete call back/i })).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: /add task/i }));
+    const dialog = await screen.findByRole('dialog');
+    expect(within(dialog).getByRole('heading', { name: 'Add a task' })).toBeInTheDocument();
+    expect(within(dialog).queryByRole('button', { name: /^change$/i })).not.toBeInTheDocument();
+    await user.type(within(dialog).getByLabelText(/^title$/i), 'Measure roof');
+    await user.click(within(dialog).getByLabelText(/^assigned to$/i));
+    await user.click(await screen.findByRole('option', { name: /lisa grant/i }));
+    await user.click(within(dialog).getByRole('button', { name: /^add task$/i }));
+    await waitFor(() => {
+      expect(api.post).toHaveBeenCalledWith('/tasks', expect.objectContaining({
+        title: 'Measure roof',
+        enquiry_id: 40,
+        assignee_ids: [2],
+      }));
+    });
+  });
+
+  it('lets office delete a task from this enquiry', async () => {
+    const user = userEvent.setup();
+    api.get.mockResolvedValue({
+      ...DETAIL,
+      leads: [{
+        id: 40, ref: 'L-0001', source: 'manual', status: 'NEW', stage: 'ENQUIRY',
+        created_at: '2026-01-01T08:00:00Z',
+      }],
+      tasks: [{
+        id: 87, title: 'Call back', status: 'open', priority: 'normal', due_date: '2026-11-10',
+        enquiry_id: 40, entity_type: 'lead', entity_id: 40,
+      }],
+    });
+    api.del.mockResolvedValue({ ok: true });
+    renderDetail('/leads/9?lead=40');
+    await user.click(await screen.findByRole('button', { name: /delete call back/i }));
+    const dialog = await screen.findByRole('dialog');
+    expect(within(dialog).getByRole('heading', { name: 'Delete task' })).toBeInTheDocument();
+    await user.click(within(dialog).getByRole('button', { name: /^delete$/i }));
+    await waitFor(() => {
+      expect(api.del).toHaveBeenCalledWith('/tasks/87');
+    });
   });
 
   it('does not scroll site visits when there are two or fewer', async () => {

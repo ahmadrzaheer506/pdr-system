@@ -26,6 +26,7 @@ jest.mock('../customerContacts', () => ({
     value: { site_id: body.site_id, phone_id: body.phone_id, email_id: body.email_id },
   })),
   resolveLeadContactsForCreate: jest.fn(),
+  syncLinkedRecordsForLead: jest.fn(),
   applyLeadContacts: (customer, lead) => ({
     phone: customer.phones?.[0]?.value || null,
     email: customer.emails?.[0]?.value || null,
@@ -442,5 +443,8 @@ describe('PUT /api/leads/:id (requirement 3.4)', () => {
     expect(update).toHaveBeenCalledWith(expect.objectContaining({
       site_id: 12, phone_id: 3, email_id: 4,
     }));
+    expect(contacts.syncLinkedRecordsForLead).toHaveBeenCalledWith(1, {
+      site_id: 12, phone_id: 3, email_id: 4,
+    });
   });
 });

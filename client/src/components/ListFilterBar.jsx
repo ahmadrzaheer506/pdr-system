@@ -25,11 +25,11 @@ export default function ListFilterBar({
 }) {
   return (
     <div className="card p-3">
-      <div className="flex w-full flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+      <div className="flex w-full flex-col gap-3">
         <ScrollTabBar
           value={value}
           fadeFrom="from-slate-100"
-          className="min-w-0 rounded-lg bg-slate-100 p-1 lg:max-w-none"
+          className="min-w-0 rounded-lg bg-slate-100 p-1"
           trackClassName="h-8 gap-1 sm:h-9"
         >
           {tabs.map((tab) => (
@@ -44,8 +44,8 @@ export default function ListFilterBar({
             </button>
           ))}
         </ScrollTabBar>
-        <div className="flex min-w-0 items-center justify-end gap-2 overflow-x-auto">
-          <div className="relative w-40 shrink-0">
+        <div className="flex flex-wrap items-center gap-2">
+          <div className="relative min-w-[12.5rem] flex-1 basis-[12.5rem] sm:max-w-xs">
             <Search size={15} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
             <input
               className="input !pl-9 w-full"
@@ -57,14 +57,14 @@ export default function ListFilterBar({
           </div>
           {select ? (
             <SelectMenu
-              className="w-40 shrink-0"
+              className="w-full min-w-[10rem] sm:w-44"
               label={select.label}
               value={select.value}
               onChange={select.onChange}
               options={select.options}
             />
           ) : null}
-          <div className="flex shrink-0 items-center gap-2">
+          <div className="flex min-w-0 flex-wrap items-center gap-2">
             <DatePicker
               className="w-[10.5rem]"
               label={fromLabel}

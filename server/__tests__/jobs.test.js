@@ -27,6 +27,8 @@ jest.mock('../calendarSync', () => ({
 jest.mock('../models', () => ({
   Job: { findByPk: jest.fn(), findAll: jest.fn(), create: jest.fn() },
   Customer: { findByPk: jest.fn() },
+  Lead: {},
+  Quote: {},
   User: { findAll: jest.fn().mockResolvedValue([]) },
   HolidayRequest: { findAll: jest.fn().mockResolvedValue([]) },
   JobAssignment: { destroy: jest.fn(), findOrCreate: jest.fn() },
@@ -419,5 +421,56 @@ describe('job variations (requirement 7.5)', () => {
     expect(res.body.line.amount).toBe(180);
     const { logActivity } = require('../services/pipeline');
     expect(logActivity).toHaveBeenCalledWith(9, 1, 'job_variation', expect.any(String), 'job', 4);
+  });
+});
+
+describe('GET /api/jobs list filters', () => {
+  beforeEach(() => jest.clearAllMocks());
+
+  test('does not treat status=ALL as a job status', async () => {
+    Job.findAll.mockResolvedValue([]);
+    const res = await request(app).get('/api/jobs?status=ALL');
+    expect(res.status).toBe(200);
+    expect(Job.findAll).toHaveBeenCalledWith(expect.objectContaining({
+      where: {},
+      limit: 200,
+    }));
+  });
+
+  test('filters by status, priority, search and created range', async () => {
+    Job.findAll.mockResolvedValue([{
+      toJSON: () => ({
+        id: 4,
+        title: 'Re-roof',
+        status: 'SCHEDULED',
+        priority: 'high',
+        customer_id: 9,
+        lead_id: 40,
+        Customer: { id: 9, name: 'testdeveloper' },
+        Lead: { id: 40, ref: 'L-0001' },
+        Quote: { id: 1, ref: 'Q-2026-0001' },
+        selectedPhone: null,
+        required_skills: [],
+      }),
+    }]);
+    const res = await request(app).get('/api/jobs?status=SCHEDULED&priority=high&q=roof&created_from=2026-11-01&created_to=2026-11-30');
+    expect(res.status).toBe(200);
+    expect(res.body.jobs[0].customer_name).toBe('testdeveloper');
+    expect(res.body.jobs[0].lead_ref).toBe('L-0001');
+    expect(res.body.jobs[0].quote_ref).toBe('Q-2026-0001');
+    const arg = Job.findAll.mock.calls[0][0];
+    expect(arg.where.status).toBe('SCHEDULED');
+    expect(arg.where.priority).toBe('high');
+    expect(arg.where.created_at).toBeTruthy();
+    expect(arg.limit).toBe(200);
+  });
+
+  test('keeps calendar overlap queries unlimited and ordered by start date', async () => {
+    Job.findAll.mockResolvedValue([]);
+    const res = await request(app).get('/api/jobs?from=2026-11-03&to=2026-11-09');
+    expect(res.status).toBe(200);
+    const arg = Job.findAll.mock.calls[0][0];
+    expect(arg.limit).toBeUndefined();
+    expect(arg.order[1]).toEqual(['start_date', 'ASC']);
   });
 });

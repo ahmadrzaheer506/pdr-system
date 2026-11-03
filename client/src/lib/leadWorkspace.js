@@ -57,6 +57,28 @@ export function filterByLeadScope(rows, scope) {
 }
 
 /**
+ * Tasks may sit on the enquiry, the customer, or a quote/job for this enquiry.
+ */
+export function filterTasksForLead(tasks, scope, { quotes = [], jobs = [] } = {}) {
+  if (!scope) return tasks || [];
+  const leadId = Number(scope.lead?.id);
+  if (!Number.isFinite(leadId) || leadId <= 0) return [];
+  return (tasks || []).filter((task) => {
+    if (task?.enquiry_id != null && task.enquiry_id !== '') {
+      return Number(task.enquiry_id) === leadId;
+    }
+    if (task?.entity_type === 'lead') return Number(task.entity_id) === leadId;
+    if (task?.entity_type === 'quote') {
+      return quotes.some((q) => Number(q.id) === Number(task.entity_id) && Number(q.lead_id) === leadId);
+    }
+    if (task?.entity_type === 'job') {
+      return jobs.some((j) => Number(j.id) === Number(task.entity_id) && Number(j.lead_id) === leadId);
+    }
+    return inLeadScope(task, scope);
+  });
+}
+
+/**
  * Workspace badge is this enquiry's pipeline stage, not the customer's last move.
  */
 export function enquiryWorkspaceStage(customerStage, scope) {

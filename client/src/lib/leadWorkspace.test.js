@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest';
 import {
   leadWorkspaceScope,
   filterByLeadScope,
+  filterTasksForLead,
   enquiryWorkspaceStage,
   recordTime,
 } from './leadWorkspace.js';
@@ -64,6 +65,19 @@ describe('filterByLeadScope', () => {
       { id: 'mine', created_at: '2026-10-02T21:15:00Z', lead_id: 12 },
     ];
     expect(filterByLeadScope(rows, scope).map((r) => r.id)).toEqual(['mine']);
+  });
+});
+
+describe('filterTasksForLead', () => {
+  it('keeps enquiry tasks on that lead only', () => {
+    const scope = leadWorkspaceScope(leads, 12);
+    const tasks = [
+      { id: 1, enquiry_id: 10, title: 'Other enquiry' },
+      { id: 2, enquiry_id: 12, title: 'This enquiry' },
+      { id: 3, entity_type: 'quote', entity_id: 88, title: 'Quote task' },
+    ];
+    const quotes = [{ id: 88, lead_id: 12 }];
+    expect(filterTasksForLead(tasks, scope, { quotes }).map((t) => t.id)).toEqual([2, 3]);
   });
 });
 

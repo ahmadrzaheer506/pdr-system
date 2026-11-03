@@ -77,12 +77,15 @@ describe('QuoteBuilder', () => {
     });
   });
 
-  it('keeps Download PDF disabled until the quote is saved (requirement 6.6)', async () => {
+  it('hides send and PDF actions until the quote is saved (requirement 6.6)', async () => {
     render(
       <QuoteBuilder open onClose={() => {}} customerId={1} customer={CUSTOMER} onSaved={() => {}} />
     );
     await screen.findByLabelText(/^item 1$/i);
-    expect(screen.getByRole('button', { name: /download pdf/i })).toBeDisabled();
+    expect(screen.getByRole('button', { name: /create quote/i })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /download pdf/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /send whatsapp/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /send email/i })).not.toBeInTheDocument();
   });
 
   it('treats cis_applies as a boolean and payment_schedule as an object array', async () => {
@@ -322,13 +325,28 @@ describe('QuoteBuilder', () => {
     expect(screen.queryByText(/quote sent via whatsapp/i)).toBeNull();
   });
 
-  it('keeps Send disabled until the quote is saved (requirement 6.7)', async () => {
+  it('shows Send after the quote exists (requirement 6.7)', async () => {
     render(
-      <QuoteBuilder open onClose={() => {}} customerId={1} customer={CUSTOMER} onSaved={() => {}} />
+      <QuoteBuilder
+        open
+        onClose={() => {}}
+        customerId={1}
+        customer={CUSTOMER}
+        existingQuote={{
+          id: 9,
+          ref: 'Q-2026-0009',
+          status: 'draft',
+          title: 'Felt',
+          items: [{ description: 'Felt', qty: 1, unit_price: 180, vat_code: 'standard', kind: 'materials' }],
+          optional_extras: [],
+        }}
+        onSaved={() => {}}
+      />
     );
-    await screen.findByLabelText(/^item 1$/i);
-    expect(screen.getByRole('button', { name: /send whatsapp/i })).toBeDisabled();
-    expect(screen.getByRole('button', { name: /send email/i })).toBeDisabled();
+    await screen.findByText(/Edit quote Q-2026-0009/);
+    expect(screen.getByRole('button', { name: /send whatsapp/i })).toBeEnabled();
+    expect(screen.getByRole('button', { name: /send email/i })).toBeEnabled();
+    expect(screen.getByRole('button', { name: /download pdf/i })).toBeEnabled();
   });
 
   it('clones a decided quote with the title from the form', async () => {

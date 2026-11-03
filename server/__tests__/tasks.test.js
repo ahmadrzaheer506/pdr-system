@@ -16,13 +16,14 @@ jest.mock('../models', () => ({
   Task: { findAll: jest.fn(), count: jest.fn(), create: jest.fn(), findByPk: jest.fn() },
   User: { findAll: jest.fn() },
   Customer: { findAll: jest.fn(), findByPk: jest.fn() },
+  Lead: { findAll: jest.fn(), findByPk: jest.fn() },
   TaskAssignee: { destroy: jest.fn(), bulkCreate: jest.fn() },
 }));
 
 const request = require('supertest');
 const express = require('express');
 const { Op } = require('sequelize');
-const { Task, User, Customer, TaskAssignee } = require('../models');
+const { Task, User, Customer, Lead, TaskAssignee } = require('../models');
 const tasks = require('../routes/tasks');
 
 const app = express();
@@ -36,6 +37,7 @@ describe('GET /api/tasks (requirement 12.3)', () => {
     Task.findAll.mockResolvedValue([]);
     Task.count.mockResolvedValue(0);
     Customer.findAll.mockResolvedValue([]);
+    Lead.findAll.mockResolvedValue([]);
   });
 
   test('due view lists open tasks after today and returns all counts', async () => {
@@ -150,6 +152,25 @@ describe('PUT / DELETE /api/tasks/:id', () => {
     expect(res.status).toBe(400);
     expect(res.body.error).toMatch(/office or field staff/i);
     expect(Task.create).not.toHaveBeenCalled();
+  });
+
+  test('creates a manual task on an enquiry', async () => {
+    Lead.findByPk.mockResolvedValue({ id: 40, customer_id: 9 });
+    User.findAll.mockResolvedValue([{ id: 2 }]);
+    Task.create.mockResolvedValue({ id: 12 });
+    TaskAssignee.destroy.mockResolvedValue(1);
+    TaskAssignee.bulkCreate.mockResolvedValue([]);
+    const res = await request(app).post('/api/tasks').send({
+      title: 'Call about tiles',
+      enquiry_id: 40,
+      assignee_ids: [2],
+    });
+    expect(res.status).toBe(200);
+    expect(Task.create).toHaveBeenCalledWith(expect.objectContaining({
+      title: 'Call about tiles',
+      entity_type: 'lead',
+      entity_id: 40,
+    }), expect.anything());
   });
 
   test('requires a lead', async () => {

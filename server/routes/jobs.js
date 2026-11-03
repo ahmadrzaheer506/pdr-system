@@ -1,8 +1,9 @@
 const express = require('express');
-const { literal } = require('sequelize');
-const { Job, Customer, User, JobMessage, AiProposal, Invoice } = require('../models');
+const { literal, Op } = require('sequelize');
+const { Job, Customer, Lead, Quote, User, JobMessage, AiProposal, Invoice } = require('../models');
 const { sequelize, todayStr, plain } = require('../db');
 const { requireAuth, requireOffice, asyncHandler } = require('../auth');
+const { parseCreatedRange } = require('../customerSearch');
 const { setStage, logActivity, resolveLeadForCustomer } = require('../services/pipeline');
 const { JOB_STATUSES, canAdvanceJobStatus, canUnscheduleJob, parseJobPriority } = require('../jobStatus');
 const skillsLib = require('../skills');
@@ -30,31 +31,68 @@ function mapJob(jobJson) {
 }
 
 router.get('/', asyncHandler(async (req, res) => {
-  const { from, to, status } = req.query;
+  const { from, to, status, q, priority } = req.query;
+  const dates = parseCreatedRange(req.query);
+  if (dates.error) return res.status(400).json({ error: dates.error });
   const where = {};
   if (from || to) Object.assign(where, jobDays.overlapWhere(from, to));
-  if (status) where.status = status;
+  if (status && status !== 'ALL') {
+    if (!JOB_STATUSES.includes(status)) return res.status(400).json({ error: 'Invalid status' });
+    where.status = status;
+  }
+  if (priority && priority !== 'ALL') {
+    const parsed = parseJobPriority(priority);
+    if (parsed.error) return res.status(400).json({ error: parsed.error });
+    where.priority = parsed.value;
+  }
+  if (dates.range) where.created_at = dates.range;
+  const term = q == null ? '' : String(q).trim();
+  if (term) {
+    const like = `%${term}%`;
+    where[Op.or] = [
+      { title: { [Op.iLike]: like } },
+      { address: { [Op.iLike]: like } },
+      { '$Customer.name$': { [Op.iLike]: like } },
+      { '$Lead.ref$': { [Op.iLike]: like } },
+    ];
+  }
+  const scheduleRange = Boolean(from || to);
   const rows = await Job.findAll({
     where,
     include: [
       { model: Customer, attributes: ['id', 'name'] },
+      { model: Lead, attributes: ['id', 'ref'], required: false },
+      { model: Quote, attributes: ['id', 'ref'], required: false },
       { association: 'selectedPhone', attributes: ['id', 'value', 'type'] },
     ],
-    order: [
-      [literal('"Job"."start_date" IS NULL'), 'ASC'],
-      ['start_date', 'ASC'],
-      ['priority', 'ASC'],
-    ],
+    order: scheduleRange
+      ? [
+        [literal('"Job"."start_date" IS NULL'), 'ASC'],
+        ['start_date', 'ASC'],
+        ['priority', 'ASC'],
+      ]
+      : [['id', 'DESC']],
+    ...(scheduleRange ? {} : { limit: 200 }),
   });
   const jobs = rows.map((jb) => {
     const o = mapJob(plain(jb));
     o.customer_name = o.Customer?.name;
+    o.lead_ref = o.Lead?.ref || null;
+    o.quote_ref = o.Quote?.ref || null;
     o.phone = o.selectedPhone?.value || null;
     delete o.Customer;
+    delete o.Lead;
+    delete o.Quote;
     delete o.selectedPhone;
     return o;
   });
-  res.json({ jobs: await jobDays.attachDayAssignmentsMany(jobs) });
+  const withCrew = await jobDays.attachDayAssignmentsMany(jobs);
+  res.json({
+    jobs: withCrew.map((job) => ({
+      ...job,
+      crew: jobDays.uniqueCrewNames(job.day_assignments).join(', '),
+    })),
+  });
 }));
 
 router.get('/unscheduled', asyncHandler(async (req, res) => {

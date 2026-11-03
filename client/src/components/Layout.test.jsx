@@ -28,21 +28,23 @@ vi.mock('../lib/api', () => ({
 }));
 
 describe('office sidebar', () => {
-  it('orders Management links as pipeline, visits, quotes, then schedule', () => {
+  it('orders Management links as pipeline, visits, quotes, jobs, then schedule', () => {
     render(<MemoryRouter><Layout><div>child</div></Layout></MemoryRouter>);
     const labels = screen.getAllByRole('link').map((el) => el.textContent.trim());
     const pipeline = labels.indexOf('Pipeline');
     expect(labels[pipeline + 1]).toBe('Visits');
     expect(labels[pipeline + 2]).toBe('Quotes');
-    expect(labels[pipeline + 3]).toBe('Schedule & AI');
-    expect(labels[pipeline + 4]).toBe('Invoices');
-    expect(labels[pipeline + 5]).toBe('Tasks');
-    expect(labels[pipeline + 6]).toBe('Timesheets');
-    expect(labels[pipeline + 7]).toBe('Holidays');
-    expect(labels[pipeline + 8]).toBe('Customers');
-    expect(labels[pipeline + 9]).toBe('Reports');
-    expect(labels[pipeline + 10]).toBe('Team Chat');
+    expect(labels[pipeline + 3]).toBe('Jobs');
+    expect(labels[pipeline + 4]).toBe('Schedule & AI');
+    expect(labels[pipeline + 5]).toBe('Invoices');
+    expect(labels[pipeline + 6]).toBe('Tasks');
+    expect(labels[pipeline + 7]).toBe('Timesheets');
+    expect(labels[pipeline + 8]).toBe('Holidays');
+    expect(labels[pipeline + 9]).toBe('Customers');
+    expect(labels[pipeline + 10]).toBe('Reports');
+    expect(labels[pipeline + 11]).toBe('Team Chat');
     expect(screen.getByRole('link', { name: 'Visits' })).toHaveAttribute('href', '/visits');
+    expect(screen.getByRole('link', { name: 'Jobs' })).toHaveAttribute('href', '/jobs');
   });
 
   it('places Reports in Management after Customers', () => {

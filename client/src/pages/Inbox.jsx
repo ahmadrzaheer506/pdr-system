@@ -15,6 +15,15 @@ import { emailFormatError, primaryContactIds } from '../lib/contacts';
 
 const INBOX_TABS = [
   {
+    id: 'ALL',
+    label: 'All',
+    Icon: Layers,
+    rail: 'bg-indigo-400',
+    iconWrap: 'bg-indigo-100 text-indigo-700',
+    active: 'bg-indigo-50 ring-2 ring-indigo-400/80',
+    idle: 'bg-white hover:bg-indigo-50/50',
+  },
+  {
     id: 'NEW',
     label: 'New',
     Icon: InboxIcon,
@@ -50,15 +59,6 @@ const INBOX_TABS = [
     active: 'bg-slate-100 ring-2 ring-slate-400/70',
     idle: 'bg-white hover:bg-slate-50',
   },
-  {
-    id: 'ALL',
-    label: 'All',
-    Icon: Layers,
-    rail: 'bg-indigo-400',
-    iconWrap: 'bg-indigo-100 text-indigo-700',
-    active: 'bg-indigo-50 ring-2 ring-indigo-400/80',
-    idle: 'bg-white hover:bg-indigo-50/50',
-  },
 ];
 
 const SOURCE_FILTERS = [
@@ -74,7 +74,7 @@ const SOURCE_FILTERS = [
 ];
 
 export default function Inbox() {
-  const [status, setStatus] = useState('NEW');
+  const [status, setStatus] = useState('ALL');
   const [q, setQ] = useState('');
   const [source, setSource] = useState('ALL');
   const [createdFrom, setCreatedFrom] = useState('');

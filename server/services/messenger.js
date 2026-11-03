@@ -42,11 +42,21 @@ async function sendWhatsAppTextOrTemplate(destPhone, body, template, templatePar
  * Send an outbound message to a customer on a channel.
  * kind: 'text' | 'document'. Returns the created message row id + simulated flag.
  */
-async function sendToCustomer(customerId, channel, body, { userId = null, docUrl = null, docName = null, template = null, templateParams = [], subject = null, attachments = [], phone: phoneOverride = null, email: emailOverride = null } = {}) {
+async function sendToCustomer(customerId, channel, body, { userId = null, docUrl = null, docName = null, template = null, templateParams = [], subject = null, attachments = [], phone: phoneOverride = null, email: emailOverride = null, leadId = null } = {}) {
   const customer = await contacts.loadCustomerWithContacts(customerId);
   if (!customer) throw new Error('Customer not found');
-  const destPhone = phoneOverride || customer.phone;
-  const destEmail = emailOverride || customer.email;
+  let destPhone = phoneOverride;
+  let destEmail = emailOverride;
+  if (leadId && (!destPhone || !destEmail)) {
+    const lead = await Lead.findByPk(leadId);
+    if (lead && Number(lead.customer_id) === Number(customerId)) {
+      const chosen = contacts.applyLeadContacts(customer, lead);
+      destPhone = destPhone || chosen.phone;
+      destEmail = destEmail || chosen.email;
+    }
+  }
+  destPhone = destPhone || customer.phone;
+  destEmail = destEmail || customer.email;
 
   let result = { simulated: true };
   let meta_ = {};

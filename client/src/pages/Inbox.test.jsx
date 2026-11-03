@@ -59,7 +59,7 @@ describe('Lead Inbox (requirement 3.1)', () => {
   it('lists every channel on one page and has a Closed tab', async () => {
     render(<MemoryRouter><Inbox /></MemoryRouter>);
     expect(await screen.findByRole('heading', { name: 'Lead Inbox' })).toBeInTheDocument();
-    expect(api.get).toHaveBeenCalledWith('/leads?status=NEW');
+    expect(api.get).toHaveBeenCalledWith('/leads?status=ALL');
     expect(screen.getByText('L-0001 - Dave Whitfield')).toBeInTheDocument();
     expect(screen.getAllByRole('link', { name: 'L-0001 - Dave Whitfield' })[0]).toHaveAttribute('href', '/leads/9?from=inbox&lead=1');
     expect(screen.getByText('WhatsApp')).toBeInTheDocument();
@@ -70,6 +70,10 @@ describe('Lead Inbox (requirement 3.1)', () => {
     expect(screen.getByText('L-0004 - SMS Lead')).toBeInTheDocument();
     expect(screen.getByText('SMS')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /lost/i })).toBeInTheDocument();
+    const tabOrder = screen.getAllByRole('button')
+      .filter((el) => el.getAttribute('aria-pressed') != null)
+      .map((el) => el.textContent.replace(/\d+/g, '').trim());
+    expect(tabOrder).toEqual(['All', 'New', 'Actioned', 'Won', 'Lost']);
     expect(screen.getByLabelText(/search leads/i)).toBeInTheDocument();
     expect(screen.getByLabelText(/filter by source/i)).toBeInTheDocument();
     expect(screen.queryByText(/demo simulator/i)).toBeNull();
@@ -113,11 +117,11 @@ describe('Lead Inbox (requirement 3.1)', () => {
     await pickDate(user, /created from/i, '2026-09-01');
     await pickDate(user, /created to/i, '2026-09-22');
     await waitFor(() => {
-      expect(api.get).toHaveBeenCalledWith('/leads?status=NEW&q=Dave&source=whatsapp&created_from=2026-09-01&created_to=2026-09-22');
+      expect(api.get).toHaveBeenCalledWith('/leads?status=ALL&q=Dave&source=whatsapp&created_from=2026-09-01&created_to=2026-09-22');
     });
     await user.click(screen.getByRole('button', { name: /clear filters/i }));
     await waitFor(() => {
-      expect(api.get).toHaveBeenLastCalledWith('/leads?status=NEW');
+      expect(api.get).toHaveBeenLastCalledWith('/leads?status=ALL');
     });
   });
 });

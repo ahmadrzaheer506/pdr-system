@@ -23,6 +23,7 @@ jest.mock('../models', () => ({
   Customer: { findByPk: jest.fn(), update: jest.fn() },
   Followup: { findAll: jest.fn(), update: jest.fn(), destroy: jest.fn() },
   Job: { create: jest.fn(), findOne: jest.fn() },
+  Lead: { findByPk: jest.fn() },
   sequelize: { transaction: jest.fn(async (fn) => fn({})) },
   CustomerSite: {},
   CustomerPhone: {},
@@ -35,6 +36,11 @@ jest.mock('../customerContacts', () => ({
   })),
   loadCustomerWithContacts: jest.fn(),
   applySelectedContacts: jest.fn((c) => c),
+  leadContactSelection: jest.fn((lead) => ({
+    site_id: lead.site_id ?? null,
+    phone_id: lead.phone_id ?? null,
+    email_id: lead.email_id ?? null,
+  })),
   formatSite: jest.fn(() => null),
 }));
 jest.mock('../geocode', () => ({

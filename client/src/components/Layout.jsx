@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { NavLink } from 'react-router-dom';
 import {
-  LayoutDashboard, Inbox, Kanban, Users, Calendar, CalendarDays, FileText, Receipt, CheckSquare,
+  LayoutDashboard, Inbox, Kanban, Users, Calendar, CalendarDays, FileText, Briefcase, Receipt, CheckSquare,
   MessageSquare, Settings, X, PlaneTakeoff, Clock, BarChart3,
 } from 'lucide-react';
 import BrandLogo from './BrandLogo.jsx';
@@ -21,6 +21,7 @@ const NAV_SECTIONS = [
       { to: '/pipeline', label: 'Pipeline', icon: Kanban },
       { to: '/visits', label: 'Visits', icon: CalendarDays },
       { to: '/quotes', label: 'Quotes', icon: FileText },
+      { to: '/jobs', label: 'Jobs', icon: Briefcase },
       { to: '/schedule', label: 'Schedule & AI', icon: Calendar },
       { to: '/invoices', label: 'Invoices', icon: Receipt },
       { to: '/tasks', label: 'Tasks', icon: CheckSquare },
