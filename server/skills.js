@@ -231,7 +231,7 @@ function requiredSkillLabel(req, catalogue = []) {
   const name = skillDisplayName(req, catalogue);
   if (typeof req === 'string' || typeof req === 'number') return name;
   const level = LEVEL_LABELS[requirementLevel(req)];
-  return level ? `${name} — ${level}` : name;
+  return level ? `${name} - ${level}` : name;
 }
 
 function staffSkillLabel(entry, catalogue = []) {

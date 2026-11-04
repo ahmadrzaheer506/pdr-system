@@ -115,10 +115,10 @@ function PersonRow({ row, catalogue, expanded, onToggleSkills }) {
               <span
                 key={skill.key}
                 className={`inline-flex max-w-full items-center rounded-md px-1.5 py-0.5 text-[10px] font-medium ring-1 ${levelChipClass(skill.level)}`}
-                title={skill.levelLabel ? `${skill.name} — ${skill.levelLabel}` : skill.name}
+                title={skill.levelLabel ? `${skill.name} - ${skill.levelLabel}` : skill.name}
               >
                 <span className="truncate">
-                  {skill.levelLabel ? `${skill.name} — ${skill.levelLabel}` : skill.name}
+                  {skill.levelLabel ? `${skill.name} - ${skill.levelLabel}` : skill.name}
                 </span>
               </span>
             ))}
@@ -212,7 +212,7 @@ export default function TeamAvailability({ staff, holidays, jobs, today = localI
           Team availability today
         </h3>
         <p className="mt-1 pl-10 text-sm text-slate-500">
-          {dateLabel ? `${dateLabel} — who can take work, already booked, or off.` : 'Who can take work, already booked, or off.'}
+          {dateLabel ? `${dateLabel} - who can take work, already booked, or off.` : 'Who can take work, already booked, or off.'}
         </p>
         <div className="mt-3 flex flex-wrap gap-1.5 pl-10">
           <span className="rounded-full bg-emerald-50 px-2.5 py-1 text-[11px] font-semibold text-emerald-700 ring-1 ring-emerald-100">

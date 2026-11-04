@@ -2,7 +2,7 @@ import React, { useEffect, useState, useCallback, useRef } from 'react';
 import { useParams, useSearchParams, Link } from 'react-router-dom';
 import { customerPath, leadBackLink } from '../lib/customerRoutes.js';
 import { leadDisplayName, leadSourceLabel } from '../lib/leads.js';
-import { enquiryWorkspaceStage, filterByLeadScope, filterTasksForLead, leadWorkspaceScope } from '../lib/leadWorkspace.js';
+import { enquiryWorkspaceStage, filesForLead, filterByLeadScope, filterTasksForLead, workspaceScopeForOpen } from '../lib/leadWorkspace.js';
 import {
   ArrowLeft, MapPin, Send, Calendar, FileText, Briefcase, Receipt,
   Check, CheckCircle2, X, ChevronDown, Building2, Copy, Download, IdCard, Pencil, Trash2, Loader2, Users, CheckSquare,
@@ -21,7 +21,9 @@ import InvoiceTaxSummary from '../components/InvoiceTaxSummary.jsx';
 import LostReasonModal from '../components/LostReasonModal.jsx';
 import LeadContacts from '../components/LeadContacts.jsx';
 import TaskFormModal from '../components/TaskFormModal.jsx';
+import TaskDoneModal from '../components/TaskDoneModal.jsx';
 import { taskHref } from '../lib/taskList.js';
+import { attachmentSource } from '../lib/noteSources.js';
 import { ROLES } from '../lib/roles';
 import { canChangeVisit, canCompleteVisit, visitTypeLabel } from '../lib/visitTypes';
 import VisitCompleteTick, { VisitCompleteRemarks } from '../components/VisitCompleteTick.jsx';
@@ -69,7 +71,7 @@ export default function CustomerDetail() {
   if (!data.customer) return <LoadError message={data.error || 'Customer not found'} />;
   const { customer } = data;
   const leads = data.leads || [];
-  const scope = leadWorkspaceScope(leads, params.get('lead'));
+  const scope = workspaceScopeForOpen(leads, params.get('lead'));
   const quotes = filterByLeadScope(data.quotes, scope);
   const jobs = filterByLeadScope(data.jobs, scope);
   const tasks = filterTasksForLead(data.tasks, scope, { quotes: data.quotes, jobs: data.jobs });
@@ -78,10 +80,13 @@ export default function CustomerDetail() {
   const followups = filterByLeadScope(data.followups, scope);
   const timeline = filterByLeadScope(data.timeline, scope);
   const internalNotes = filterByLeadScope(data.internal_notes, scope);
-  const files = filterByLeadScope(data.files, scope);
   const stageHistory = filterByLeadScope(data.stageHistory, scope);
   const displayStage = enquiryWorkspaceStage(customer.stage, scope);
   const activeLead = scope?.lead || null;
+  const files = filesForLead(data.files, scope, activeLead).map((file) => ({
+    ...file,
+    source: attachmentSource(file, activeLead),
+  }));
   const lostReason = activeLead?.lost_reason || (!activeLead ? customer.lost_reason : null);
 
   const changeStage = async (stage, extra = {}) => {
@@ -211,11 +216,13 @@ export default function CustomerDetail() {
           <CustomerInternalNotes
             customer={customer}
             notes={internalNotes}
+            leadId={activeLead?.id}
             onChanged={() => { load(); show('Note saved'); }}
             onError={(msg) => show(msg, 'error')}
           />
           <CustomerAttachments
             customerId={id}
+            leadId={activeLead?.id}
             files={files}
             onChanged={() => { load(); show('Attachments updated'); }}
             onError={(msg) => show(msg, 'error')}
@@ -341,37 +348,26 @@ export default function CustomerDetail() {
         }}
         onError={(msg) => show(msg, 'error')}
       />
-      <Modal open={!!pendingDoneTask} onClose={() => !taskBusy && setPendingDoneTask(null)} title="Mark task done">
-        <p className="text-sm text-slate-600">
-          Are you sure you want to mark “{pendingDoneTask?.title}” as done?
-        </p>
-        <div className="mt-5 flex justify-end gap-2">
-          <button type="button" className="btn-secondary" disabled={taskBusy} onClick={() => setPendingDoneTask(null)}>
-            Cancel
-          </button>
-          <button
-            type="button"
-            className="btn-primary"
-            disabled={taskBusy}
-            onClick={async () => {
-              if (!pendingDoneTask?.id) return;
-              setTaskBusy(true);
-              try {
-                await api.put(`/tasks/${pendingDoneTask.id}`, { status: 'done' });
-                setPendingDoneTask(null);
-                load();
-                show('Task completed');
-              } catch (err) {
-                show(err.message, 'error');
-              } finally {
-                setTaskBusy(false);
-              }
-            }}
-          >
-            {taskBusy ? 'Saving…' : 'Mark done'}
-          </button>
-        </div>
-      </Modal>
+      <TaskDoneModal
+        open={!!pendingDoneTask}
+        task={pendingDoneTask}
+        saving={taskBusy}
+        onClose={() => setPendingDoneTask(null)}
+        onConfirm={async (note) => {
+          if (!pendingDoneTask?.id) return;
+          setTaskBusy(true);
+          try {
+            await api.put(`/tasks/${pendingDoneTask.id}`, { status: 'done', complete_note: note || null });
+            setPendingDoneTask(null);
+            load();
+            show('Task completed');
+          } catch (err) {
+            show(err.message, 'error');
+          } finally {
+            setTaskBusy(false);
+          }
+        }}
+      />
       <Modal open={!!pendingDeleteTask} onClose={() => !taskBusy && setPendingDeleteTask(null)} title="Delete task">
         <p className="text-sm text-slate-600">
           Are you sure you want to delete “{pendingDeleteTask?.title}”? This cannot be undone.
@@ -409,7 +405,7 @@ export default function CustomerDetail() {
 }
 
 function StageHistoryCard({ rows, labels = {} }) {
-  const label = (stage) => labels[stage] || (stage ? String(stage).replace(/_/g, ' ') : '—');
+  const label = (stage) => labels[stage] || (stage ? String(stage).replace(/_/g, ' ') : '-');
   return (
     <div className="card p-4">
       <h3 id="stage-history-heading" className="font-semibold text-slate-800 mb-3">Stage history</h3>
@@ -801,7 +797,7 @@ function QuotesCard({ quotes, onEdit, onChanged, show }) {
                 className="input"
                 value={cloneTitle}
                 onChange={(e) => setCloneTitle(e.target.value)}
-                placeholder="e.g. Full re-roof — rear slope"
+                placeholder="e.g. Full re-roof - rear slope"
                 required
                 autoFocus
               />
@@ -822,7 +818,7 @@ function QuotesCard({ quotes, onEdit, onChanged, show }) {
         title="Delete quote"
       >
         <p className="text-sm text-slate-600">
-          Delete {deleteQuote?.ref}{deleteQuote?.title ? ` — ${deleteQuote.title}` : ''}? This cannot be undone.
+          Delete {deleteQuote?.ref}{deleteQuote?.title ? ` - ${deleteQuote.title}` : ''}? This cannot be undone.
         </p>
         <div className="mt-5 flex justify-end gap-2">
           <button type="button" className="btn-secondary" disabled={deleting} onClick={() => setDeleteQuote(null)}>Cancel</button>
@@ -897,7 +893,7 @@ function QuotesCard({ quotes, onEdit, onChanged, show }) {
               <span className="font-medium text-slate-800">{jobPrompt.quote.ref}</span> is accepted and the customer is Won.
             </p>
             <p>
-              A job is what you put on the diary — dates, lads, and the work itself. Create it now, or come back to this quote when you are ready.
+              A job is what you put on the diary - dates, lads, and the work itself. Create it now, or come back to this quote when you are ready.
             </p>
           </div>
         )}
@@ -969,6 +965,9 @@ function TasksCard({ tasks, onEdit, onDone, onDelete }) {
                   </div>
                 </div>
               </div>
+              {t.status === 'done' ? (
+                <VisitCompleteRemarks note={t.complete_note} className="mt-2" />
+              ) : null}
             </div>
           ))}
         </ScrollableLeadList>

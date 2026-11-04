@@ -37,7 +37,7 @@ export default function TeamChat() {
     <div className="space-y-5 flex flex-col h-[calc(100vh-64px)]">
       <div>
         <h1 className="text-2xl font-bold text-slate-900">Team Chat</h1>
-        <p className="text-slate-500 text-sm mt-0.5">All-staff channel — general announcements. Job-specific chat lives on each job.</p>
+        <p className="text-slate-500 text-sm mt-0.5">All-staff channel - general announcements. Job-specific chat lives on each job.</p>
       </div>
       <div className="card p-4 flex-1 flex flex-col min-h-0">
         <div className="flex-1 overflow-y-auto space-y-3 pr-1">

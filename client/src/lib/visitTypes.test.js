@@ -7,7 +7,7 @@ describe('visit types (requirement 5.3)', () => {
     expect(visitTypeLabel('follow_up')).toBe('Follow-up');
     expect(visitTypeLabel('measure')).toBe('Measure');
     expect(visitTypeLabel('other')).toBe('Other');
-    expect(visitTitle('measure', 'Dave Whitfield')).toBe('Measure — Dave Whitfield');
+    expect(visitTitle('measure', 'Dave Whitfield')).toBe('Measure - Dave Whitfield');
   });
 
   it('allows change only for booked visits that have not ended', () => {

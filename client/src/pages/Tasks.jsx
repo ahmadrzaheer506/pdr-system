@@ -7,6 +7,7 @@ import { TASK_VIEWS, normalizeTaskView, tasksQueryPath, viewForDueDate, filterTa
 import DatePicker from '../components/DatePicker.jsx';
 import TaskCard from '../components/TaskCard.jsx';
 import TaskFormModal from '../components/TaskFormModal.jsx';
+import TaskDoneModal from '../components/TaskDoneModal.jsx';
 
 const TASK_TAB_STYLE = {
   ALL: {
@@ -100,11 +101,11 @@ export default function Tasks() {
     setSearchParams(params);
   };
 
-  const complete = async () => {
+  const complete = async (note) => {
     if (!pendingDone) return;
     setBusy(true);
     try {
-      await api.put(`/tasks/${pendingDone.id}`, { status: 'done' });
+      await api.put(`/tasks/${pendingDone.id}`, { status: 'done', complete_note: note || null });
       show('Task completed');
       setPendingDone(null);
       load();
@@ -244,19 +245,13 @@ export default function Tasks() {
         }}
         onError={(msg) => show(msg, 'error')}
       />
-      <Modal open={!!pendingDone} onClose={() => !busy && setPendingDone(null)} title="Mark task done">
-        <p className="text-sm text-slate-600">
-          Are you sure you want to mark “{pendingDone?.title}” as done?
-        </p>
-        <div className="mt-5 flex justify-end gap-2">
-          <button type="button" className="btn-secondary" disabled={busy} onClick={() => setPendingDone(null)}>
-            Cancel
-          </button>
-          <button type="button" className="btn-primary" disabled={busy} onClick={complete}>
-            {busy ? 'Saving…' : 'Mark done'}
-          </button>
-        </div>
-      </Modal>
+      <TaskDoneModal
+        open={!!pendingDone}
+        task={pendingDone}
+        saving={busy}
+        onClose={() => setPendingDone(null)}
+        onConfirm={complete}
+      />
       <Modal open={!!pendingDelete} onClose={() => !busy && setPendingDelete(null)} title="Delete task">
         <p className="text-sm text-slate-600">
           Are you sure you want to delete “{pendingDelete?.title}”? This cannot be undone.

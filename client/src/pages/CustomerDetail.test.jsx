@@ -67,7 +67,7 @@ const DETAIL = {
       id: 'activity-1',
       type: 'quote',
       at: '2026-01-01T09:00:00Z',
-      summary: 'Quote Q-2026-0001 created — £1,200.00',
+      summary: 'Quote Q-2026-0001 created - £1,200.00',
       user_name: 'Lisa',
       meta: { kind: 'quote_created' },
     },
@@ -102,7 +102,9 @@ const DETAIL = {
   ],
   leads: [],
   followups: [],
-  internal_notes: [{ id: 21, body: 'Scaffold booked for Monday', created_at: '2026-01-04T09:00:00Z', user_name: 'Lisa' }],
+  internal_notes: [{
+    id: 21, body: 'Scaffold booked for Monday', source: 'general', created_at: '2026-01-04T09:00:00Z', user_name: 'Lisa',
+  }],
   files: [{ id: 31, original_name: 'survey.pdf', mime: 'application/pdf', size_bytes: 1200, created_at: '2026-01-04T09:00:00Z' }],
   stageHistory: [{
     id: 1, from_stage: 'ENQUIRY', to_stage: 'QUOTED', created_at: '2026-01-07T09:00:00Z', user_name: 'Lisa',
@@ -255,10 +257,32 @@ describe('CustomerDetail type (requirement 2.1)', () => {
     expect(screen.getByText('dt:2026-03-10T09:00:00Z')).toBeInTheDocument();
   });
 
+  it('shows landing-page photos in this enquiry attachments with a from-customer badge', async () => {
+    api.get.mockImplementation((path) => {
+      if (path === '/settings') return Promise.resolve({ settings: { templates: { custom: [] } } });
+      return Promise.resolve({
+        ...DETAIL,
+        leads: [{
+          id: 40, ref: 'L-0001', source: 'website', status: 'NEW', stage: 'ENQUIRY',
+          created_at: '2026-01-01T08:00:00Z',
+          meta: { photo_file_ids: [31], service: 'Roof Tiling' },
+        }],
+        files: [{
+          id: 31, original_name: 'valley.jpg', mime: 'image/jpeg', size_bytes: 2048,
+          created_at: '2025-12-01T08:00:00Z',
+        }],
+      });
+    });
+    renderDetail('/leads/9?lead=40');
+    expect(await screen.findByText('valley.jpg')).toBeInTheDocument();
+    expect(screen.getByText('From customer')).toBeInTheDocument();
+  });
+
   it('shows internal notes and attachments on the customer page, not mixed into Conversation', async () => {
     renderDetail();
     expect(await screen.findByText('Internal notes')).toBeInTheDocument();
     expect(screen.getByText('Scaffold booked for Monday')).toBeInTheDocument();
+    expect(screen.getAllByText('General').length).toBeGreaterThan(0);
     expect(screen.getByText('Attachments')).toBeInTheDocument();
     expect(screen.getByText('survey.pdf')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /^whatsapp$/i })).toBeInTheDocument();
@@ -481,6 +505,34 @@ describe('CustomerDetail type (requirement 2.1)', () => {
         enquiry_id: 40,
         assignee_ids: [2],
       }));
+    });
+  });
+
+  it('lets office mark a task done with optional remarks', async () => {
+    const user = userEvent.setup();
+    api.get.mockResolvedValue({
+      ...DETAIL,
+      leads: [{
+        id: 40, ref: 'L-0001', source: 'manual', status: 'NEW', stage: 'ENQUIRY',
+        created_at: '2026-01-01T08:00:00Z',
+      }],
+      tasks: [{
+        id: 87, title: 'Call back', status: 'open', priority: 'normal', due_date: '2026-11-10',
+        enquiry_id: 40, entity_type: 'lead', entity_id: 40,
+      }],
+    });
+    api.put.mockResolvedValue({ ok: true });
+    renderDetail('/leads/9?lead=40');
+    await user.click(await screen.findByRole('button', { name: /mark call back done/i }));
+    const dialog = await screen.findByRole('dialog');
+    expect(within(dialog).getByRole('heading', { name: 'Mark task done' })).toBeInTheDocument();
+    await user.type(within(dialog).getByLabelText(/completion remarks/i), 'Spoke to Dave - visit booked.');
+    await user.click(within(dialog).getByRole('button', { name: /^mark done$/i }));
+    await waitFor(() => {
+      expect(api.put).toHaveBeenCalledWith('/tasks/87', {
+        status: 'done',
+        complete_note: 'Spoke to Dave - visit booked.',
+      });
     });
   });
 

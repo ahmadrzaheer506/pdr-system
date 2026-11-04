@@ -1,5 +1,5 @@
 // ============================================================
-// Facebook Page adapter — Messenger replies + Lead Ads fetch.
+// Facebook Page adapter - Messenger replies + Lead Ads fetch.
 // (PRD §10.1). Live when FB_PAGE_ACCESS_TOKEN set.
 // ============================================================
 const crypto = require('crypto');
@@ -18,7 +18,7 @@ async function logEvent(direction, event, payload, status = 'ok') {
 /** Verify X-Hub-Signature-256 on Meta webhooks (shared with WhatsApp). */
 function verifySignature(rawBody, signatureHeader) {
   const secret = process.env.META_APP_SECRET;
-  if (!secret) return true; // not configured yet — accept (simulated phase)
+  if (!secret) return true; // not configured yet - accept (simulated phase)
   if (!signatureHeader) return false;
   const expected = 'sha256=' + crypto.createHmac('sha256', secret).update(rawBody).digest('hex');
   try {
@@ -85,8 +85,8 @@ function status() {
     env_needed: ['FB_PAGE_ID', 'FB_PAGE_ACCESS_TOKEN', 'META_APP_SECRET', 'META_VERIFY_TOKEN'],
     webhook_url: `${process.env.APP_URL || 'http://localhost:4000'}/api/webhooks/facebook`,
     detail: isConfigured()
-      ? 'Live — page messages and lead forms feed the CRM inbox'
-      : 'Simulated — use the demo simulator to inject Facebook enquiries. Add page token to go live (needs Meta App Review for public traffic).',
+      ? 'Live - page messages and lead forms feed the CRM inbox'
+      : 'Simulated - use the demo simulator to inject Facebook enquiries. Add page token to go live (needs Meta App Review for public traffic).',
   };
 }
 

@@ -51,7 +51,7 @@ describe('quote follow-up engine (requirement 12.1)', () => {
         return {
           enabled: true,
           steps: [
-            { delay_days: 2, channel: 'whatsapp', body: 'Hi {name} — {ref}' },
+            { delay_days: 2, channel: 'whatsapp', body: 'Hi {name} - {ref}' },
             { delay_days: 5, channel: 'email', body: 'Email {title}' },
           ],
         };
@@ -66,7 +66,7 @@ describe('quote follow-up engine (requirement 12.1)', () => {
       quote_id: 4,
       step: 1,
       channel: 'whatsapp',
-      body_template: 'Hi {name} — {ref}',
+      body_template: 'Hi {name} - {ref}',
     }));
     expect(Followup.create.mock.calls[0][0].scheduled_at.getTime())
       .toBe(sentAt.getTime() + 2 * 24 * 3600 * 1000);

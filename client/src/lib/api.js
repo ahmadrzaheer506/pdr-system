@@ -1,4 +1,4 @@
-// Thin fetch wrapper — cookie-based auth, JSON in/out, friendly errors.
+// Thin fetch wrapper - cookie-based auth, JSON in/out, friendly errors.
 const BASE = '/api';
 
 export function readCookie(name) {
@@ -94,15 +94,15 @@ export function money(n) {
 }
 
 export function fmtDate(d, opts) {
-  if (!d) return '—';
+  if (!d) return '-';
   return new Date(d).toLocaleDateString('en-GB', opts || { day: 'numeric', month: 'short', year: 'numeric' });
 }
 export function fmtDateTime(d) {
-  if (!d) return '—';
+  if (!d) return '-';
   return new Date(d).toLocaleString('en-GB', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
 }
 export function fmtTimeAgo(d) {
-  if (!d) return '—';
+  if (!d) return '-';
   const diff = (Date.now() - new Date(d).getTime()) / 1000;
   if (diff < 60) return 'just now';
   if (diff < 3600) return `${Math.floor(diff / 60)}m ago`;

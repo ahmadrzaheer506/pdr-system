@@ -21,7 +21,7 @@ export function CrewFitNotes({ missingSkills = [], needsDriver = false, hasDrive
   const skills = catalogue || loaded.skills;
   const lines = [];
   if (missingSkills.length) lines.push(`Nobody covering: ${missingSkills.map((s) => skillLabel(s, skills)).join(', ')}`);
-  if (needsDriver && !hasDriver) lines.push('Needs a driver — nobody assigned can drive');
+  if (needsDriver && !hasDriver) lines.push('Needs a driver - nobody assigned can drive');
   if (!lines.length) return null;
   return (
     <div className="text-[11px] text-amber-700 mt-1.5 space-y-0.5">
@@ -77,7 +77,7 @@ export function CrewConflictNotes({
 
 /**
  * Staff chips for one work date (requirement 8.2 / 8.3). Holiday, other-job,
- * skill, and driver overlays are visual only — selection is never blocked.
+ * skill, and driver overlays are visual only - selection is never blocked.
  */
 export default function CrewChips({
   staff = [],

@@ -4,7 +4,7 @@
  * `website`. "How did you hear about us?" is stored as heard_from.
  *
  * Photos are uploaded as multipart files (`photos`) or JSON `{ filename, mime, data }`
- * (base64). They are stored on the customer in the CRM — do not send public URLs.
+ * (base64). They are stored on the customer in the CRM - do not send public URLs.
  */
 const crypto = require('crypto');
 const express = require('express');
@@ -114,7 +114,7 @@ function enquiryBodyFromRequest(req) {
 
 /**
  * Multipart files named `photos` plus optional JSON `{ filename, mime, data }`.
- * String URLs/filenames are ignored — photos live in this CRM.
+ * String URLs/filenames are ignored - photos live in this CRM.
  */
 function collectEnquiryPhotos(req) {
   const warnings = [];
@@ -150,11 +150,14 @@ function collectEnquiryPhotos(req) {
   return { files: files.slice(0, PHOTO_MAX_COUNT), warnings };
 }
 
-async function saveEnquiryPhotos(customerId, files) {
+async function saveEnquiryPhotos(customerId, files, extras = {}) {
   const saved = [];
   const warnings = [];
   for (const file of files) {
-    const result = await customerFiles.addFile(customerId, null, file);
+    const result = await customerFiles.addFile(customerId, null, file, {
+      source: 'customer',
+      leadId: extras.leadId,
+    });
     if (result.error) warnings.push(result.error);
     else saved.push(result.file);
   }
@@ -271,7 +274,7 @@ function parseWebsiteEnquiry(body = {}) {
   const company_name = type === 'commercial' ? (trim(body.company_name) || name) : null;
 
   const message = buildBody(body);
-  const subject = trim(body.service) ? `Website enquiry — ${trim(body.service)}` : 'Website enquiry';
+  const subject = trim(body.service) ? `Website enquiry - ${trim(body.service)}` : 'Website enquiry';
 
   return {
     value: {

@@ -3,7 +3,7 @@ import { Play, Square, Coffee, MapPin, Camera, Loader2, AlertTriangle } from 'lu
 import { api } from '../lib/api';
 import { Modal } from './ui.jsx';
 
-/** Ask the browser for a position. Never rejects — resolves null if declined. */
+/** Ask the browser for a position. Never rejects - resolves null if declined. */
 function getPosition(timeout = 8000) {
   return new Promise((resolve) => {
     if (!navigator.geolocation) return resolve(null);
@@ -89,7 +89,7 @@ export default function ClockWidget({ jobId = null, jobTitle = '', invoicePaid =
           </p>
         ) : (
           <p className="text-xs text-slate-400 text-center mt-2 flex items-center justify-center gap-1">
-            <MapPin size={11} /> Location is recorded if the phone allows it — missing GPS is flagged, not blocked.
+            <MapPin size={11} /> Location is recorded if the phone allows it - missing GPS is flagged, not blocked.
           </p>
         )}
         <div className="text-center text-xs text-slate-400 mt-3 pt-3 border-t border-slate-100">
@@ -123,7 +123,7 @@ export default function ClockWidget({ jobId = null, jobTitle = '', invoicePaid =
         {error && <div className="bg-red-50 text-red-700 text-sm rounded-lg px-3 py-2 mb-3">{error}</div>}
         <div className="text-center mb-3">
           <div className="text-xs font-medium uppercase tracking-wide text-slate-500">
-            {state.on_break ? 'On break — still on the clock' : 'Clocked in'}
+            {state.on_break ? 'On break - still on the clock' : 'Clocked in'}
           </div>
           <div className={`text-4xl font-bold tabular-nums mt-1 ${state.on_break ? 'text-amber-700' : 'text-emerald-700'}`} data-tick={tick}>
             {running}
@@ -141,7 +141,7 @@ export default function ClockWidget({ jobId = null, jobTitle = '', invoicePaid =
         )}
         {shift.location_flag === 'no_location' && (
           <div className="text-xs bg-amber-100 text-amber-800 rounded-lg px-2.5 py-1.5 mb-3 flex items-center gap-1.5">
-            <MapPin size={12} /> Location was not captured — shift still saved
+            <MapPin size={12} /> Location was not captured - shift still saved
           </div>
         )}
 
@@ -187,7 +187,7 @@ function ClockOutModal({ open, onClose, requirePhoto, onDone }) {
   const pickPhoto = (e) => {
     const file = e.target.files?.[0];
     if (!file) return;
-    // Downscale on the device — a raw phone photo is far too big to post.
+    // Downscale on the device - a raw phone photo is far too big to post.
     const img = new Image();
     const reader = new FileReader();
     reader.onload = () => {

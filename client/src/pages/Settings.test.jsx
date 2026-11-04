@@ -28,7 +28,7 @@ vi.mock('../lib/api', () => ({
   },
   fmtTimeAgo: () => '',
   fmtDateTime: (d) => d || '',
-  fmtDate: (d) => (d ? String(d).slice(0, 10) : '—'),
+  fmtDate: (d) => (d ? String(d).slice(0, 10) : '-'),
   money: (n) => `£${Number(n || 0).toFixed(2)}`,
 }));
 
@@ -73,9 +73,9 @@ describe('Settings staff roles (requirement 1.4)', () => {
     await user.click(trigger);
     const values = screen.getAllByRole('option').map((o) => o.getAttribute('data-value'));
     expect(values).toEqual(['STAFF', 'OFFICE', 'ADMIN']);
-    expect(screen.getByRole('option', { name: /field staff — jobs only/i })).toBeInTheDocument();
-    expect(screen.getByRole('option', { name: /office — crm, quotes, scheduling/i })).toBeInTheDocument();
-    expect(screen.getByRole('option', { name: /owner\/admin — full access/i })).toBeInTheDocument();
+    expect(screen.getByRole('option', { name: /field staff - jobs only/i })).toBeInTheDocument();
+    expect(screen.getByRole('option', { name: /office - crm, quotes, scheduling/i })).toBeInTheDocument();
+    expect(screen.getByRole('option', { name: /owner\/admin - full access/i })).toBeInTheDocument();
     expect(screen.queryByRole('option', { name: /^director$/i })).toBeNull();
     expect(screen.queryByRole('option', { name: /^operative$/i })).toBeNull();
   });
@@ -86,7 +86,7 @@ describe('Settings staff roles (requirement 1.4)', () => {
     await user.click(screen.getByRole('button', { name: /staff & users/i }));
     await user.click(await screen.findByRole('button', { name: /add user/i }));
     expect(screen.queryByText(/restrict job costing/i)).toBeNull();
-    await pickSelectOption(user, /^role$/i, /office — crm, quotes, scheduling/i);
+    await pickSelectOption(user, /^role$/i, /office - crm, quotes, scheduling/i);
     expect(screen.getByRole('checkbox', { name: /restrict job costing and labour-cost figures/i })).toBeInTheDocument();
   });
 });
@@ -292,7 +292,7 @@ describe('Settings staff skills, driver, and pay rates (requirement 1.8)', () =>
     expect(screen.getByLabelText(/cis status/i)).toBeInTheDocument();
     expect(screen.getByRole('checkbox', { name: /can drive/i })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /^roofing$/i })).toBeInTheDocument();
-    await pickSelectOption(user, /^role$/i, /owner\/admin — full access/i);
+    await pickSelectOption(user, /^role$/i, /owner\/admin - full access/i);
     expect(screen.queryByRole('checkbox', { name: /can drive/i })).toBeNull();
     expect(screen.queryByRole('button', { name: /^roofing$/i })).toBeNull();
     expect(screen.getByLabelText(/hourly cost/i)).toBeInTheDocument();
@@ -477,7 +477,7 @@ describe('Settings Google Calendar (requirement 5.2)', () => {
             configured: true,
             connected: false,
             mode: 'simulated',
-            detail: 'Keys present — connect your Google Calendar here.',
+            detail: 'Keys present - connect your Google Calendar here.',
             env_needed: ['GOOGLE_CLIENT_ID'],
           }],
           events: [],
@@ -537,7 +537,7 @@ describe('Settings Google Calendar (requirement 5.2)', () => {
             configured: true,
             connected: false,
             mode: 'simulated',
-            detail: 'Keys present — connect QuickBooks.',
+            detail: 'Keys present - connect QuickBooks.',
           }],
           events: [],
         };
@@ -621,7 +621,7 @@ describe('Settings Mailgun email', () => {
             configured: false,
             connected: false,
             mode: 'simulated',
-            detail: 'Simulated — emails are recorded in the CRM but not delivered. Add MAILGUN_API_KEY and MAILGUN_DOMAIN in .env to go live.',
+            detail: 'Simulated - emails are recorded in the CRM but not delivered. Add MAILGUN_API_KEY and MAILGUN_DOMAIN in .env to go live.',
             env_needed: ['MAILGUN_API_KEY', 'MAILGUN_DOMAIN', 'MAILGUN_FROM', 'MAILGUN_REGION', 'EMAIL_INBOUND_SECRET'],
             webhook_url: 'http://localhost:4000/api/webhooks/email?secret=change-me',
           }],
@@ -750,7 +750,7 @@ describe('Settings quote follow-ups (requirement 12.1)', () => {
       enabled: true,
       email_subject: 'How did you get on with our quotation {ref}?',
       steps: [
-        { delay_days: 2, channel: 'whatsapp', body: 'Hi {name} — {ref}' },
+        { delay_days: 2, channel: 'whatsapp', body: 'Hi {name} - {ref}' },
         { delay_days: 5, channel: 'email', body: 'Checking {title}' },
       ],
     },
@@ -776,7 +776,7 @@ describe('Settings quote follow-ups (requirement 12.1)', () => {
     await user.click(screen.getByRole('button', { name: /company/i }));
     expect(await screen.findByRole('heading', { name: /quote follow-ups/i })).toBeInTheDocument();
     const bodies = screen.getAllByLabelText('Message template');
-    expect(bodies[0]).toHaveValue('Hi {name} — {ref}');
+    expect(bodies[0]).toHaveValue('Hi {name} - {ref}');
     await user.click(screen.getByRole('button', { name: /add step/i }));
     const afterAdd = screen.getAllByLabelText('Message template');
     await user.type(afterAdd[2], 'Last nudge on this quote');
@@ -785,7 +785,7 @@ describe('Settings quote follow-ups (requirement 12.1)', () => {
       followups: expect.objectContaining({
         enabled: true,
         steps: expect.arrayContaining([
-          expect.objectContaining({ delay_days: 2, channel: 'whatsapp', body: 'Hi {name} — {ref}' }),
+          expect.objectContaining({ delay_days: 2, channel: 'whatsapp', body: 'Hi {name} - {ref}' }),
           expect.objectContaining({ delay_days: 7, channel: 'email', body: 'Last nudge on this quote' }),
         ]),
       }),
@@ -889,7 +889,7 @@ describe('Settings company profile, tax, and bank (requirement 17.1)', () => {
     expect(screen.getByRole('checkbox', { name: /vat registered/i })).toBeChecked();
     await user.click(screen.getByRole('checkbox', { name: /cis registered/i }));
     await user.type(screen.getByLabelText(/cis utr/i), '1234567890');
-    await pickSelectOption(user, /default cis rate/i, /0% — gross payment status/i);
+    await pickSelectOption(user, /default cis rate/i, /0% - gross payment status/i);
     await user.type(screen.getByLabelText(/^bank name$/i), 'Barclays');
     await user.type(screen.getByLabelText(/^account name$/i), 'Paul Douglas Roofing');
     await user.type(screen.getByLabelText(/^sort code$/i), '20-00-00');

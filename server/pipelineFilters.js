@@ -14,7 +14,7 @@ const { parseCreatedRange, customerTextSearchOr } = require('./customerSearch');
 const LATEST_QUOTE_SQL = `(SELECT q.total FROM quotes q WHERE q.customer_id = "Customer".id AND q.status IN ('sent','draft') ORDER BY q.id DESC LIMIT 1)`;
 const PIPELINE_VALUE_SQL = `COALESCE(${LATEST_QUOTE_SQL}, 0)`;
 
-/** Latest open quote on this enquiry — board cards and column totals. */
+/** Latest open quote on this enquiry - board cards and column totals. */
 const LEAD_LATEST_QUOTE_SQL = `(SELECT q.total FROM quotes q WHERE q.lead_id = "Lead".id AND q.status IN ('sent','draft') ORDER BY q.id DESC LIMIT 1)`;
 const LEAD_PIPELINE_VALUE_SQL = `COALESCE(${LEAD_LATEST_QUOTE_SQL}, 0)`;
 const OPEN_TASKS_SQL = `(SELECT COUNT(*) FROM tasks t WHERE t.entity_type='customer' AND t.entity_id="Lead".customer_id AND t.status='open')`;

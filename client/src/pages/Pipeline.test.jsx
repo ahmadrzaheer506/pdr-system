@@ -113,6 +113,7 @@ describe('Pipeline board (requirement 4.1)', () => {
     expect(screen.getByText('14 Elm Grove, Reading')).toBeInTheDocument();
     expect(screen.getByText('whatsapp')).toBeInTheDocument();
     expect(screen.getByText('£2400.00')).toBeInTheDocument();
+    expect(screen.getByText('L-0010 - Priya Nair').closest('a')).toHaveTextContent('£0.00');
     expect(screen.getByText('2 tasks')).toBeInTheDocument();
     expect(screen.getAllByText('Updated 2d ago').length).toBeGreaterThanOrEqual(1);
     expect(screen.getByText('L-0004 - Helen Ackroyd')).toBeInTheDocument();

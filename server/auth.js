@@ -1,7 +1,7 @@
 // ============================================================
 // Auth: JWT in httpOnly cookie (Bearer header also accepted).
 // Role model per PRD §16. Field staff (STAFF) are structurally
-// locked to /api/auth/* and /api/staff/* — financial data never
+// locked to /api/auth/* and /api/staff/* - financial data never
 // reaches them because no other route will serve their token.
 // ============================================================
 const jwt = require('jsonwebtoken');
@@ -50,7 +50,7 @@ function csrfCookieOptions() {
 }
 
 /**
- * Password rule for requirement 1.2 — applied on login and on every set/change.
+ * Password rule for requirement 1.2 - applied on login and on every set/change.
  * @param {unknown} password
  * @returns {string|null} error message, or null if the password is acceptable
  */
@@ -162,14 +162,14 @@ async function requireAuth(req, res, next) {
     if (!user || !user.active) return res.status(401).json({ error: 'Account disabled' });
     const tokenVer = payload.ver ?? 0;
     if (tokenVer !== (Number(user.token_version) || 0)) {
-      return res.status(401).json({ error: 'Session expired — sign in again' });
+      return res.status(401).json({ error: 'Session expired - sign in again' });
     }
     const json = plain(user);
     delete json.token_version;
     req.user = json;
     next();
   } catch {
-    return res.status(401).json({ error: 'Session expired — sign in again' });
+    return res.status(401).json({ error: 'Session expired - sign in again' });
   }
 }
 

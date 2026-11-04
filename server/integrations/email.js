@@ -128,8 +128,8 @@ function status() {
     env_needed: ['MAILGUN_API_KEY', 'MAILGUN_DOMAIN', 'MAILGUN_FROM', 'MAILGUN_REGION', 'EMAIL_INBOUND_SECRET'],
     webhook_url: `${process.env.APP_URL || 'http://localhost:4000'}/api/webhooks/email?secret=${process.env.EMAIL_INBOUND_SECRET || 'change-me'}`,
     detail: isConfigured()
-      ? `Live — sending via Mailgun (${domain()})`
-      : 'Simulated — emails are recorded in the CRM but not delivered. Add MAILGUN_API_KEY and MAILGUN_DOMAIN in .env to go live.',
+      ? `Live - sending via Mailgun (${domain()})`
+      : 'Simulated - emails are recorded in the CRM but not delivered. Add MAILGUN_API_KEY and MAILGUN_DOMAIN in .env to go live.',
   };
 }
 

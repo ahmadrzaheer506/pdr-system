@@ -24,7 +24,7 @@ function parseLostReason(body = {}) {
   const note = code === 'other' ? String(body.lost_reason_note || '').trim() : '';
   return {
     code,
-    lost_reason: note ? `${item.label} — ${note}` : item.label,
+    lost_reason: note ? `${item.label} - ${note}` : item.label,
   };
 }
 

@@ -1,5 +1,5 @@
 // ============================================================
-// UK construction tax engine — VAT, CIS, retention, staged payments.
+// UK construction tax engine - VAT, CIS, retention, staged payments.
 //
 // Shared by quotes and invoices (requirement 6.3).
 //
@@ -12,7 +12,7 @@
 //  · Staged payment schedules
 //
 // All money is rounded to whole pence at each documented boundary so the
-// printed document always adds up — no floating-point drift on the page.
+// printed document always adds up - no floating-point drift on the page.
 // ============================================================
 
 /** Round to 2dp, avoiding binary float artefacts (0.1+0.2 style). */
@@ -127,7 +127,7 @@ function vatShort(code, custom) {
   const rates = mergeVatRates(custom);
   const row = rates.find((r) => r.code === code);
   if (row) return row.short || `${row.rate}%`;
-  return `${code || '—'}`;
+  return `${code || '-'}`;
 }
 
 const COMMERCIAL_RETENTION_PERCENT = 5;
@@ -224,15 +224,15 @@ function normaliseItem(item, labourSplit = 0.6, rates = VAT_RATES) {
  * @param {Array}  items
  * @param {Object} opts
  *   vat_treatment: 'standard' | 'reverse_charge' | 'not_registered'
- *   cis_applies:   boolean   — deduct CIS (only when invoicing a contractor)
+ *   cis_applies:   boolean   - deduct CIS (only when invoicing a contractor)
  *   cis_rate:      0 | 20 | 30
  *   retention_percent: number
  *   labour_split:  0..1 for 'both' lines
  *   payment_schedule: [{label, percent?, amount?, trigger}]
  *   vat_rates: Settings list or rate map
- *   provisional_sums: [{description, amount}] — face-value, listed after works total
- *   provisional_sums_in_total: boolean — when true, grand_total = works total + P.S.
- *   optional_extras: [{description, amount}] — listed after works total, never included (6.5)
+ *   provisional_sums: [{description, amount}] - face-value, listed after works total
+ *   provisional_sums_in_total: boolean - when true, grand_total = works total + P.S.
+ *   optional_extras: [{description, amount}] - listed after works total, never included (6.5)
  * @returns full breakdown, safe to store and to print.
  */
 function calculate(items = [], opts = {}) {
@@ -274,7 +274,7 @@ function calculate(items = [], opts = {}) {
   const vatTotal = p(vatBreakdown.reduce((s, g) => s + g.vat, 0));
 
   // Under the Domestic Reverse Charge the customer accounts for the VAT.
-  // We must still SHOW what that VAT would be — HMRC requires the invoice to
+  // We must still SHOW what that VAT would be - HMRC requires the invoice to
   // state the amount of VAT due under the reverse charge, or the rate.
   const reverseChargeVat =
     vat_treatment === 'reverse_charge'
@@ -317,7 +317,7 @@ function calculate(items = [], opts = {}) {
     schedule.push({ ...stage, amount, order: idx + 1 });
   });
   // Push any rounding remainder into the final stage so stages always sum
-  // exactly to the total — otherwise the document is a penny out.
+  // exactly to the total - otherwise the document is a penny out.
   if (schedule.length && p(scheduled) !== grossTotal) {
     const diff = p(grossTotal - scheduled);
     schedule[schedule.length - 1].amount = p(schedule[schedule.length - 1].amount + diff);
@@ -394,8 +394,8 @@ function cisNotice(rate, labourTotal, deduction) {
 
 /**
  * Consumer Contracts (Information, Cancellation and Additional Charges)
- * Regulations 2013. For an off-premises contract — which a quote given at
- * the customer's home is — the consumer has 14 days to cancel, and the
+ * Regulations 2013. For an off-premises contract - which a quote given at
+ * the customer's home is - the consumer has 14 days to cancel, and the
  * trader MUST give this notice in writing. Failure to do so extends the
  * cancellation period by up to 12 months and is a criminal offence.
  */
@@ -404,7 +404,7 @@ function cancellationNotice(companyName, address, email, phone) {
     heading: 'Your right to cancel',
     body: [
       `You have the right to cancel this contract within 14 days without giving any reason. The cancellation period expires 14 days from the day the contract was entered into.`,
-      `To exercise the right to cancel you must inform us — ${companyName}, ${address}${email ? `, ${email}` : ''}${phone ? `, ${phone}` : ''} — of your decision by a clear statement (for example a letter sent by post, or an email). You may use the cancellation form below, but it is not obligatory.`,
+      `To exercise the right to cancel you must inform us - ${companyName}, ${address}${email ? `, ${email}` : ''}${phone ? `, ${phone}` : ''} - of your decision by a clear statement (for example a letter sent by post, or an email). You may use the cancellation form below, but it is not obligatory.`,
       `To meet the cancellation deadline, it is sufficient for you to send your communication concerning your exercise of the right to cancel before the cancellation period has expired.`,
       `If you cancel this contract, we will reimburse all payments received from you without undue delay and no later than 14 days after the day on which we are informed of your decision.`,
       `If you asked us to begin work during the cancellation period, you must pay us an amount in proportion to what has been performed up until you communicated your cancellation.`,
@@ -413,7 +413,7 @@ function cancellationNotice(companyName, address, email, phone) {
 }
 
 /**
- * Late Payment of Commercial Debts (Interest) Act 1998 — applies to
+ * Late Payment of Commercial Debts (Interest) Act 1998 - applies to
  * business-to-business contracts only, never to consumers.
  */
 function latePaymentNotice(ratePlusBase = 8) {

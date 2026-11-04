@@ -148,7 +148,7 @@ export default function InvoiceTaxDetail({ invoice, onClose, onSaved, onError, o
 
         {editable ? (
           <form onSubmit={save} className="space-y-3 border-t border-slate-100 pt-3">
-            <p className="text-xs text-slate-500">Draft only — VAT and CIS freeze after the invoice is sent.</p>
+            <p className="text-xs text-slate-500">Draft only - VAT and CIS freeze after the invoice is sent.</p>
             <div>
               <label className="label" htmlFor="invoice-vat-treatment">VAT treatment</label>
               <SelectMenu

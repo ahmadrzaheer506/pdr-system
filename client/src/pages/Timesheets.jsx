@@ -9,6 +9,7 @@ import { canSeeLabourCosts, ROLES } from '../lib/roles';
 import DatePicker from '../components/DatePicker.jsx';
 import SelectMenu from '../components/SelectMenu.jsx';
 import ScrollTabBar from '../components/ScrollTabBar.jsx';
+import ClockOutHandover, { clockOutPhotoSrc } from '../components/ClockOutHandover.jsx';
 
 function pad2(n) {
   return String(n).padStart(2, '0');
@@ -118,7 +119,7 @@ function timesheetCsvHref(from, to, { userId, statusView } = {}) {
 }
 
 function hrs(mins) {
-  if (mins === null || mins === undefined) return '—';
+  if (mins === null || mins === undefined) return '-';
   const h = Math.floor(mins / 60);
   const m = Math.round(mins % 60);
   return `${h}h ${String(m).padStart(2, '0')}m`;
@@ -287,7 +288,7 @@ function LiveTab({ show }) {
         <p className="text-xs text-slate-500 mb-3">On today&apos;s crew, with no open shift.</p>
         {missing.length === 0 ? (
           <div className="card px-4 py-3 text-sm text-slate-500">
-            Everyone expected today is on the clock — or nobody is assigned to a crew today.
+            Everyone expected today is on the clock - or nobody is assigned to a crew today.
           </div>
         ) : (
           <div className="card divide-y divide-slate-100">
@@ -426,7 +427,7 @@ function TimesheetStatusFlags({ row }) {
       tone: 'warn',
       icon: MapPin,
       label: 'Off site',
-      detail: `Clocked in ${metres}. Warn only — the shift is still valid.`,
+      detail: `Clocked in ${metres}. Warn only - the shift is still valid.`,
     });
   } else if (row.location_flag === 'no_location') {
     flags.push({
@@ -434,7 +435,7 @@ function TimesheetStatusFlags({ row }) {
       tone: 'muted',
       icon: MapPin,
       label: 'No location',
-      detail: 'GPS was not captured. Location is optional — the shift is still valid.',
+      detail: 'GPS was not captured. Location is optional - the shift is still valid.',
     });
   } else if (row.location_flag === 'over_max_hours') {
     flags.push({
@@ -516,6 +517,7 @@ function ReviewTab({ from, to, setFrom, setTo, show, showCosts }) {
   const [selected, setSelected] = useState([]);
   const [editRow, setEditRow] = useState(null);
   const [rejectRow, setRejectRow] = useState(null);
+  const [handoverRow, setHandoverRow] = useState(null);
 
   const load = () => api.get(`/timesheets?${timesheetListQuery(from, to, staffId)}`)
     .then((d) => { setData(d); setSelected([]); })
@@ -643,13 +645,21 @@ function ReviewTab({ from, to, setFrom, setTo, show, showCosts }) {
                     <td className="px-3 py-3">
                       <div className="flex items-center gap-1.5"><Avatar name={t.user_name} color={t.color} size={5.5} /> <span className="font-medium">{t.user_name}</span></div>
                     </td>
-                    <td className="px-3 py-3 text-slate-500 max-w-[180px] truncate">{t.job_title || '—'}</td>
+                    <td className="px-3 py-3 text-slate-500 max-w-[220px]">
+                      <div className="truncate">{t.job_title || '-'}</div>
+                      <ClockOutHandover
+                        notes={t.notes}
+                        photoFile={t.photo_file}
+                        compact
+                        onOpen={() => setHandoverRow(t)}
+                      />
+                    </td>
                     <td className="px-3 py-3 whitespace-nowrap text-slate-500">
                       {formatClockTime(t.clock_in)} – {t.clock_out ? formatClockTime(t.clock_out) : <span className="text-emerald-600 font-medium">running</span>}
                       {Number(t.break_minutes) > 0 && <span className="text-xs text-slate-400"> ({Math.round(t.break_minutes)}m br)</span>}
                     </td>
                     <td className="px-3 py-3 text-right font-medium whitespace-nowrap">{hrs(t.worked_minutes)}</td>
-                    {showCosts && <td className="px-3 py-3 text-right text-slate-600 whitespace-nowrap">{t.labour_cost ? money(t.labour_cost) : '—'}</td>}
+                    {showCosts && <td className="px-3 py-3 text-right text-slate-600 whitespace-nowrap">{t.labour_cost ? money(t.labour_cost) : '-'}</td>}
                     <td className="px-3 py-3">
                       <div className="flex flex-nowrap items-center gap-1.5">
                         <StatusBadge status={t.status} />
@@ -674,6 +684,7 @@ function ReviewTab({ from, to, setFrom, setTo, show, showCosts }) {
 
       <EditModal row={editRow} onClose={() => setEditRow(null)} onSaved={() => { setEditRow(null); load(); show('Timesheet updated'); }} onError={(e) => show(e, 'error')} />
       <RejectModal row={rejectRow} onClose={() => setRejectRow(null)} onSaved={() => { setRejectRow(null); load(); show('Timesheet rejected'); }} onError={(e) => show(e, 'error')} />
+      <ClockOutHandoverModal row={handoverRow} onClose={() => setHandoverRow(null)} />
     </div>
   );
 }
@@ -766,10 +777,10 @@ function EditModal({ row, onClose, onSaved, onError }) {
   };
 
   return (
-    <Modal open={!!row} onClose={onClose} title={`Edit — ${row.user_name}, ${fmtDate(row.work_date)}`}>
+    <Modal open={!!row} onClose={onClose} title={`Edit - ${row.user_name}, ${fmtDate(row.work_date)}`}>
       <form onSubmit={save} className="space-y-3">
-        {row.photo_file && (
-          <img src={`/api/files/${row.photo_file}`} alt="Site" className="w-full rounded-lg" />
+        {clockOutPhotoSrc(row.photo_file) && (
+          <img src={clockOutPhotoSrc(row.photo_file)} alt="Clock-out site photo" className="w-full rounded-lg" />
         )}
         <ClockStampFields
           idPrefix="edit-clock-in"
@@ -790,7 +801,7 @@ function EditModal({ row, onClose, onSaved, onError }) {
         <div>
           <label className="label">Break (minutes)</label>
           <input className="input" type="number" min="0" value={form.break_minutes ?? 0} onChange={(e) => setForm({ ...form, break_minutes: e.target.value })} />
-          <p className="text-xs text-slate-400 mt-1">Paid log only — does not reduce hours.</p>
+          <p className="text-xs text-slate-400 mt-1">Paid log only - does not reduce hours.</p>
         </div>
         <div><label className="label">Notes</label><textarea className="input" rows={2} value={form.notes || ''} onChange={(e) => setForm({ ...form, notes: e.target.value })} /></div>
         <div>
@@ -800,6 +811,27 @@ function EditModal({ row, onClose, onSaved, onError }) {
         </div>
         <button className="btn-primary w-full">Save changes</button>
       </form>
+    </Modal>
+  );
+}
+
+function ClockOutHandoverModal({ row, onClose }) {
+  if (!row) return null;
+  const text = String(row.notes || '').trim();
+  const src = clockOutPhotoSrc(row.photo_file);
+  return (
+    <Modal open={!!row} onClose={onClose} title="Clock-out notes">
+      <div className="space-y-3">
+        {row.job_title ? <p className="text-xs text-slate-500">{row.job_title}</p> : null}
+        {src ? (
+          <img src={src} alt="Clock-out site photo" className="w-full max-h-80 rounded-lg object-contain bg-slate-100" />
+        ) : null}
+        {text ? (
+          <p className="text-sm text-slate-800 whitespace-pre-wrap">{text}</p>
+        ) : (
+          !src ? <p className="text-sm text-slate-500">No clock-out notes or photo.</p> : null
+        )}
+      </div>
     </Modal>
   );
 }
@@ -816,7 +848,7 @@ function RejectModal({ row, onClose, onSaved, onError }) {
   };
 
   return (
-    <Modal open={!!row} onClose={onClose} title={`Reject — ${row.user_name}, ${fmtDate(row.work_date)}`}>
+    <Modal open={!!row} onClose={onClose} title={`Reject - ${row.user_name}, ${fmtDate(row.work_date)}`}>
       <form onSubmit={save} className="space-y-3">
         <p className="text-sm text-slate-500">This shift leaves the approve queue. Filter Review to Rejected to find it again.</p>
         <div>
@@ -911,7 +943,7 @@ function TotalsTab({ from, to, setFrom, setTo, showCosts }) {
                     <td className="px-4 py-3"><div className="flex items-center gap-2"><Avatar name={t.name} color={t.color} size={6} /> {t.name}</div></td>
                     <td className="px-4 py-3 text-right text-slate-500">{t.shifts}</td>
                     <td className="px-4 py-3 text-right font-semibold">{Number(t.hours || 0).toFixed(2)}h</td>
-                    <td className="px-4 py-3 text-right text-slate-400">{t.hourly_cost ? `${money(t.hourly_cost)}/h` : '—'}</td>
+                    <td className="px-4 py-3 text-right text-slate-400">{t.hourly_cost ? `${money(t.hourly_cost)}/h` : '-'}</td>
                     {showCosts && <td className="px-4 py-3 text-right font-medium">{money(t.cost)}</td>}
                     <td className="px-4 py-3 text-right">
                       {t.awaiting_approval > 0 && <span className="badge bg-amber-100 text-amber-700 mr-1">{t.awaiting_approval} pending</span>}
@@ -957,7 +989,7 @@ function CostingTab({ from, to, setFrom, setTo }) {
       </div>
       <p className="text-sm text-slate-500">
         Quoted value (excluding VAT) against the labour actually clocked.
-        <strong className="text-slate-700"> This is before materials</strong> — it shows what's left to cover materials, overheads and profit,
+        <strong className="text-slate-700"> This is before materials</strong> - it shows what's left to cover materials, overheads and profit,
         so a healthy figure here is normal. A negative or very low number means the labour alone has eaten the job.
       </p>
       {withHours.length === 0 ? (
@@ -989,7 +1021,7 @@ function CostingTab({ from, to, setFrom, setTo }) {
                   <td className="px-4 py-3 text-right">
                     <span className={`inline-flex items-center gap-1 font-semibold ${j.margin_percent < 20 ? 'text-red-600' : j.margin_percent < 40 ? 'text-amber-600' : 'text-emerald-600'}`}>
                       {j.margin_percent < 20 ? <TrendingDown size={13} /> : <TrendingUp size={13} />}
-                      {j.margin_percent === null ? '—' : `${j.margin_percent}%`}
+                      {j.margin_percent === null ? '-' : `${j.margin_percent}%`}
                     </span>
                   </td>
                 </tr>

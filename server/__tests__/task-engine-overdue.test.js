@@ -52,7 +52,7 @@ describe('scanOverdueInvoices (requirement 11.4)', () => {
     expect(logActivity).toHaveBeenCalledWith(5, null, 'invoice_overdue', 'Invoice INV-2026-0010 is overdue');
     expect(Task.create).toHaveBeenCalledWith(expect.objectContaining({
       rule_key: 'chase_payment:invoice:12',
-      title: 'Payment overdue — INV-2026-0010 (Fiona Whitmore)',
+      title: 'Payment overdue - INV-2026-0010 (Fiona Whitmore)',
       entity_type: 'invoice',
       entity_id: 12,
     }));

@@ -12,6 +12,9 @@ jest.mock('../customerFiles', () => {
   };
 });
 jest.mock('../services/messenger', () => ({ ingestInbound: jest.fn() }));
+jest.mock('../customerNotes', () => ({
+  copyRemark: jest.fn(async () => ({ ok: true })),
+}));
 jest.mock('../integrations/meta', () => {
   const actual = jest.requireActual('../integrations/meta');
   return {
@@ -25,6 +28,7 @@ const crypto = require('crypto');
 const request = require('supertest');
 const express = require('express');
 const { ingestInbound } = require('../services/messenger');
+const notes = require('../customerNotes');
 const meta = require('../integrations/meta');
 const webhooks = require('../routes/webhooks');
 
@@ -236,6 +240,12 @@ describe('website enquiry webhook', () => {
       leadId: 2,
       photos: 0,
     });
+    expect(notes.copyRemark).toHaveBeenCalledWith(
+      1,
+      null,
+      'Need tiles replacing',
+      { source: 'customer', leadId: 2 },
+    );
     expect(ingestInbound).toHaveBeenCalledWith(expect.objectContaining({
       source: 'website',
       name: 'Sahil test',
@@ -268,6 +278,7 @@ describe('website enquiry webhook', () => {
       1,
       null,
       expect.objectContaining({ originalname: 'roof.jpg', mimetype: 'image/jpeg' }),
+      { source: 'customer', leadId: 2 },
     );
     expect(Lead.update).toHaveBeenCalledWith(
       expect.objectContaining({

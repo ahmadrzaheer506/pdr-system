@@ -35,7 +35,7 @@ const SOURCE_BADGE = {
 };
 
 function siteLine(c) {
-  return [c.address, c.postcode].filter(Boolean).join(', ') || '—';
+  return [c.address, c.postcode].filter(Boolean).join(', ') || '-';
 }
 
 export default function Customers() {
@@ -89,7 +89,7 @@ export default function Customers() {
             <Plus size={16} /> New customer
           </button>
         </div>
-        <p className="mt-0.5 text-sm text-slate-500">Every customer record — domestic and commercial — in one list.</p>
+        <p className="mt-0.5 text-sm text-slate-500">Every customer record - domestic and commercial - in one list.</p>
       </div>
 
       <ListFilterBar
@@ -146,18 +146,18 @@ export default function Customers() {
                         {c.customer_type === 'commercial' ? 'Commercial' : 'Domestic'}
                       </span>
                     </td>
-                    <td className="px-4 py-3 align-middle text-slate-600 whitespace-nowrap">{c.phone || '—'}</td>
-                    <td className="px-4 py-3 align-middle text-slate-600 truncate" title={c.email || ''}>{c.email || '—'}</td>
+                    <td className="px-4 py-3 align-middle text-slate-600 whitespace-nowrap">{c.phone || '-'}</td>
+                    <td className="px-4 py-3 align-middle text-slate-600 truncate" title={c.email || ''}>{c.email || '-'}</td>
                     <td className="px-4 py-3 align-middle text-slate-500 truncate" title={siteLine(c)}>{siteLine(c)}</td>
                     <td className="px-4 py-3 align-middle whitespace-nowrap">
                       {c.source ? (
                         <span className={`badge ${SOURCE_BADGE[c.source] || 'bg-slate-100 text-slate-600'}`}>
                           {leadSourceLabel(c.source)}
                         </span>
-                      ) : '—'}
+                      ) : '-'}
                     </td>
                     <td className="px-4 py-3 align-middle text-right font-medium text-slate-800 whitespace-nowrap tabular-nums">
-                      {Number(c.quoted_value) > 0 ? money(c.quoted_value) : '—'}
+                      {Number(c.quoted_value) > 0 ? money(c.quoted_value) : '-'}
                     </td>
                     <td className="px-4 py-3 align-middle text-slate-400 whitespace-nowrap">{fmtTimeAgo(c.updated_at)}</td>
                     <td className="px-4 py-3 align-middle text-right">

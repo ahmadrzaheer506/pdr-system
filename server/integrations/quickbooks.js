@@ -1,7 +1,7 @@
 'use strict';
 
 /**
- * QuickBooks Online (UK) — company OAuth, quote→Estimate, invoice push
+ * QuickBooks Online (UK) - company OAuth, quote→Estimate, invoice push
  * with PDF attachment, payment push, and payment poll back into the CRM.
  * Live once QBO_CLIENT_ID/SECRET are set AND an owner connects in Settings.
  * Until then, send/pay still work in simulated mode.
@@ -40,7 +40,7 @@ function liveInvoiceId(id) {
   return text.startsWith('SIM-') ? null : text;
 }
 
-/** QBO TxnDate / DueDate must be YYYY-MM-DD — ISO datetimes are rejected. */
+/** QBO TxnDate / DueDate must be YYYY-MM-DD - ISO datetimes are rejected. */
 function toQboDate(value) {
   if (value == null || value === '') return undefined;
   if (typeof value === 'string') {
@@ -178,7 +178,7 @@ async function accessToken() {
 async function qboFetch(path, options = {}, retried = false) {
   const t = await getTokens();
   const realmId = t?.meta?.realmId;
-  if (!realmId) throw new Error('QuickBooks company (realm) is missing — reconnect in Settings');
+  if (!realmId) throw new Error('QuickBooks company (realm) is missing - reconnect in Settings');
   const token = await accessToken();
   const res = await fetch(`${apiBase()}/v3/company/${realmId}${withMinor(path)}`, {
     ...options,
@@ -208,7 +208,7 @@ async function qboQuery(sql) {
 async function qboUpload(form, retried = false) {
   const t = await getTokens();
   const realmId = t?.meta?.realmId;
-  if (!realmId) throw new Error('QuickBooks company (realm) is missing — reconnect in Settings');
+  if (!realmId) throw new Error('QuickBooks company (realm) is missing - reconnect in Settings');
   const token = await accessToken();
   const res = await fetch(`${apiBase()}/v3/company/${realmId}${withMinor('/upload')}`, {
     method: 'POST',
@@ -725,7 +725,7 @@ function estimateBody(quote, qboCustomerId, itemId, taxCode, extra = {}) {
     DocNumber: String(quote.ref || '').slice(0, 21),
     TxnDate: toQboDate(txnDate),
     ExpirationDate: toQboDate(quote.valid_until),
-    PrivateNote: quote.notes || `PDR quote ${quote.ref}${quote.title ? ` — ${quote.title}` : ''}`,
+    PrivateNote: quote.notes || `PDR quote ${quote.ref}${quote.title ? ` - ${quote.title}` : ''}`,
     GlobalTaxCalculation: Number(quote.vat_amount) > 0 ? 'TaxExcluded' : 'NotApplicable',
     Line: salesLines(quote, itemId, taxCode, quote.title || quote.ref || 'Quote'),
   };
@@ -941,10 +941,10 @@ async function status() {
     env_needed: ['QBO_CLIENT_ID', 'QBO_CLIENT_SECRET', 'QBO_REDIRECT_URI', 'QBO_ENVIRONMENT'],
     connect_url: '/api/integrations/quickbooks/connect',
     detail: !isConfigured()
-      ? 'Simulated — invoices stay in the CRM. Add Intuit app keys, then the owner clicks Connect.'
+      ? 'Simulated - invoices stay in the CRM. Add Intuit app keys, then the owner clicks Connect.'
       : connected
-        ? `Live (${env}) — sent quotes become Estimates, sent invoices (with PDF) become Invoices, and payments sync both ways.`
-        : 'Keys present — the owner must click Connect in Settings so quotes and invoices can go to the sandbox company.',
+        ? `Live (${env}) - sent quotes become Estimates, sent invoices (with PDF) become Invoices, and payments sync both ways.`
+        : 'Keys present - the owner must click Connect in Settings so quotes and invoices can go to the sandbox company.',
   };
 }
 

@@ -49,9 +49,9 @@ const TIMESHEET_BOOL_FIELDS = [
 ];
 
 const ROLE_OPTIONS = [
-  { value: ROLES.STAFF, label: 'Field staff — jobs only, no prices/financials' },
-  { value: ROLES.OFFICE, label: 'Office — CRM, quotes, scheduling' },
-  { value: ROLES.ADMIN, label: 'Owner/Admin — full access' },
+  { value: ROLES.STAFF, label: 'Field staff - jobs only, no prices/financials' },
+  { value: ROLES.OFFICE, label: 'Office - CRM, quotes, scheduling' },
+  { value: ROLES.ADMIN, label: 'Owner/Admin - full access' },
 ];
 
 const CHANNEL_OPTIONS = [
@@ -330,7 +330,7 @@ const FALLBACK_FOLLOWUP_STEPS = [
   {
     delay_days: 5,
     channel: 'email',
-    body: "Hi {name}, following up one last time on quotation {ref}. If you'd like us to adjust anything or talk it through, just let us know — otherwise we'll leave it with you.",
+    body: "Hi {name}, following up one last time on quotation {ref}. If you'd like us to adjust anything or talk it through, just let us know - otherwise we'll leave it with you.",
   },
 ];
 
@@ -846,7 +846,7 @@ const CIS_STATUS_OPTIONS = [
 
 function cisShort(status) {
   const found = CIS_STATUS_OPTIONS.find((o) => o.value === status);
-  if (!found || status === 'none') return '—';
+  if (!found || status === 'none') return '-';
   if (status === 'gross') return 'Gross';
   if (status === 'net20') return '20%';
   if (status === 'higher30') return '30%';
@@ -919,7 +919,7 @@ function SkillFields({ form, setSkills, setDriver }) {
     return () => { cancelled = true; };
   }, []);
   const selected = Array.isArray(form.skills) ? form.skills : [];
-  const summary = staffSkillLine(selected, catalogue) || 'None selected — they will not match skilled jobs.';
+  const summary = staffSkillLine(selected, catalogue) || 'None selected - they will not match skilled jobs.';
 
   return (
     <div className="overflow-hidden rounded-2xl border border-slate-200">
@@ -977,9 +977,9 @@ function staffRoleLabel(role) {
 }
 
 function addedParts(iso) {
-  if (!iso) return { date: '—', time: '' };
+  if (!iso) return { date: '-', time: '' };
   const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return { date: '—', time: '' };
+  if (Number.isNaN(d.getTime())) return { date: '-', time: '' };
   return {
     date: d.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }),
     time: d.toLocaleTimeString('en-GB', { hour: 'numeric', minute: '2-digit', hour12: true }).toLowerCase(),
@@ -1204,7 +1204,7 @@ function StaffTab({ canEdit }) {
               )}
               {filtered.map((u) => {
                 const added = addedParts(u.created_at);
-                const skillLine = [staffSkillLine(u.skills, catalogue) || '—', u.is_driver ? 'Driver' : ''].filter(Boolean).join(' · ');
+                const skillLine = [staffSkillLine(u.skills, catalogue) || '-', u.is_driver ? 'Driver' : ''].filter(Boolean).join(' · ');
                 return (
                   <tr key={u.id} className="border-t border-slate-100 last:border-0">
                     <td className="px-5 py-3.5">
@@ -1214,7 +1214,7 @@ function StaffTab({ canEdit }) {
                           <div className={`truncate font-medium ${u.active ? 'text-slate-900' : 'text-slate-400 line-through'}`}>
                             {u.name}
                           </div>
-                          <div className="truncate text-xs text-slate-400">{u.email || '—'}</div>
+                          <div className="truncate text-xs text-slate-400">{u.email || '-'}</div>
                         </div>
                       </div>
                     </td>
@@ -1223,7 +1223,7 @@ function StaffTab({ canEdit }) {
                       <span className="line-clamp-2">{skillLine}</span>
                     </td>
                     <td className="px-4 py-3.5 text-xs text-slate-500 hidden lg:table-cell whitespace-nowrap">
-                      <div>{u.hourly_cost ? `${money(u.hourly_cost)}/h` : '—'}</div>
+                      <div>{u.hourly_cost ? `${money(u.hourly_cost)}/h` : '-'}</div>
                       <div className="text-slate-400">{cisShort(u.cis_status)}</div>
                     </td>
                     <td className="px-4 py-3.5">
@@ -1721,8 +1721,8 @@ function EditUserModal({ user, lockRole, onClose, onSaved, show }) {
 }
 
 function personLabel(person) {
-  if (!person) return '—';
-  return person.name || person.email || '—';
+  if (!person) return '-';
+  return person.name || person.email || '-';
 }
 
 const SECURITY_PAGE_SIZE = 20;
@@ -1743,7 +1743,7 @@ function defaultSecurityRange() {
 }
 
 function fmtLogTime(d) {
-  if (!d) return '—';
+  if (!d) return '-';
   return new Date(d).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' });
 }
 
@@ -1871,7 +1871,7 @@ function SecurityLogTab() {
                   <td className="px-4 py-2.5 text-slate-800">{personLabel(evt.actor)}</td>
                   <td className="px-4 py-2.5 text-slate-800">{SECURITY_ACTION_LABELS[evt.action] || evt.action}</td>
                   <td className="px-4 py-2.5 text-slate-800">{personLabel(evt.target)}</td>
-                  <td className="px-4 py-2.5 text-slate-500">{evt.detail || '—'}</td>
+                  <td className="px-4 py-2.5 text-slate-500">{evt.detail || '-'}</td>
                 </tr>
               ))}
             </tbody>

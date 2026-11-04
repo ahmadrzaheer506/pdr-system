@@ -2,9 +2,11 @@ import { describe, it, expect } from 'vitest';
 import {
   leadWorkspaceScope,
   filterByLeadScope,
+  filesForLead,
   filterTasksForLead,
   enquiryWorkspaceStage,
   recordTime,
+  workspaceScopeForOpen,
 } from './leadWorkspace.js';
 
 const leads = [
@@ -17,6 +19,13 @@ describe('leadWorkspaceScope', () => {
   it('returns null when Open is not tied to a lead', () => {
     expect(leadWorkspaceScope(leads, null)).toBeNull();
     expect(leadWorkspaceScope(leads, '')).toBeNull();
+  });
+
+  it('pins Open without ?lead= to the latest enquiry', () => {
+    expect(workspaceScopeForOpen(leads, null).lead.id).toBe(12);
+    expect(workspaceScopeForOpen(leads, '').lead.id).toBe(12);
+    expect(workspaceScopeForOpen(leads, 11).lead.id).toBe(11);
+    expect(workspaceScopeForOpen(leads, 99)).toBeNull();
   });
 
   it('windows each enquiry between its created_at and the next lead', () => {
@@ -65,6 +74,18 @@ describe('filterByLeadScope', () => {
       { id: 'mine', created_at: '2026-10-02T21:15:00Z', lead_id: 12 },
     ];
     expect(filterByLeadScope(rows, scope).map((r) => r.id)).toEqual(['mine']);
+  });
+});
+
+describe('filesForLead', () => {
+  it('includes landing-page photos tagged on this enquiry even without lead_id', () => {
+    const scope = leadWorkspaceScope(leads, 12);
+    const lead = { id: 12, meta: { photo_file_ids: [7] } };
+    const files = [
+      { id: 6, original_name: 'office.pdf', created_at: '2026-10-02T21:10:00Z' },
+      { id: 7, original_name: 'roof.jpg', created_at: '2026-10-01T08:00:00Z' },
+    ];
+    expect(filesForLead(files, scope, lead).map((f) => f.id)).toEqual([7]);
   });
 });
 

@@ -24,7 +24,7 @@ function daysAgoIso(days) {
 
 /**
  * Inclusive `from`/`to` (YYYY-MM-DD). Omitted pair defaults to the last 30 days
- * unless `required` is set (Customers / Jobs / Invoices generate — requirement 14.2).
+ * unless `required` is set (Customers / Jobs / Invoices generate - requirement 14.2).
  * @param {{ from?: unknown, to?: unknown }} query
  * @param {{ required?: boolean }} [opts]
  * @returns {{ from: string, to: string, fromDt: Date, toDt: Date }|{ error: string }}
@@ -146,7 +146,7 @@ async function winLoss(fromDt, toDt, { includeCustomers = true } = {}) {
 }
 
 /**
- * Live pipeline value — latest sent/draft quote per enquiry, Enquiry → Follow-up
+ * Live pipeline value - latest sent/draft quote per enquiry, Enquiry → Follow-up
  * (requirement 4.5). Matches the board cards and column totals. Not date-windowed.
  */
 async function pipelineValueSnapshot() {
@@ -348,7 +348,7 @@ async function listJobs(fromDt, toDt) {
 
 /**
  * Invoices created in the window (requirement 14.2). Totals omitted when
- * `includeTotals` is false (restricted office — requirement 1.6).
+ * `includeTotals` is false (restricted office - requirement 1.6).
  */
 async function listInvoices(fromDt, toDt, { includeTotals = true } = {}) {
   const rows = await Invoice.findAll({

@@ -42,7 +42,7 @@ const CLOSED_LIST = {
   leads: [
     {
       id: 20, customer_id: 30, customer_name: 'Neil Draper', source: 'phone',
-      status: 'CLOSED', message: 'Enquiry — did not proceed', phone: '07700 900300', email: null,
+      status: 'CLOSED', message: 'Enquiry - did not proceed', phone: '07700 900300', email: null,
       created_at: '2026-09-20T09:00:00Z',
     },
   ],
@@ -105,7 +105,7 @@ describe('Lead Inbox (requirement 3.1)', () => {
     await user.click(screen.getByRole('button', { name: /lost/i }));
     expect(await screen.findByText('Neil Draper')).toBeInTheDocument();
     expect(api.get).toHaveBeenLastCalledWith('/leads?status=CLOSED');
-    expect(screen.getByText('Enquiry — did not proceed')).toBeInTheDocument();
+    expect(screen.getByText('Enquiry - did not proceed')).toBeInTheDocument();
   });
 
   it('sends search, source, and created-date filters', async () => {

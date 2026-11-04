@@ -20,7 +20,7 @@ function websiteStatus() {
     env_needed: ['WEBSITE_ENQUIRY_SECRET'],
     webhook_url: configured ? `${base}/api/webhooks/website` : null,
     detail: configured
-      ? 'Live — landing-page enquiries create inbox leads; photos upload as files (not URLs).'
+      ? 'Live - landing-page enquiries create inbox leads; photos upload as files (not URLs).'
       : 'Add WEBSITE_ENQUIRY_SECRET so the public contact form can post into the inbox.',
   };
 }
@@ -29,14 +29,14 @@ function telephonyStatus() {
   const configured = !!(process.env.TWILIO_ACCOUNT_SID && process.env.TWILIO_AUTH_TOKEN);
   return {
     id: 'telephony',
-    name: 'Phone & SMS capture (Twilio — optional)',
+    name: 'Phone & SMS capture (Twilio - optional)',
     configured,
     connected: configured,
     mode: configured ? 'live' : 'simulated',
     env_needed: ['TWILIO_ACCOUNT_SID', 'TWILIO_AUTH_TOKEN', 'TWILIO_NUMBER'],
     webhook_url: `${process.env.APP_URL || 'http://localhost:4000'}/api/webhooks/twilio/voice (+ /sms)`,
     detail: configured
-      ? 'Live — calls/SMS to the tracked number create leads automatically'
+      ? 'Live - calls/SMS to the tracked number create leads automatically'
       : 'Optional. Until connected, phone enquiries are logged with the one-tap "Log enquiry" button.',
   };
 }

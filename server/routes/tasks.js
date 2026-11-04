@@ -113,6 +113,13 @@ router.put('/:id', asyncHandler(async (req, res) => {
     }
     patch.status = status;
     patch.done_at = ['done', 'dismissed'].includes(status) ? new Date() : null;
+    if (status === 'done') {
+      patch.complete_note = String(req.body?.complete_note || '').trim() || null;
+    } else if (status === 'open') {
+      patch.complete_note = null;
+    }
+  } else if (req.body?.complete_note !== undefined) {
+    patch.complete_note = String(req.body.complete_note || '').trim() || null;
   }
   if (title !== undefined) patch.title = title;
   if (detail !== undefined) patch.detail = detail;
@@ -164,6 +171,9 @@ router.put('/:id', asyncHandler(async (req, res) => {
     await t.update(patch, { transaction });
     if (nextAssignees) await replaceAssignees(t.id, nextAssignees, { transaction });
   });
+  if (patch.status === 'done' && patch.complete_note) {
+    await require('../customerNotes').copyTaskRemark(t, req.user.id, patch.complete_note);
+  }
   await require('../calendarSync').syncTask(t.id);
   res.json({ ok: true });
 }));

@@ -28,14 +28,14 @@ vi.mock('../lib/api', () => ({
 }));
 
 describe('office sidebar', () => {
-  it('orders Management links as pipeline, visits, quotes, jobs, then schedule', () => {
+  it('orders Management links as pipeline, visits, quotes, schedule, then jobs', () => {
     render(<MemoryRouter><Layout><div>child</div></Layout></MemoryRouter>);
     const labels = screen.getAllByRole('link').map((el) => el.textContent.trim());
     const pipeline = labels.indexOf('Pipeline');
     expect(labels[pipeline + 1]).toBe('Visits');
     expect(labels[pipeline + 2]).toBe('Quotes');
-    expect(labels[pipeline + 3]).toBe('Jobs');
-    expect(labels[pipeline + 4]).toBe('Schedule & AI');
+    expect(labels[pipeline + 3]).toBe('Schedule & AI');
+    expect(labels[pipeline + 4]).toBe('Jobs');
     expect(labels[pipeline + 5]).toBe('Invoices');
     expect(labels[pipeline + 6]).toBe('Tasks');
     expect(labels[pipeline + 7]).toBe('Timesheets');

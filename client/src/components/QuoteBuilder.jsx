@@ -79,7 +79,7 @@ export default function QuoteBuilder({ open, onClose, customerId, customer, lead
   }, [open, existingQuote, options, customer, lead]);
 
   // Live totals from the server so the preview uses the exact same engine
-  // that will produce the PDF — no second implementation to drift.
+  // that will produce the PDF - no second implementation to drift.
   const refreshTotals = useCallback(async (f) => {
     if (!f) return;
     try { setCalc(await api.post('/quotes/preview', { ...f, customer_id: customerId })); } catch { /* ignore */ }
@@ -130,7 +130,7 @@ export default function QuoteBuilder({ open, onClose, customerId, customer, lead
     setError('');
     try {
       if (existingQuote && ['accepted', 'declined'].includes(existingQuote.status)) {
-        setError('Quote already decided — clone it with a new title instead');
+        setError('Quote already decided - clone it with a new title instead');
         return;
       }
       if (existingQuote) await api.put(`/quotes/${existingQuote.id}`, form);
@@ -195,7 +195,7 @@ export default function QuoteBuilder({ open, onClose, customerId, customer, lead
 
         <div>
           <label className="label">Quote title</label>
-          <input className="input" value={form.title} onChange={(e) => set('title', e.target.value)} placeholder="e.g. Full re-roof — 1930s semi-detached" required />
+          <input className="input" value={form.title} onChange={(e) => set('title', e.target.value)} placeholder="e.g. Full re-roof - 1930s semi-detached" required />
         </div>
 
         <ContactPickers
@@ -221,7 +221,7 @@ export default function QuoteBuilder({ open, onClose, customerId, customer, lead
                 </span>
               </div>
               <p className="mt-0.5 text-xs leading-relaxed text-slate-500">
-                Type to search the catalogue, or keep a custom name. Quantity and unit price can still be changed. Type matters for CIS — labour is deductible, materials are not.
+                Type to search the catalogue, or keep a custom name. Quantity and unit price can still be changed. Type matters for CIS - labour is deductible, materials are not.
               </p>
             </div>
           </div>
@@ -352,7 +352,7 @@ export default function QuoteBuilder({ open, onClose, customerId, customer, lead
                   ? calc.vat_breakdown.filter((g) => g.net > 0).map((g) => (
                       <Row key={g.code} label={`VAT ${g.rate}% on ${money(g.net)}`} value={money(g.vat)} muted />
                     ))
-                  : <Row label={calc.vat_treatment === 'reverse_charge' ? 'VAT — reverse charge' : 'VAT — not registered'} value={money(0)} muted />}
+                  : <Row label={calc.vat_treatment === 'reverse_charge' ? 'VAT - reverse charge' : 'VAT - not registered'} value={money(0)} muted />}
                 <div className="flex justify-between font-bold text-slate-900 pt-1.5 border-t border-slate-300 text-base">
                   <span>Total</span><span>{money(calc.total)}</span>
                 </div>
@@ -400,9 +400,9 @@ export default function QuoteBuilder({ open, onClose, customerId, customer, lead
                 value={form.vat_treatment}
                 onChange={(vat_treatment) => set('vat_treatment', vat_treatment)}
                 options={[
-                  { value: 'standard', label: 'Standard — charge VAT at the rates set per line' },
-                  { value: 'reverse_charge', label: 'Domestic Reverse Charge — customer accounts for the VAT' },
-                  { value: 'not_registered', label: 'Not VAT registered — no VAT charged' },
+                  { value: 'standard', label: 'Standard - charge VAT at the rates set per line' },
+                  { value: 'reverse_charge', label: 'Domestic Reverse Charge - customer accounts for the VAT' },
+                  { value: 'not_registered', label: 'Not VAT registered - no VAT charged' },
                 ]}
               />
               {form.vat_treatment === 'reverse_charge' && (
@@ -428,9 +428,9 @@ export default function QuoteBuilder({ open, onClose, customerId, customer, lead
                   value={form.cis_rate}
                   onChange={(cis_rate) => set('cis_rate', Number(cis_rate))}
                   options={[
-                    { value: 20, label: '20% — registered subcontractor' },
-                    { value: 30, label: '30% — unverified' },
-                    { value: 0, label: '0% — gross payment status' },
+                    { value: 20, label: '20% - registered subcontractor' },
+                    { value: 30, label: '30% - unverified' },
+                    { value: 0, label: '0% - gross payment status' },
                   ]}
                 />
                 <p className="text-xs text-slate-400 mt-1">Deducted from the labour element only. Materials are never subject to CIS.</p>
@@ -483,7 +483,7 @@ export default function QuoteBuilder({ open, onClose, customerId, customer, lead
               <button type="button" onClick={() => set('payment_schedule', [...form.payment_schedule, { label: '', percent: 0, trigger: '' }])} className="btn-ghost !py-1 !px-2 text-xs"><Plus size={14} /> Add stage</button>
               {form.payment_schedule.length > 0 && (
                 <p className={`text-xs mt-1 ${Math.abs(form.payment_schedule.reduce((s, x) => s + (Number(x.percent) || 0), 0) - 100) > 0.01 ? 'text-amber-600' : 'text-slate-400'}`}>
-                  Stages total {form.payment_schedule.reduce((s, x) => s + (Number(x.percent) || 0), 0)}% — should be 100%
+                  Stages total {form.payment_schedule.reduce((s, x) => s + (Number(x.percent) || 0), 0)}% - should be 100%
                 </p>
               )}
             </div>

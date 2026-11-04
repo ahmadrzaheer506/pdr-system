@@ -136,7 +136,7 @@ async function sendDocument(toPhone, docUrl, filename, caption = '') {
 
 /**
  * Send a pre-approved template (required for business-initiated messages
- * outside the 24h window — Meta policy, see INTEGRATIONS.md §3).
+ * outside the 24h window - Meta policy, see INTEGRATIONS.md §3).
  * params = array of strings substituted into {{1}}, {{2}}...
  */
 function templateLanguages() {
@@ -184,7 +184,7 @@ function isFatalGraphError(err) {
 }
 
 /**
- * True if the customer messaged us on WhatsApp within the last 24h —
+ * True if the customer messaged us on WhatsApp within the last 24h -
  * inside Meta's customer-service window, so free-form text is allowed.
  */
 async function insideServiceWindow(customerId) {
@@ -210,8 +210,8 @@ function status() {
     env_needed: ['WHATSAPP_ACCESS_TOKEN', 'WHATSAPP_PHONE_NUMBER_ID', 'WHATSAPP_BUSINESS_ACCOUNT_ID', 'META_APP_SECRET', 'META_VERIFY_TOKEN'],
     webhook_url: `${process.env.APP_URL || 'http://localhost:4000'}/api/webhooks/whatsapp`,
     detail: isConfigured()
-      ? 'Live — sending via Meta Cloud API'
-      : 'Not connected — quote and message send will fail until keys are added in .env.',
+      ? 'Live - sending via Meta Cloud API'
+      : 'Not connected - quote and message send will fail until keys are added in .env.',
   };
 }
 

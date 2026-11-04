@@ -1,5 +1,5 @@
 // ============================================================
-// Timesheet service — clock in / break / clock out, GPS distance
+// Timesheet service - clock in / break / clock out, GPS distance
 // checking, hours calculation and labour costing.
 // ============================================================
 const { Op, fn, col, literal } = require('sequelize');
@@ -34,7 +34,7 @@ function parseOptionalCoord(raw) {
 }
 
 /**
- * Requirement 9.2 — GPS is optional. Missing position flags no_location.
+ * Requirement 9.2 - GPS is optional. Missing position flags no_location.
  * Far-from-site is warn-only and wins over no_location. Yard / travel has no site point.
  * @param {{ lat: number|null, lng: number|null, coords: { lat: number, lng: number }|null, radius: number, previous?: string|null }} opts
  */
@@ -85,8 +85,8 @@ async function activeShift(userId) {
   return o;
 }
 
-const ALREADY_CLOCKED_IN = 'You are already clocked in — clock out first';
-const PAID_CLOCK_IN_ERROR = 'This job is paid in full — you cannot clock in';
+const ALREADY_CLOCKED_IN = 'You are already clocked in - clock out first';
+const PAID_CLOCK_IN_ERROR = 'This job is paid in full - you cannot clock in';
 
 /**
  * Clock-in is closed once the job is PAID or any invoice on it is paid in full.
@@ -124,7 +124,7 @@ function parseOptionalJobId(raw) {
 }
 
 /**
- * Requirement 9.1 — a picked job must have this user on that job's crew.
+ * Requirement 9.1 - a picked job must have this user on that job's crew.
  * Match any work date: My Jobs lists the next two weeks, so staff clock in from
  * a job they are assigned to even when that day is not "today".
  */
@@ -143,7 +143,7 @@ async function assertAssignedToJob(userId, jobId) {
 /**
  * Start a shift (requirement 9.1).
  * job_id is optional (yard / travel). If set, the user must be on that job's crew.
- * One open shift per person — a second clock-in is rejected until they clock out.
+ * One open shift per person - a second clock-in is rejected until they clock out.
  */
 async function clockIn(userId, { job_id = null, lat = null, lng = null, accuracy = null } = {}) {
   const cfg = (await getSetting('timesheets')) || {};
@@ -215,7 +215,7 @@ async function clockOut(userId, { lat = null, lng = null, accuracy = null, notes
   let elapsed = minutesBetween(shift.clock_in, out);
   if (elapsed < 0) elapsed = 0;
 
-  /** Breaks are a paid log (requirement 9.2) — they do not reduce worked minutes. */
+  /** Breaks are a paid log (requirement 9.2) - they do not reduce worked minutes. */
   let worked = await roundMinutes(elapsed);
 
   const maxMins = timesheetNumber(cfg, 'max_shift_hours', 14) * 60;
@@ -267,7 +267,7 @@ async function myTimesheets(userId, from, to) {
       user_id: userId,
       work_date: { [Op.between]: [from, to] },
     },
-    attributes: ['id', 'job_id', 'work_date', 'clock_in', 'clock_out', 'break_minutes', 'worked_minutes', 'status', 'notes', 'location_flag'],
+    attributes: ['id', 'job_id', 'work_date', 'clock_in', 'clock_out', 'break_minutes', 'worked_minutes', 'status', 'notes', 'photo_file', 'location_flag'],
     include: [{
       model: Job,
       attributes: ['title'],
@@ -340,7 +340,7 @@ async function weeklyTotals(from, to) {
 }
 
 /**
- * Job profitability — quoted value vs actual labour cost.
+ * Job profitability - quoted value vs actual labour cost.
  */
 async function jobCosting(jobId = null) {
   const where = jobId ? { id: jobId } : {};
@@ -450,13 +450,13 @@ function fail(status, message) {
 }
 
 /**
- * Office correction (requirement 9.4). Breaks stay a paid log — worked
+ * Office correction (requirement 9.4). Breaks stay a paid log - worked
  * minutes are clock-in → clock-out only, matching clock-out in 9.2.
  */
 async function correctShift(id, body = {}) {
   const row = await Timesheet.findByPk(id);
   if (!row) fail(404, 'Timesheet not found');
-  if (row.status === 'active') fail(400, 'That shift is still running — clock it out before editing');
+  if (row.status === 'active') fail(400, 'That shift is still running - clock it out before editing');
   if (row.status !== 'completed' && row.status !== 'approved') {
     fail(400, 'Only completed or approved shifts can be edited');
   }
@@ -495,7 +495,7 @@ async function correctShift(id, body = {}) {
 async function approveShift(id, actorId) {
   const row = await Timesheet.findByPk(id);
   if (!row) fail(404, 'Timesheet not found');
-  if (row.status === 'active') fail(400, 'That shift is still running — it cannot be approved yet');
+  if (row.status === 'active') fail(400, 'That shift is still running - it cannot be approved yet');
   if (row.status !== 'completed') fail(400, 'Only completed shifts can be approved');
   await row.update({ status: 'approved', approved_by: actorId, approved_at: new Date() });
   return { ok: true };

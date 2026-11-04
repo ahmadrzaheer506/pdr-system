@@ -71,6 +71,7 @@ function toStaffTask(row, leadMap) {
     priority: o.priority,
     status: o.status,
     type: o.type,
+    complete_note: o.complete_note || null,
     lead_name: o.entity_type === 'customer' && o.entity_id ? (leadMap.get(Number(o.entity_id)) || null) : null,
     assignees,
     assignee_name: assignees.map((a) => a.name).join(', ') || null,
@@ -131,7 +132,15 @@ router.put('/tasks/:id', asyncHandler(async (req, res) => {
   if (req.body?.status !== 'done') {
     return res.status(400).json({ error: 'Field staff can only mark a task done' });
   }
-  await t.update({ status: 'done', done_at: new Date() });
+  const completeNote = String(req.body?.complete_note || '').trim() || null;
+  await t.update({
+    status: 'done',
+    done_at: new Date(),
+    complete_note: completeNote,
+  });
+  if (completeNote) {
+    await require('../customerNotes').copyTaskRemark(t, req.user.id, completeNote);
+  }
   res.json({ ok: true });
 }));
 
@@ -464,8 +473,8 @@ router.post('/visits/:id/complete', asyncHandler(async (req, res) => {
     const result = await completeVisit(visit, setStage, req.user.id, completeNote);
     if (!result.already) {
       const summary = result.hasQuote
-        ? 'Site visit completed — quote already on the lead'
-        : 'Site visit completed — quote needed';
+        ? 'Site visit completed - quote already on the lead'
+        : 'Site visit completed - quote needed';
       await logActivity(
         visit.customer_id,
         req.user.id,
@@ -543,6 +552,8 @@ router.post('/clock/break/end', asyncHandler(async (req, res) => {
 router.post('/clock/out', asyncHandler(async (req, res) => {
   const { lat, lng, accuracy, notes, photo } = req.body || {};
   let photoFile = null;
+  let photoBuffer = null;
+  let photoMime = null;
 
   if (photo && typeof photo === 'string' && photo.startsWith('data:image/')) {
     try {
@@ -553,6 +564,8 @@ router.post('/clock/out', asyncHandler(async (req, res) => {
         if (buf.length <= 8 * 1024 * 1024) {
           photoFile = `shift-${req.user.id}-${Date.now()}.${ext}`;
           fs.writeFileSync(path.join(DATA_DIR, 'files', photoFile), buf);
+          photoBuffer = buf;
+          photoMime = `image/${ext === 'jpg' ? 'jpeg' : ext}`;
         }
       }
     } catch { photoFile = null; }
@@ -562,6 +575,11 @@ router.post('/clock/out', asyncHandler(async (req, res) => {
     const shift = await ts.clockOut(req.user.id, {
       lat: lat ?? null, lng: lng ?? null, accuracy: accuracy ?? null,
       notes: notes || null, photo_file: photoFile,
+    });
+    await require('../customerNotes').copyClockOutHandover(req.user.id, shift, {
+      notes: notes || null,
+      photoBuffer,
+      mime: photoMime,
     });
     res.json({
       ok: true,

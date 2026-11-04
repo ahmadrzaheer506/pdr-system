@@ -73,7 +73,7 @@ export default function CustomerRecord() {
             {commercial && customer.company_name && (
               <p className="mt-1 text-sm text-slate-600">{customer.company_name}</p>
             )}
-            <p className="text-sm text-slate-500 mt-1">Customer record — details, contacts, and every lead for this person.</p>
+            <p className="text-sm text-slate-500 mt-1">Customer record - details, contacts, and every lead for this person.</p>
             <div className="mt-3 flex flex-wrap gap-1.5">
               <MetaChip icon={User}>{customer.owner_name || 'Unassigned'}</MetaChip>
               {phone && (

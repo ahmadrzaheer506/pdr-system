@@ -62,7 +62,7 @@ describe('requireAuth', () => {
     await requireAuth({ cookies: { pdr_token: token }, headers: {} }, res, next);
     expect(next).not.toHaveBeenCalled();
     expect(res.status).toHaveBeenCalledWith(401);
-    expect(res.json).toHaveBeenCalledWith({ error: 'Session expired — sign in again' });
+    expect(res.json).toHaveBeenCalledWith({ error: 'Session expired - sign in again' });
   });
 
   test('accepts a JWT whose token_version matches', async () => {

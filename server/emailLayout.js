@@ -203,7 +203,7 @@ function renderBrandedEmail({ subject, payload, company, logoSrc }) {
   if (content.actionUrl && !String(content.bodyText || '').includes(content.actionUrl)) {
     textParts.push(content.actionUrl);
   }
-  textParts.push('', '—', footerText);
+  textParts.push('', '-', footerText);
   const text = textParts.join('\n').replace(/\n{3,}/g, '\n\n').trim();
 
   return { html, text };

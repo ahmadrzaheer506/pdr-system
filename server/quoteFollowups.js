@@ -13,7 +13,7 @@ const MAX_SUBJECT = 200;
 
 const DEFAULT_STEP_BODIES = Object.freeze([
   'Hi {name}, just checking you received our quotation {ref} for {title}. How are you getting on with it? Happy to answer any questions.',
-  "Hi {name}, following up one last time on quotation {ref}. If you'd like us to adjust anything or talk it through, just let us know — otherwise we'll leave it with you.",
+  "Hi {name}, following up one last time on quotation {ref}. If you'd like us to adjust anything or talk it through, just let us know - otherwise we'll leave it with you.",
 ]);
 
 const DEFAULT_EMAIL_SUBJECT = 'How did you get on with our quotation {ref}?';
@@ -31,7 +31,7 @@ function defaultFollowups() {
 
 /**
  * Body stored on a scheduled step: Company follow-up step body only.
- * Empty body means skip that step — Templates no longer supply fallback copy.
+ * Empty body means skip that step - Templates no longer supply fallback copy.
  */
 function stepBody(s) {
   return s && s.body != null ? String(s.body).trim() : '';

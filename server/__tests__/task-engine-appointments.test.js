@@ -17,15 +17,19 @@ jest.mock('../db', () => ({
 jest.mock('../calendarSync', () => ({
   syncTask: jest.fn(async () => {}),
 }));
+jest.mock('../customerNotes', () => ({
+  copyRemark: jest.fn(async () => ({ ok: true })),
+}));
 
 const { Appointment, Task, Quote, Lead } = require('../models');
+const notes = require('../customerNotes');
 const { scanAppointments, completeVisit } = require('../services/taskEngine');
 
 function bookedVisit({ id = 7, customerId = 9, stage = 'SITE_VISIT_BOOKED', name = 'Dave Whitfield' } = {}) {
   return {
     id,
     customer_id: customerId,
-    title: `Site visit — ${name}`,
+    title: `Site visit - ${name}`,
     status: 'booked',
     stage_advanced: false,
     Customer: { id: customerId, name, stage },
@@ -63,7 +67,7 @@ describe('completeVisit', () => {
     expect(visit.status).toBe('done');
     expect(visit.stage_advanced).toBe(true);
     expect(visit.save).toHaveBeenCalled();
-    expect(setStage).toHaveBeenCalledWith(9, 'QUOTE_PENDING', 3, 'Site visit completed — quote needed', { leadId: null });
+    expect(setStage).toHaveBeenCalledWith(9, 'QUOTE_PENDING', 3, 'Site visit completed - quote needed', { leadId: null });
     expect(Task.create).toHaveBeenCalledWith(expect.objectContaining({
       rule_key: 'produce_quote:customer:9',
       title: 'Produce quote for Dave Whitfield',
@@ -78,6 +82,10 @@ describe('completeVisit', () => {
     expect(visit.complete_note).toBe('Valley flashing is sound');
     expect(visit.status).toBe('done');
     expect(visit.save).toHaveBeenCalled();
+    expect(notes.copyRemark).toHaveBeenCalledWith(9, 3, 'Valley flashing is sound', {
+      source: 'visit',
+      leadId: null,
+    });
   });
 
   test('does not change stage when the customer is already past Site visit booked', async () => {
@@ -94,7 +102,7 @@ describe('completeVisit', () => {
     const result = await completeVisit(visit, setStage, 3);
     expect(result).toEqual({ already: false, hasQuote: true, taskId: null });
     expect(visit.status).toBe('done');
-    expect(setStage).toHaveBeenCalledWith(9, 'QUOTED', 3, 'Site visit completed — quote already on the lead', { leadId: null });
+    expect(setStage).toHaveBeenCalledWith(9, 'QUOTED', 3, 'Site visit completed - quote already on the lead', { leadId: null });
     expect(Task.create).not.toHaveBeenCalled();
   });
 

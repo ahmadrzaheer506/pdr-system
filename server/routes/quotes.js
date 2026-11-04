@@ -208,7 +208,7 @@ router.post('/', asyncHandler(async (req, res) => {
       await setStage(customer_id, 'QUOTE_PENDING', req.user.id, `Quote ${ref} created`);
     }
   }
-  await logActivity(customer_id, req.user.id, 'quote_created', `Quote ${ref} created — ${money(cols.total)}`, 'quote', created.id);
+  await logActivity(customer_id, req.user.id, 'quote_created', `Quote ${ref} created - ${money(cols.total)}`, 'quote', created.id);
   res.json({ id: created.id, ref, calc });
 }));
 
@@ -249,7 +249,7 @@ router.put('/:id', asyncHandler(async (req, res) => {
   const quote = await Quote.findByPk(req.params.id);
   if (!quote) return res.status(404).json({ error: 'Quote not found' });
   if (['accepted', 'declined'].includes(quote.status)) {
-    return res.status(400).json({ error: 'Quote already decided — clone it with a new title instead' });
+    return res.status(400).json({ error: 'Quote already decided - clone it with a new title instead' });
   }
   const b = req.body || {};
   const newItems = b.items !== undefined ? b.items : (quote.items || []);
@@ -337,7 +337,7 @@ router.post('/:id/revise', asyncHandler(async (req, res) => {
   await copyQuoteAsDraft(req, res, {
     title: req.body?.title,
     activityDetail: (ref, quote, created) => (
-      `Quote ${ref} created as a revision of ${quote.ref} — ${money(created.total)}`
+      `Quote ${ref} created as a revision of ${quote.ref} - ${money(created.total)}`
     ),
   });
 }));
@@ -348,7 +348,7 @@ router.post('/:id/clone', asyncHandler(async (req, res) => {
   await copyQuoteAsDraft(req, res, {
     title,
     activityDetail: (ref, quote, created) => (
-      `Quote ${ref} cloned from ${quote.ref} — ${money(created.total)}`
+      `Quote ${ref} cloned from ${quote.ref} - ${money(created.total)}`
     ),
   });
 }));
@@ -388,7 +388,7 @@ router.post('/:id/send', asyncHandler(async (req, res) => {
   const quote = await Quote.findByPk(req.params.id);
   if (!quote) return res.status(404).json({ error: 'Quote not found' });
   if (!['draft', 'sent'].includes(quote.status)) {
-    return res.status(400).json({ error: 'This quote cannot be sent — clone it with a new title instead' });
+    return res.status(400).json({ error: 'This quote cannot be sent - clone it with a new title instead' });
   }
   const result = await generateAndStoreQuotePdf(quote);
   if (result.error) return res.status(result.status).json({ error: result.error });
@@ -428,7 +428,7 @@ router.post('/:id/send', asyncHandler(async (req, res) => {
   if (Object.keys(results).length === 0) {
     const detail = errors.length === 1
       ? errors[0].replace(/^(whatsapp|email):\s*/i, '')
-      : `Could not send on any channel — ${errors.join('; ')}`;
+      : `Could not send on any channel - ${errors.join('; ')}`;
     return res.status(400).json({ error: detail });
   }
 
@@ -474,7 +474,7 @@ async function createJobFromAcceptedQuote(quote, customer, acceptedExtras) {
   await resolveRule(`create_job:quote:${quote.id}`);
   await ensureTask({
     ruleKey: `schedule_job:job:${job.id}`,
-    title: `Schedule job — ${quote.title}`,
+    title: `Schedule job - ${quote.title}`,
     detail: `${customer.name} accepted quote ${quote.ref} (${money(jobValue)}). Job needs lads and dates.`,
     priority: 'high',
     entityType: 'job',
@@ -523,7 +523,7 @@ router.post('/:id/decision', asyncHandler(async (req, res) => {
     if (!wantJob) {
       await ensureTask({
         ruleKey: `create_job:quote:${quote.id}`,
-        title: `Create job — ${quote.title}`,
+        title: `Create job - ${quote.title}`,
         detail: `Next step: create a job from accepted quote ${quote.ref} (${customer.name}).`,
         priority: 'high',
         entityType: 'quote',
@@ -540,7 +540,7 @@ router.post('/:id/decision', asyncHandler(async (req, res) => {
       customer.id,
       req.user.id,
       'quote_accepted',
-      alreadyAccepted ? `Job created from quote ${quote.ref}` : `Quote ${quote.ref} accepted — job created`,
+      alreadyAccepted ? `Job created from quote ${quote.ref}` : `Quote ${quote.ref} accepted - job created`,
       'job',
       job.id,
     );
@@ -554,9 +554,9 @@ router.post('/:id/decision', asyncHandler(async (req, res) => {
   });
   await cancelPendingForQuote(quote.id, `quote ${decision}`);
   await resolveQuoteFollowupTask(quote.id);
-  await setStage(customer.id, 'LOST', req.user.id, `Quote ${quote.ref} declined${reason ? ` — ${reason}` : ''}`, { leadId: quote.lead_id });
+  await setStage(customer.id, 'LOST', req.user.id, `Quote ${quote.ref} declined${reason ? ` - ${reason}` : ''}`, { leadId: quote.lead_id });
   if (reason) await Customer.update({ lost_reason: reason }, { where: { id: customer.id } });
-  await logActivity(customer.id, req.user.id, 'quote_declined', `Quote ${quote.ref} declined${reason ? ` — ${reason}` : ''}`, 'quote', quote.id);
+  await logActivity(customer.id, req.user.id, 'quote_declined', `Quote ${quote.ref} declined${reason ? ` - ${reason}` : ''}`, 'quote', quote.id);
   res.json({ ok: true });
 }));
 

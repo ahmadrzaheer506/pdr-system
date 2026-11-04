@@ -78,7 +78,7 @@ describe('ClockWidget (requirement 9.1)', () => {
       },
     });
     render(<ClockWidget jobId={8} />);
-    expect(await screen.findByText(/on break — still on the clock/i)).toBeInTheDocument();
+    expect(await screen.findByText(/on break - still on the clock/i)).toBeInTheDocument();
     expect(screen.getByText(/1200m from the job address/i)).toBeInTheDocument();
     expect(screen.getByText('1:00')).toBeInTheDocument();
   });

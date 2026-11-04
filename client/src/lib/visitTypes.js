@@ -1,4 +1,4 @@
-/** Appointment types (requirement 5.3). Labels only — no stage/task effect. */
+/** Appointment types (requirement 5.3). Labels only - no stage/task effect. */
 export const VISIT_TYPES = [
   { value: 'site_visit', label: 'Site visit' },
   { value: 'follow_up', label: 'Follow-up' },
@@ -11,7 +11,7 @@ export function visitTypeLabel(value) {
 }
 
 export function visitTitle(visitType, customerName) {
-  return `${visitTypeLabel(visitType)} — ${customerName}`;
+  return `${visitTypeLabel(visitType)} - ${customerName}`;
 }
 
 /** Booked visits that have not ended yet can be rescheduled or cancelled. */

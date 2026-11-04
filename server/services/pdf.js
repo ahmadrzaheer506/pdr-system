@@ -1,5 +1,5 @@
 // ============================================================
-// PDF generation for quotations and invoices — built to UK
+// PDF generation for quotations and invoices - built to UK
 // construction-trade standards, not a generic "subtotal + VAT".
 //
 // A quotation includes, where applicable:
@@ -231,9 +231,9 @@ function totalsBlock(doc, y, calc, opts = {}) {
       rows.push([`VAT ${g.rate}% on ${gbp(g.net)}`, gbp(g.vat)]);
     }
   } else if (calc.vat_treatment === 'reverse_charge') {
-    rows.push(['VAT — reverse charge (see note)', gbp(0)]);
+    rows.push(['VAT - reverse charge (see note)', gbp(0)]);
   } else {
-    rows.push(['VAT — not registered', gbp(0)]);
+    rows.push(['VAT - not registered', gbp(0)]);
   }
 
   const boxH = rows.length * 15 + 34 +
@@ -328,7 +328,7 @@ function buildQuote(doc, quote, customer, company, uk = {}) {
   const bandH = docHeader(doc, company, 'Quotation', quote.ref);
   let y = partyBlock(doc, customer, [
     ['DATE', quote.created_at ? new Date(quote.created_at).toISOString().slice(0, 10) : ''],
-    ['VALID UNTIL', quote.valid_until || '—'],
+    ['VALID UNTIL', quote.valid_until || '-'],
     ['REFERENCE', quote.ref],
   ], bandH + 26);
 
@@ -428,7 +428,7 @@ function buildQuote(doc, quote, customer, company, uk = {}) {
   }
   const insLines = [];
   if (company.public_liability_insurer) {
-    insLines.push(`Public liability insurance: ${company.public_liability_insurer}${company.public_liability_cover ? ` — ${company.public_liability_cover} cover` : ''}.`);
+    insLines.push(`Public liability insurance: ${company.public_liability_insurer}${company.public_liability_cover ? ` - ${company.public_liability_cover} cover` : ''}.`);
   }
   const accreds = Array.isArray(company.accreditations) ? company.accreditations.filter(Boolean) : [];
   if (accreds.length) insLines.push(`Accreditations: ${accreds.join(', ')}.`);
@@ -517,8 +517,8 @@ function buildInvoice(doc, invoice, customer, company, uk = {}) {
 
   const bandH = docHeader(doc, company, 'Invoice', invoice.ref);
   let y = partyBlock(doc, customer, [
-    ['ISSUE DATE', invoice.issue_date || '—'],
-    ['DUE DATE', invoice.due_date || '—'],
+    ['ISSUE DATE', invoice.issue_date || '-'],
+    ['DUE DATE', invoice.due_date || '-'],
     ['REFERENCE', invoice.ref],
   ], bandH + 26);
 

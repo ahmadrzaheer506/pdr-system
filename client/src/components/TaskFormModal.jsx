@@ -8,6 +8,7 @@ import SelectMenu from './SelectMenu.jsx';
 import MultiSelect from './MultiSelect.jsx';
 import SearchSelect from './SearchSelect.jsx';
 import DatePicker from './DatePicker.jsx';
+import { leadDisplayName } from '../lib/leads.js';
 
 function isAssignableUser(u) {
   return u && u.active !== false && (u.role === ROLES.OFFICE || u.role === ROLES.STAFF);
@@ -18,16 +19,27 @@ function canAttachLead(task) {
   return task.type === 'manual' || !task.entity_type || task.entity_type === 'customer' || task.entity_type === 'lead';
 }
 
-function leadOptionLabel(c) {
-  if (!c) return '';
-  return c.company_name ? `${c.name} · ${c.company_name}` : c.name;
+function leadOptionLabel(lead) {
+  if (!lead) return '';
+  return leadDisplayName({
+    ...lead,
+    customer_name: lead.customer_name || lead.name,
+    name: lead.customer_name || lead.name,
+  });
 }
 
-function leadOptionHint(c) {
-  if (!c) return '';
-  const bits = [c.address, c.postcode, c.phone, c.email].filter(Boolean);
+function leadOptionHint(lead) {
+  if (!lead) return '';
+  const bits = [lead.address, lead.postcode, lead.phone, lead.email].filter(Boolean);
   if (bits.length) return bits.join(' · ');
-  return c.id ? `Lead #${c.id}` : '';
+  return lead.ref || '';
+}
+
+function enquiryIdFromTask(task, lockedCustomer) {
+  if (lockedCustomer?.enquiryId) return String(lockedCustomer.enquiryId);
+  if (task?.enquiry_id) return String(task.enquiry_id);
+  if (task?.entity_type === 'lead' && task?.entity_id) return String(task.entity_id);
+  return '';
 }
 
 function leadInitials(name) {
@@ -65,21 +77,22 @@ export default function TaskFormModal({ open, task, onClose, onSaved, onError, l
         detail: task.detail || '',
         due_date: task.due_date ? String(task.due_date).slice(0, 10) : '',
         priority: task.priority || 'normal',
-        lead_id: task.lead_id ? String(task.lead_id) : (lockedCustomer?.id ? String(lockedCustomer.id) : ''),
+        lead_id: enquiryIdFromTask(task, lockedCustomer),
         assignee_ids: ids.length ? ids : fallback,
       });
-      setLeadQuery(task.lead_name || lockedCustomer?.name || '');
-      setChangingLead(!task.lead_id && !leadLocked);
+      setLeadQuery(task.lead_name || lockedCustomer?.label || lockedCustomer?.name || '');
+      setChangingLead(!enquiryIdFromTask(task, lockedCustomer) && !leadLocked);
     } else {
+      const enquiryId = lockedCustomer?.enquiryId ? String(lockedCustomer.enquiryId) : '';
       setForm({
         title: '',
         detail: '',
         due_date: localToday(),
         priority: 'normal',
-        lead_id: lockedCustomer?.id ? String(lockedCustomer.id) : '',
+        lead_id: enquiryId,
         assignee_ids: [],
       });
-      setLeadQuery(lockedCustomer?.name || '');
+      setLeadQuery(lockedCustomer?.label || lockedCustomer?.name || '');
       setChangingLead(!leadLocked);
     }
   }, [open, task, lockedCustomer, leadLocked]);
@@ -106,10 +119,12 @@ export default function TaskFormModal({ open, task, onClose, onSaved, onError, l
     const q = leadQuery.trim();
     const timer = setTimeout(() => {
       setLoadingLeads(true);
-      const path = q ? `/customers?q=${encodeURIComponent(q)}` : '/customers';
+      const path = q
+        ? `/leads?status=ALL&q=${encodeURIComponent(q)}`
+        : '/leads?status=ALL';
       api.get(path)
         .then((d) => {
-          if (!cancelled) setLeads(d.customers || []);
+          if (!cancelled) setLeads(d.leads || []);
         })
         .catch((err) => {
           if (!cancelled) {
@@ -148,7 +163,7 @@ export default function TaskFormModal({ open, task, onClose, onSaved, onError, l
         assignee_ids: form.assignee_ids.map(Number),
       };
       if (lockedCustomer?.enquiryId) payload.enquiry_id = Number(lockedCustomer.enquiryId);
-      else if (leadRequired) payload.lead_id = Number(form.lead_id);
+      else if (leadRequired) payload.enquiry_id = Number(form.lead_id);
       if (editing) await api.put(`/tasks/${task.id}`, payload);
       else await api.post('/tasks', payload);
       onSaved(editing);
@@ -160,19 +175,19 @@ export default function TaskFormModal({ open, task, onClose, onSaved, onError, l
   };
 
   const leadOptions = (() => {
-    const mapped = leads.map((c) => ({
-      value: String(c.id),
-      label: leadOptionLabel(c),
-      hint: leadOptionHint(c),
+    const mapped = leads.map((lead) => ({
+      value: String(lead.id),
+      label: leadOptionLabel(lead),
+      hint: leadOptionHint(lead),
     }));
     const q = leadQuery.trim().toLowerCase();
     const narrowed = q
       ? mapped.filter((o) => (
         o.label.toLowerCase().includes(q) || (o.hint && o.hint.toLowerCase().includes(q))
       ))
-      : mapped.slice(0, 8);
+      : mapped;
     if (form.lead_id && !narrowed.some((o) => o.value === form.lead_id)) {
-      const selected = leads.find((c) => String(c.id) === form.lead_id);
+      const selected = leads.find((lead) => String(lead.id) === form.lead_id);
       narrowed.unshift({
         value: form.lead_id,
         label: selected ? leadOptionLabel(selected) : (task?.lead_name || leadQuery || 'Selected lead'),
@@ -199,7 +214,7 @@ export default function TaskFormModal({ open, task, onClose, onSaved, onError, l
     return extras.concat(fromApi);
   })();
 
-  const selectedLead = leads.find((c) => String(c.id) === String(form.lead_id));
+  const selectedLead = leads.find((lead) => String(lead.id) === String(form.lead_id));
   const selectedLeadLabel = lockedCustomer?.label || lockedCustomer?.name
     || (selectedLead ? leadOptionLabel(selectedLead) : (form.lead_id ? (task?.lead_name || leadQuery || 'Selected lead') : ''));
   const selectedLeadHint = lockedCustomer?.hint || (selectedLead ? leadOptionHint(selectedLead) : '');

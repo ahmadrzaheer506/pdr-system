@@ -10,7 +10,7 @@ const router = express.Router();
 
 /**
  * Self-contained result page for OAuth redirect callbacks (Google, QuickBooks).
- * No build step runs here, so styling is inlined — kept in sync with the
+ * No build step runs here, so styling is inlined - kept in sync with the
  * app's look (Inter font, brand red, rounded cards) by hand.
  */
 function renderOauthResultPage({ ok, heading, body }) {
@@ -26,7 +26,7 @@ function renderOauthResultPage({ ok, heading, body }) {
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>${heading} — Paul Douglas Roofing</title>
+<title>${heading} - Paul Douglas Roofing</title>
 <style>
   :root { color-scheme: light; }
   * { box-sizing: border-box; }
@@ -187,10 +187,10 @@ router.post('/simulate/enquiry', requireAuth, requireOffice, asyncHandler(async 
   const phone = `+447${Math.floor(100000000 + Math.random() * 899999999)}`;
   const bodies = {
     whatsapp: `Hi, could someone come and look at a ${jobDesc}? Address is a house in the local area, whenever's convenient.`,
-    facebook: `Hi! Saw your page — need a quote for ${jobDesc}. Can you help?`,
-    facebook_lead: `Lead form submitted — interested in a ${jobDesc}. Please call back.`,
+    facebook: `Hi! Saw your page - need a quote for ${jobDesc}. Can you help?`,
+    facebook_lead: `Lead form submitted - interested in a ${jobDesc}. Please call back.`,
     email: `Hello, I'm enquiring about a ${jobDesc}. Please could you get back to me with availability. Thanks.`,
-    phone: `Missed call — voicemail: "Hi, calling about a ${jobDesc}, please call back."`,
+    phone: `Missed call - voicemail: "Hi, calling about a ${jobDesc}, please call back."`,
   };
   const simEmail = `${name.split(' ')[0].toLowerCase()}@example.co.uk`;
   const result = await ingestInbound({
@@ -200,7 +200,7 @@ router.post('/simulate/enquiry', requireAuth, requireOffice, asyncHandler(async 
     phone: source === 'email' ? null : phone,
     email: source === 'email' || source === 'facebook_lead' ? simEmail : null,
     body: bodies[source] || bodies.whatsapp,
-    subject: source === 'email' || source === 'facebook_lead' ? `Enquiry — ${jobDesc}` : null,
+    subject: source === 'email' || source === 'facebook_lead' ? `Enquiry - ${jobDesc}` : null,
   });
   res.json({ ok: true, ...result, simulated_source: source, name });
 }));

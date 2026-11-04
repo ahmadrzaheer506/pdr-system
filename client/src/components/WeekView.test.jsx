@@ -36,7 +36,7 @@ describe('WeekView (requirement 8.1)', () => {
         anchorDate={new Date(2026, 9, 6)}
         jobs={[{
           id: 1,
-          title: 'Flat roof overlay — hall extension',
+          title: 'Flat roof overlay - hall extension',
           customer_name: 'Community Hall Trust',
           start_date: '2026-10-06',
           end_date: '2026-10-06',
@@ -48,9 +48,9 @@ describe('WeekView (requirement 8.1)', () => {
         onDayClick={() => {}}
       />,
     );
-    await user.hover(screen.getByRole('button', { name: /flat roof overlay — hall extension/i }));
+    await user.hover(screen.getByRole('button', { name: /flat roof overlay - hall extension/i }));
     const tip = await screen.findByRole('tooltip');
-    expect(tip).toHaveTextContent('Flat roof overlay — hall extension');
+    expect(tip).toHaveTextContent('Flat roof overlay - hall extension');
     expect(tip).toHaveTextContent('Community Hall Trust');
     expect(tip.textContent).not.toMatch(/\.\.\./);
   });
@@ -142,7 +142,7 @@ describe('WeekView (requirement 8.1)', () => {
       />,
     );
     expect(screen.getByText(/nobody covering:/i)).toBeInTheDocument();
-    expect(screen.getByText(/needs a driver — nobody assigned can drive/i)).toBeInTheDocument();
+    expect(screen.getByText(/needs a driver - nobody assigned can drive/i)).toBeInTheDocument();
   });
 
   it('caps a busy day column and scrolls extra jobs', () => {

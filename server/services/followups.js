@@ -47,7 +47,7 @@ async function stopFollowupsAfterInbound(customerId, inboundAt = new Date(), rea
     total += n;
     await resolveQuoteFollowupTask(q.id);
     if (n > 0) {
-      await logActivity(customerId, null, 'followups_stopped', `Automatic follow-ups for ${q.ref} stopped — ${reason}`);
+      await logActivity(customerId, null, 'followups_stopped', `Automatic follow-ups for ${q.ref} stopped - ${reason}`);
     }
   }
   return total;
@@ -195,7 +195,7 @@ async function processDue() {
     if (await customerRepliedSince(f.customer_id, since)) {
       await stopPendingForQuote(f.quote_id, 'customer replied');
       await resolveQuoteFollowupTask(f.quote_id);
-      await logActivity(f.customer_id, null, 'followup_stopped', `Follow-up steps for ${f.Quote.ref} skipped — customer already replied`);
+      await logActivity(f.customer_id, null, 'followup_stopped', `Follow-up steps for ${f.Quote.ref} skipped - customer already replied`);
       continue;
     }
 

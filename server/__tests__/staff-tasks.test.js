@@ -13,6 +13,10 @@ jest.mock('../services/timesheets', () => ({
   jobClockInClosed: jest.fn(async () => false),
   paidInvoiceJobIds: jest.fn(async () => new Set()),
 }));
+jest.mock('../customerNotes', () => ({
+  copyTaskRemark: jest.fn(async () => ({ ok: true })),
+  copyClockOutHandover: jest.fn(async () => ({ ok: true })),
+}));
 jest.mock('../models', () => ({
   Job: { findByPk: jest.fn(), findAll: jest.fn() },
   Customer: { findAll: jest.fn() },
@@ -30,6 +34,7 @@ const request = require('supertest');
 const express = require('express');
 const { Op } = require('sequelize');
 const { Task, TaskAssignee, Customer } = require('../models');
+const notes = require('../customerNotes');
 const staff = require('../routes/staff');
 
 const app = express();
@@ -88,6 +93,7 @@ describe('GET /api/staff/tasks (requirement 12.3)', () => {
       priority: 'high',
       status: 'open',
       type: 'manual',
+      complete_note: null,
       lead_name: 'Dave Whitfield',
       assignees: [{ id: 3, name: 'Jamie Fisher', role: 'STAFF' }],
       assignee_name: 'Jamie Fisher',
@@ -106,7 +112,28 @@ describe('PUT /api/staff/tasks/:id', () => {
     Task.findByPk.mockResolvedValue({ id: 87, update });
     const res = await request(app).put('/api/staff/tasks/87').send({ status: 'done' });
     expect(res.status).toBe(200);
-    expect(update).toHaveBeenCalledWith({ status: 'done', done_at: expect.any(Date) });
+    expect(update).toHaveBeenCalledWith({
+      status: 'done',
+      done_at: expect.any(Date),
+      complete_note: null,
+    });
+  });
+
+  test('stores optional completion remarks when marking done', async () => {
+    TaskAssignee.findOne.mockResolvedValue({ task_id: 87, user_id: 3 });
+    const update = jest.fn().mockResolvedValue();
+    Task.findByPk.mockResolvedValue({ id: 87, update });
+    const res = await request(app).put('/api/staff/tasks/87').send({
+      status: 'done',
+      complete_note: '  Photos uploaded  ',
+    });
+    expect(res.status).toBe(200);
+    expect(update).toHaveBeenCalledWith({
+      status: 'done',
+      done_at: expect.any(Date),
+      complete_note: 'Photos uploaded',
+    });
+    expect(notes.copyTaskRemark).toHaveBeenCalledWith(expect.objectContaining({ id: 87 }), 3, 'Photos uploaded');
   });
 
   test('hides tasks that are not assigned to the caller', async () => {

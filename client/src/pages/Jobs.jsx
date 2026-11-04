@@ -78,7 +78,7 @@ function JobCard({ job, onOpen }) {
         {jobLeadName(job)}
       </Link>
       {job.quote_ref ? <p className="mt-0.5 text-sm text-slate-500">From {job.quote_ref}</p> : null}
-      <p className="mt-0.5 text-sm text-slate-500">{job.address || '—'}</p>
+      <p className="mt-0.5 text-sm text-slate-500">{job.address || '-'}</p>
       <p className="mt-0.5 text-sm text-slate-500">{job.crew || 'No crew yet'}</p>
       {job.value != null && job.value !== '' ? (
         <p className="mt-1 text-sm font-semibold text-slate-900">{money(job.value)}</p>
@@ -129,7 +129,7 @@ export default function Jobs() {
     <div className="space-y-5">
       <div>
         <h1 className="text-2xl font-bold text-slate-900">Jobs</h1>
-        <p className="text-slate-500 text-sm mt-0.5">Every job from pending through paid — filter, search, and open the job card.</p>
+        <p className="text-slate-500 text-sm mt-0.5">Every job from pending through paid - filter, search, and open the job card.</p>
       </div>
 
       <ListFilterBar
@@ -192,9 +192,9 @@ export default function Jobs() {
                       </Link>
                     </td>
                     <td className="px-4 py-3 whitespace-nowrap text-slate-600">{jobDates(job)}</td>
-                    <td className="px-4 py-3 text-slate-500">{job.crew || '—'}</td>
+                    <td className="px-4 py-3 text-slate-500">{job.crew || '-'}</td>
                     <td className="px-4 py-3 text-right font-medium">
-                      {job.value != null && job.value !== '' ? money(job.value) : '—'}
+                      {job.value != null && job.value !== '' ? money(job.value) : '-'}
                     </td>
                     <td className="px-4 py-3"><PriorityBadge priority={job.priority} /></td>
                     <td className="px-4 py-3"><StatusBadge status={job.status} /></td>

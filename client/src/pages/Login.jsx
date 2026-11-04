@@ -67,7 +67,7 @@ export default function Login() {
             One system for the whole roofing job.
           </p>
           <p className="mt-4 max-w-md text-sm leading-relaxed text-slate-400">
-            Leads, quotes, crews and invoices — from first enquiry through to paid, in a single place.
+            Leads, quotes, crews and invoices - from first enquiry through to paid, in a single place.
           </p>
         </div>
         <p className="relative z-10 text-xs text-slate-500">Paul Douglas Roofing &amp; Building Ltd</p>

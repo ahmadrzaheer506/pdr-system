@@ -30,6 +30,8 @@ describe('StaffHours clock times', () => {
         break_minutes: 0,
         worked_minutes: 8,
         status: 'completed',
+        notes: 'Ridge to finish tomorrow',
+        photo_file: 'shift-3-1.jpg',
       }],
       total_hours: 0.1,
     });
@@ -37,6 +39,8 @@ describe('StaffHours clock times', () => {
     const localRange = `${formatClockTime(clockIn)} – ${formatClockTime(clockOut)}`;
     expect(await screen.findByText('General')).toBeInTheDocument();
     expect(screen.getByText(localRange)).toBeInTheDocument();
+    expect(screen.getByText('Ridge to finish tomorrow')).toBeInTheDocument();
+    expect(screen.getByAltText('Clock-out site photo')).toHaveAttribute('src', '/api/files/shift-3-1.jpg');
     if (localRange !== '14:29 – 14:47') {
       expect(screen.queryByText('14:29 – 14:47')).not.toBeInTheDocument();
     }

@@ -16,7 +16,7 @@ function sortLeads(leads) {
   });
 }
 
-/** Creation time of a workspace record. Do not use visit `start` — that is the appointment, not when it was booked. */
+/** Creation time of a workspace record. Do not use visit `start` - that is the appointment, not when it was booked. */
 export function recordTime(row) {
   const raw = row?.created_at || row?.at || null;
   if (!raw) return null;
@@ -41,6 +41,19 @@ export function leadWorkspaceScope(leads, leadId) {
   return { lead, start, end };
 }
 
+/**
+ * Inbox Open always passes ?lead=. Task links and /leads/:id without it still
+ * pin to one enquiry so a customer with several leads is not mixed together.
+ */
+export function workspaceScopeForOpen(leads, leadId) {
+  const scoped = leadWorkspaceScope(leads, leadId);
+  if (scoped) return scoped;
+  if (leadId != null && String(leadId).trim() !== '') return null;
+  const sorted = sortLeads(leads);
+  if (!sorted.length) return null;
+  return leadWorkspaceScope(leads, sorted[sorted.length - 1].id);
+}
+
 export function inLeadScope(row, scope) {
   if (!scope) return true;
   if (row?.lead_id != null && scope.lead?.id != null) {
@@ -54,6 +67,20 @@ export function inLeadScope(row, scope) {
 export function filterByLeadScope(rows, scope) {
   if (!scope) return rows || [];
   return (rows || []).filter((row) => inLeadScope(row, scope));
+}
+
+/**
+ * Keep enquiry-scoped files, plus landing-page photos tagged on this lead.
+ */
+export function filesForLead(files, scope, lead) {
+  const scoped = filterByLeadScope(files, scope);
+  const ids = Array.isArray(lead?.meta?.photo_file_ids) ? lead.meta.photo_file_ids : [];
+  if (!ids.length) return scoped;
+  const have = new Set(scoped.map((file) => Number(file.id)));
+  const extras = (files || []).filter((file) => (
+    ids.some((id) => Number(id) === Number(file.id)) && !have.has(Number(file.id))
+  ));
+  return extras.length ? [...scoped, ...extras] : scoped;
 }
 
 /**

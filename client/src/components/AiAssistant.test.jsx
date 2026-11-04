@@ -87,6 +87,34 @@ describe('AiAssistant', () => {
     expect(onApproved).toHaveBeenCalled();
   });
 
+  it('toasts and hides approve when nothing is waiting to schedule', async () => {
+    const user = userEvent.setup();
+    const show = vi.fn();
+    api.post.mockResolvedValue({
+      provider: 'none',
+      assignments: [],
+      unassigned: [],
+      warnings: [],
+      errors: [],
+      summary: 'No unscheduled jobs waiting - nothing to propose.',
+    });
+    render(
+      <AiAssistant
+        proposeDate="2026-10-02"
+        setProposeDate={vi.fn()}
+        onApproved={vi.fn()}
+        show={show}
+      />,
+    );
+    await user.click(screen.getByRole('button', { name: 'Propose schedule' }));
+    await waitFor(() => {
+      expect(show).toHaveBeenCalledWith('No unscheduled jobs waiting. Place a job on the queue first, then propose a schedule.');
+    });
+    expect(screen.queryByRole('button', { name: /approve & schedule/i })).not.toBeInTheDocument();
+    expect(screen.queryByText(/nothing to propose/i)).not.toBeInTheDocument();
+    expect(screen.getByText(/place a job on the unscheduled queue first/i)).toBeInTheDocument();
+  });
+
   it('asks to confirm before scheduling someone on holiday', async () => {
     const user = userEvent.setup();
     api.post.mockResolvedValueOnce({

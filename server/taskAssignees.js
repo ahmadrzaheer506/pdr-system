@@ -67,7 +67,7 @@ function publicAssignees(users) {
 }
 
 /**
- * Task ids assigned to a user (requirement 12.3 — field staff see only their own).
+ * Task ids assigned to a user (requirement 12.3 - field staff see only their own).
  * @param {number} userId
  * @returns {Promise<number[]>}
  */

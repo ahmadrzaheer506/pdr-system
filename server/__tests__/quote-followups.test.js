@@ -6,7 +6,7 @@ describe('parseFollowups (requirement 12.1)', () => {
       enabled: true,
       email_subject: 'Re {ref}',
       steps: [
-        { delay_days: 2, channel: 'whatsapp', body: 'Hi {name} — {ref}' },
+        { delay_days: 2, channel: 'whatsapp', body: 'Hi {name} - {ref}' },
         { delay_days: 5, channel: 'email', body: 'Checking in on {title}' },
       ],
     });
@@ -14,7 +14,7 @@ describe('parseFollowups (requirement 12.1)', () => {
       enabled: true,
       email_subject: 'Re {ref}',
       steps: [
-        { delay_days: 2, channel: 'whatsapp', body: 'Hi {name} — {ref}' },
+        { delay_days: 2, channel: 'whatsapp', body: 'Hi {name} - {ref}' },
         { delay_days: 5, channel: 'email', body: 'Checking in on {title}' },
       ],
     });
@@ -29,7 +29,7 @@ describe('parseFollowups (requirement 12.1)', () => {
       .toMatch(/whole number of days/);
   });
 
-  test('uses Company step body only — empty body is skipped, no Templates fallback', () => {
+  test('uses Company step body only - empty body is skipped, no Templates fallback', () => {
     expect(stepBody({ body: 'Custom' })).toBe('Custom');
     expect(stepBody({ body: '  ' })).toBe('');
     expect(stepBody({})).toBe('');

@@ -151,7 +151,16 @@ router.post('/website', (req, res, next) => {
   }
   try {
     const result = await ingestInbound(parsed.value);
-    const stored = await websiteEnquiry.saveEnquiryPhotos(result.customerId, photos.files);
+    const customerNote = String(parsed.value.enquiry_message || parsed.value.body || '').trim();
+    if (customerNote) {
+      await require('../customerNotes').copyRemark(result.customerId, null, customerNote, {
+        source: 'customer',
+        leadId: result.leadId,
+      });
+    }
+    const stored = await websiteEnquiry.saveEnquiryPhotos(result.customerId, photos.files, {
+      leadId: result.leadId,
+    });
     const photo_ids = stored.saved.map((f) => f.id);
     const photo_names = stored.saved.map((f) => f.original_name);
     if (result.leadId && photo_ids.length) {
@@ -191,7 +200,7 @@ router.post('/twilio/voice', express.urlencoded({ extended: false }), async (req
   );
   try {
     const { From } = req.body || {};
-    await ingestInbound({ source: 'phone', channel: 'phone', name: From, phone: From, body: 'Missed/inbound call — voicemail recording pending' });
+    await ingestInbound({ source: 'phone', channel: 'phone', name: From, phone: From, body: 'Missed/inbound call - voicemail recording pending' });
     await logEvent('telephony', 'call.received', { from: From });
   } catch (err) {
     await logEvent('telephony', 'webhook.error', { error: String(err.message) }, 'error');

@@ -14,7 +14,7 @@ function roleLabel(role) {
 }
 
 /**
- * Persistent app header — profile popover and notifications drawer.
+ * Persistent app header - profile popover and notifications drawer.
  * Used on every authenticated office and staff page.
  */
 export default function AppHeader({

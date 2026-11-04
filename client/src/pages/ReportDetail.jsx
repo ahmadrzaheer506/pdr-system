@@ -230,7 +230,7 @@ function LeadVolumeReport({ data }) {
                   <td className="px-4 py-2">
                     <span className="inline-flex items-center gap-1.5 capitalize text-slate-600">
                       <span className="h-2 w-2 rounded-full" style={{ background: SOURCE_COLORS[row.source] || '#94a3b8' }} />
-                      {(row.source || '—').replace('_', ' ')}
+                      {(row.source || '-').replace('_', ' ')}
                     </span>
                   </td>
                   <td className="px-4 py-2"><StatusBadge status={row.status} /></td>
@@ -245,7 +245,7 @@ function LeadVolumeReport({ data }) {
 }
 
 function WinLossReport({ data }) {
-  const rate = data.winRate !== null ? `${data.winRate}%` : '—';
+  const rate = data.winRate !== null ? `${data.winRate}%` : '-';
   return (
     <>
       <p className="text-sm text-slate-500">
@@ -282,7 +282,7 @@ function WinLossReport({ data }) {
                     <Link to={`/customers/${row.id}`} className="font-medium text-slate-800 hover:underline">{row.name}</Link>
                   </td>
                   <td className="px-4 py-2"><StageBadge stage={row.stage} /></td>
-                  <td className="px-4 py-2 text-slate-500">{row.stage === 'LOST' ? (row.lost_reason || '—') : '—'}</td>
+                  <td className="px-4 py-2 text-slate-500">{row.stage === 'LOST' ? (row.lost_reason || '-') : '-'}</td>
                   <td className="px-4 py-2 text-slate-500 whitespace-nowrap">{fmtDate(row.updated_at)}</td>
                 </tr>
               ))}
@@ -297,7 +297,7 @@ function PipelineValueReport({ data }) {
   return (
     <>
       <p className="text-sm text-slate-500">
-        {money(data.pipelineValue)} across {data.pipelineCount} active customer{data.pipelineCount === 1 ? '' : 's'}. Live snapshot of sent and draft quotes on Enquiry through Follow-up — not filtered by 7/30/90.
+        {money(data.pipelineValue)} across {data.pipelineCount} active customer{data.pipelineCount === 1 ? '' : 's'}. Live snapshot of sent and draft quotes on Enquiry through Follow-up - not filtered by 7/30/90.
       </p>
       <div className="card p-5">
         <h3 className="font-semibold text-slate-800 mb-4">By stage</h3>
@@ -341,8 +341,8 @@ function CustomersReport({ data }) {
                   </td>
                   <td className="px-4 py-2 text-slate-600">{row.customer_type === 'commercial' ? 'Commercial' : 'Domestic'}</td>
                   <td className="px-4 py-2"><StageBadge stage={row.stage} label={STAGE_LABELS[row.stage] || row.stage} /></td>
-                  <td className="px-4 py-2 text-slate-500">{row.source || '—'}</td>
-                  <td className="px-4 py-2 text-slate-500">{row.stage === 'LOST' ? (row.lost_reason || '—') : '—'}</td>
+                  <td className="px-4 py-2 text-slate-500">{row.source || '-'}</td>
+                  <td className="px-4 py-2 text-slate-500">{row.stage === 'LOST' ? (row.lost_reason || '-') : '-'}</td>
                   <td className="px-4 py-2 text-slate-500 whitespace-nowrap">{fmtDate(row.created_at)}</td>
                 </tr>
               ))}
@@ -378,10 +378,10 @@ function JobsReport({ data }) {
                   <td className="px-4 py-2">
                     {row.customer_id ? (
                       <Link to={`/customers/${row.customer_id}`} className="text-slate-800 hover:underline">{row.customer_name || 'Customer'}</Link>
-                    ) : (row.customer_name || '—')}
+                    ) : (row.customer_name || '-')}
                   </td>
                   <td className="px-4 py-2 text-slate-500 whitespace-nowrap">
-                    {row.start_date ? `${fmtDate(row.start_date)}${row.end_date && row.end_date !== row.start_date ? ` – ${fmtDate(row.end_date)}` : ''}` : '—'}
+                    {row.start_date ? `${fmtDate(row.start_date)}${row.end_date && row.end_date !== row.start_date ? ` – ${fmtDate(row.end_date)}` : ''}` : '-'}
                   </td>
                   <td className="px-4 py-2 text-slate-500 whitespace-nowrap">{fmtDate(row.created_at)}</td>
                 </tr>
@@ -420,7 +420,7 @@ function InvoicesReport({ data }) {
                   <td className="px-4 py-2">
                     {row.customer_id ? (
                       <Link to={`/customers/${row.customer_id}`} className="text-slate-800 hover:underline">{row.customer_name || 'Customer'}</Link>
-                    ) : (row.customer_name || '—')}
+                    ) : (row.customer_name || '-')}
                   </td>
                   {showTotals && <td className="px-4 py-2 tabular-nums">{money(row.total)}</td>}
                   {showTotals && <td className="px-4 py-2 tabular-nums">{money(row.amount_due)}</td>}
@@ -441,7 +441,7 @@ function ProfitabilityReport({ data }) {
     <div className="space-y-6">
       <p className="text-sm text-slate-500">
         Quoted value (excluding VAT) against labour clocked on jobs created in this window.
-        <strong className="text-slate-700"> This is before materials</strong> — it shows what is left to cover materials, overheads and profit.
+        <strong className="text-slate-700"> This is before materials</strong> - it shows what is left to cover materials, overheads and profit.
       </p>
       {jobs.length === 0 ? (
         <EmptyState title="No costed jobs in this window" detail="Jobs need completed or approved clocked hours." />
@@ -469,7 +469,7 @@ function ProfitabilityReport({ data }) {
                     <div className="text-xs text-slate-400">
                       {j.customer_id ? (
                         <Link to={`/customers/${j.customer_id}`} className="hover:underline">{j.customer_name || 'Customer'}</Link>
-                      ) : (j.customer_name || '—')}
+                      ) : (j.customer_name || '-')}
                     </div>
                   </td>
                   <td className="px-4 py-2 text-right tabular-nums">{money(j.net_value)}</td>
@@ -479,7 +479,7 @@ function ProfitabilityReport({ data }) {
                   <td className="px-4 py-2 text-right">
                     <span className={`inline-flex items-center justify-end gap-1 font-semibold ${j.margin_percent < 20 ? 'text-red-600' : j.margin_percent < 40 ? 'text-amber-600' : 'text-emerald-600'}`}>
                       {j.margin_percent < 20 ? <TrendingDown size={13} /> : <TrendingUp size={13} />}
-                      {j.margin_percent === null ? '—' : `${j.margin_percent}%`}
+                      {j.margin_percent === null ? '-' : `${j.margin_percent}%`}
                     </span>
                   </td>
                 </tr>

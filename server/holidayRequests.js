@@ -139,7 +139,7 @@ async function createRequest(actor, { start_date, end_date, reason, user_id, kin
     const noticeDays = Number.isFinite(rawNotice) ? rawNotice : 28;
     const notice = noticeDaysUntil(start);
     if (notice < noticeDays) {
-      fail(400, `Requires ${noticeDays} days' notice — this date is only ${Math.max(notice, 0)} days away`, { notice_days: noticeDays });
+      fail(400, `Requires ${noticeDays} days' notice - this date is only ${Math.max(notice, 0)} days away`, { notice_days: noticeDays });
     }
   }
 
@@ -210,7 +210,7 @@ async function assertAllowance(user, start, end, excludeId) {
     const add = daysInYear(start, end, year);
     if (used + add > allowance) {
       const remaining = Math.max(allowance - used, 0);
-      fail(400, `Only ${remaining} of ${allowance} days left in ${year} — this request needs ${add}`, {
+      fail(400, `Only ${remaining} of ${allowance} days left in ${year} - this request needs ${add}`, {
         remaining, allowance, year,
       });
     }
@@ -245,7 +245,7 @@ async function notifyHolidayDecision(row, decision, reason) {
   const kind = decision === 'approved' ? 'holiday_approved' : 'holiday_declined';
   const message = decision === 'approved'
     ? `Your holiday ${start} to ${end} was approved`
-    : `Your holiday ${start} to ${end} was declined${reason ? ` — ${reason}` : ''}`;
+    : `Your holiday ${start} to ${end} was declined${reason ? ` - ${reason}` : ''}`;
   await safeNotify(() => notifyUsers([row.user_id], {
     kind,
     message,

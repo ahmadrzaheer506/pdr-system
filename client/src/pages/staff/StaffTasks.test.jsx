@@ -54,7 +54,15 @@ describe('StaffTasks', () => {
       const p = String(path);
       if (p.includes('when=done')) {
         return {
-          tasks: [{ id: 9, title: 'Old chase', type: 'manual', priority: 'high', due_date: '2026-09-01', status: 'done' }],
+          tasks: [{
+            id: 9,
+            title: 'Old chase',
+            type: 'manual',
+            priority: 'high',
+            due_date: '2026-09-01',
+            status: 'done',
+            complete_note: 'Left a voicemail - they will call back Monday.',
+          }],
           counts: COUNTS,
         };
       }
@@ -85,8 +93,10 @@ describe('StaffTasks', () => {
     await user.click(screen.getByRole('button', { name: /mark "site photos for dave" done/i }));
     expect(screen.getByRole('heading', { name: /mark task done/i })).toBeInTheDocument();
     expect(api.put).not.toHaveBeenCalled();
+    expect(screen.getByLabelText(/completion remarks/i)).toBeInTheDocument();
+    await user.type(screen.getByLabelText(/completion remarks/i), 'Photos uploaded.');
     await user.click(screen.getByRole('button', { name: /^mark done$/i }));
-    expect(api.put).toHaveBeenCalledWith('/staff/tasks/87', { status: 'done' });
+    expect(api.put).toHaveBeenCalledWith('/staff/tasks/87', { status: 'done', complete_note: 'Photos uploaded.' });
   });
 
   it('highlights the task from ?when=&task= on that view', async () => {
@@ -102,6 +112,7 @@ describe('StaffTasks', () => {
     expect(await screen.findByText('Site photos for Dave')).toBeInTheDocument();
     await user.click(screen.getByRole('button', { name: /1\s+done/i }));
     expect(await screen.findByText('Old chase')).toBeInTheDocument();
+    expect(screen.getByText('Left a voicemail - they will call back Monday.')).toBeInTheDocument();
     expect(api.get).toHaveBeenCalledWith('/staff/tasks?when=done');
   });
 });

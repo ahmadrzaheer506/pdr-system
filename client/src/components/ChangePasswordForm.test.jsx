@@ -41,7 +41,7 @@ describe('ChangePasswordForm (requirement 1.2 set/change)', () => {
     await user.type(screen.getByLabelText(/confirm new password/i), 'newpass99');
     await user.click(screen.getByRole('button', { name: /update password/i }));
     expect(put).toHaveBeenCalledWith('/auth/password', { current: 'password123', next: 'newpass99' });
-    expect(await screen.findByText('Password updated — sign in again')).toBeInTheDocument();
+    expect(await screen.findByText('Password updated - sign in again')).toBeInTheDocument();
     expect(logout).toHaveBeenCalled();
   });
 

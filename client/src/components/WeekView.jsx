@@ -40,7 +40,7 @@ export function JobChip({ job, dateIso, onJobClick, holidays = [], bookings = []
                 <span
                   key={c.user_id}
                   className={`relative rounded-full ${conflict ? 'ring-2 ring-amber-400' : ''}`}
-                  title={conflict ? `${c.name} — ${conflict}` : c.name}
+                  title={conflict ? `${c.name} - ${conflict}` : c.name}
                 >
                   <Avatar
                     name={c.name}

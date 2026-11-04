@@ -58,8 +58,8 @@ function VisitCard({ visit }) {
       <p className="mt-1.5 text-sm font-medium text-slate-800">{fmtDateTime(visit.start)}</p>
       <p className="mt-1 text-sm text-slate-600">{visitTypeLabel(visit.visit_type)}</p>
       {visit.title ? <p className="mt-0.5 text-sm text-slate-500">{visit.title}</p> : null}
-      <p className="mt-1 text-sm text-slate-500">{visit.address || '—'}</p>
-      <p className="mt-0.5 text-sm text-slate-500">{visit.assignee_name || '—'}</p>
+      <p className="mt-1 text-sm text-slate-500">{visit.address || '-'}</p>
+      <p className="mt-0.5 text-sm text-slate-500">{visit.assignee_name || '-'}</p>
     </article>
   );
 }
@@ -100,7 +100,7 @@ export default function Visits() {
     <div className="space-y-5">
       <div>
         <h1 className="text-2xl font-bold text-slate-900">Site visits</h1>
-        <p className="text-slate-500 text-sm mt-0.5">Every booked, completed and cancelled visit — filter by type, date or lead.</p>
+        <p className="text-slate-500 text-sm mt-0.5">Every booked, completed and cancelled visit - filter by type, date or lead.</p>
       </div>
 
       <ListFilterBar
@@ -158,8 +158,8 @@ export default function Visits() {
                     </td>
                     <td className="px-4 py-3 text-slate-600">{visitTypeLabel(visit.visit_type)}</td>
                     <td className="px-4 py-3 text-slate-500">{visit.title}</td>
-                    <td className="px-4 py-3 text-slate-500">{visit.address || '—'}</td>
-                    <td className="px-4 py-3 text-slate-500">{visit.assignee_name || '—'}</td>
+                    <td className="px-4 py-3 text-slate-500">{visit.address || '-'}</td>
+                    <td className="px-4 py-3 text-slate-500">{visit.assignee_name || '-'}</td>
                     <td className="px-4 py-3"><StatusBadge status={visit.status} /></td>
                   </tr>
                 ))}

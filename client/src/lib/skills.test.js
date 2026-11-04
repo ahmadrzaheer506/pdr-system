@@ -23,7 +23,7 @@ describe('staff skill matching (requirement 7.2 / 8.3)', () => {
   });
 
   it('labels a requirement with its level', () => {
-    expect(skillLabel({ skill_id: roofing, level: 'advanced' }, CATALOGUE)).toBe('Roofing — Advanced');
+    expect(skillLabel({ skill_id: roofing, level: 'advanced' }, CATALOGUE)).toBe('Roofing - Advanced');
   });
 
   it('matches when the person meets the required level or higher', () => {

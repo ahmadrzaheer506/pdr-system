@@ -42,7 +42,9 @@ function decorateTask(row, { customerNames = new Map(), enquiries = new Map() } 
     const enquiry = enquiries.get(Number(o.entity_id));
     o.enquiry_id = o.entity_id;
     o.lead_id = enquiry?.customer_id || null;
-    o.lead_name = o.lead_id ? (customerNames.get(Number(o.lead_id)) || null) : null;
+    const customerName = o.lead_id ? (customerNames.get(Number(o.lead_id)) || null) : null;
+    o.lead_ref = enquiry?.ref || null;
+    o.lead_name = enquiry?.ref && customerName ? `${enquiry.ref} - ${customerName}` : customerName;
   } else if (o.entity_type === 'customer') {
     o.enquiry_id = null;
     o.lead_id = o.entity_id;

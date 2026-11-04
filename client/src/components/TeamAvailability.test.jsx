@@ -16,7 +16,7 @@ const staff = [
 const jobs = [
   {
     id: 8,
-    title: 'Full re-roof — semi-detached',
+    title: 'Full re-roof - semi-detached',
     day_assignments: [{ work_date: '2026-10-02', user_id: 1, name: 'Ryan' }],
   },
 ];
@@ -38,7 +38,7 @@ describe('TeamAvailability', () => {
     expect(screen.getByText('Jamie Fisher')).toBeInTheDocument();
     expect(screen.getByText('Job assignee')).toBeInTheDocument();
     expect(screen.getByText('Assigned job')).toBeInTheDocument();
-    expect(screen.getByText('Full re-roof — semi-detached')).toBeInTheDocument();
+    expect(screen.getByText('Full re-roof - semi-detached')).toBeInTheDocument();
     expect(screen.getByText('Driver')).toBeInTheDocument();
     expect(screen.getAllByText('Roofer').length).toBeGreaterThan(0);
   });
@@ -74,12 +74,12 @@ describe('TeamAvailability', () => {
         today="2026-10-02"
       />,
     );
-    expect(screen.getByText('Roofing — Advanced')).toBeInTheDocument();
-    expect(screen.getByText('Flat Roofing — Advanced')).toBeInTheDocument();
-    expect(screen.queryByText('1 — Advanced')).not.toBeInTheDocument();
-    expect(screen.queryByText('Brickwork & Masonry — Trainee')).not.toBeInTheDocument();
+    expect(screen.getByText('Roofing - Advanced')).toBeInTheDocument();
+    expect(screen.getByText('Flat Roofing - Advanced')).toBeInTheDocument();
+    expect(screen.queryByText('1 - Advanced')).not.toBeInTheDocument();
+    expect(screen.queryByText('Brickwork & Masonry - Trainee')).not.toBeInTheDocument();
     await user.click(screen.getByRole('button', { name: /show all 6 skills for daley/i }));
-    expect(screen.getByText('Brickwork & Masonry — Trainee')).toBeInTheDocument();
+    expect(screen.getByText('Brickwork & Masonry - Trainee')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /hide extra skills for daley/i })).toBeInTheDocument();
   });
 

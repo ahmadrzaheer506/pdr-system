@@ -16,6 +16,6 @@ describe('lost reasons (requirement 2.6)', () => {
       .toBe('Out of area');
     expect(parseLostReason({ lost_reason_code: 'other' }).lost_reason).toBe('Other');
     expect(parseLostReason({ lost_reason_code: 'other', lost_reason_note: '  Neighbour  ' }).lost_reason)
-      .toBe('Other — Neighbour');
+      .toBe('Other - Neighbour');
   });
 });

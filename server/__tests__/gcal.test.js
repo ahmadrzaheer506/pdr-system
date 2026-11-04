@@ -36,7 +36,7 @@ describe('Google Calendar per-user tokens (requirement 5.2)', () => {
   test('createEvent is simulated when that office user is not connected', async () => {
     OauthToken.findOne.mockResolvedValue(null);
     const result = await gcal.createEvent({
-      title: 'Site visit — Dave',
+      title: 'Site visit - Dave',
       start: '2026-09-30T09:00:00.000Z',
       end: '2026-09-30T10:00:00.000Z',
       userId: LISA,
@@ -50,7 +50,7 @@ describe('Google Calendar per-user tokens (requirement 5.2)', () => {
 
   test('createEvent is simulated when booking without a user id', async () => {
     const result = await gcal.createEvent({
-      title: 'Site visit — Dave',
+      title: 'Site visit - Dave',
       start: '2026-09-30T09:00:00.000Z',
       end: '2026-09-30T10:00:00.000Z',
     });

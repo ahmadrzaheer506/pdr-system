@@ -619,6 +619,53 @@ describe('appointment complete note migration', () => {
   });
 });
 
+describe('customer file source migration', () => {
+  test('adds source and lead_id on customer_files', async () => {
+    const cols = {};
+    const queryInterface = {
+      describeTable: async () => cols,
+      addColumn: async (table, name, def) => { cols[name] = { table, ...def }; },
+      removeColumn: async (table, name) => { delete cols[name]; },
+    };
+    const migration = require('../migrations/20261104150000-customer-file-source');
+    await migration.up(queryInterface, Sequelize);
+    expect(cols.source.table).toBe('customer_files');
+    expect(cols.source.defaultValue).toBe('general');
+    expect(cols.lead_id.table).toBe('customer_files');
+  });
+});
+
+describe('customer note source migration', () => {
+  test('adds source and lead_id on customer_notes', async () => {
+    const cols = {};
+    const queryInterface = {
+      describeTable: async () => cols,
+      addColumn: async (table, name, def) => { cols[name] = { table, ...def }; },
+      removeColumn: async (table, name) => { delete cols[name]; },
+    };
+    const migration = require('../migrations/20261104140000-customer-note-source');
+    await migration.up(queryInterface, Sequelize);
+    expect(cols.source.table).toBe('customer_notes');
+    expect(cols.source.defaultValue).toBe('general');
+    expect(cols.lead_id.table).toBe('customer_notes');
+  });
+});
+
+describe('task complete note migration', () => {
+  test('adds complete_note on tasks', async () => {
+    const cols = {};
+    const queryInterface = {
+      describeTable: async () => cols,
+      addColumn: async (table, name, def) => { cols[name] = { table, ...def }; },
+      removeColumn: async (table, name) => { delete cols[name]; },
+    };
+    const migration = require('../migrations/20261104120000-task-complete-note');
+    await migration.up(queryInterface, Sequelize);
+    expect(cols.complete_note.table).toBe('tasks');
+    expect(cols.complete_note.type).toBe(Sequelize.TEXT);
+  });
+});
+
 describe('lead pipeline stage migration', () => {
   test('adds stage on leads and lead_id on quotes, visits, jobs, and history', async () => {
     const added = {};

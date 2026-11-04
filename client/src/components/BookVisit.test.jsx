@@ -98,7 +98,7 @@ describe('BookVisit contact pickers (requirement 2.2)', () => {
     await user.click(screen.getByRole('button', { name: /book visit/i }));
     expect(api.post).toHaveBeenCalledWith('/appointments', expect.objectContaining({
       visit_type: 'measure',
-      title: 'Measure — Dave Whitfield',
+      title: 'Measure - Dave Whitfield',
       assignee_ids: [3],
     }));
   });

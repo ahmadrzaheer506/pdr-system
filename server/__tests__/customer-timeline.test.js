@@ -36,9 +36,9 @@ describe('customer timeline (requirement 2.3)', () => {
         { id: 3, channel: 'note', body: 'Internal note', direction: 'out', status: 'logged', created_at: '2026-01-03T11:00:00Z', user_name: 'Paul' },
       ],
       [
-        { id: 10, kind: 'quote_created', entity_type: 'quote', entity_id: 5, detail: 'Quote Q-1 created — £1,200.00', created_at: '2026-01-02T12:00:00Z', user_name: 'Lisa' },
+        { id: 10, kind: 'quote_created', entity_type: 'quote', entity_id: 5, detail: 'Quote Q-1 created - £1,200.00', created_at: '2026-01-02T12:00:00Z', user_name: 'Lisa' },
         { id: 11, kind: 'job_created', entity_type: 'job', entity_id: 7, detail: 'Job "Re-roof" created', created_at: '2026-01-04T08:00:00Z', user_name: 'Lisa' },
-        { id: 12, kind: 'invoice_created', entity_type: 'invoice', entity_id: 3, detail: 'Invoice INV-1 created — £1,200.00', created_at: '2026-01-05T09:00:00Z', user_name: 'Lisa' },
+        { id: 12, kind: 'invoice_created', entity_type: 'invoice', entity_id: 3, detail: 'Invoice INV-1 created - £1,200.00', created_at: '2026-01-05T09:00:00Z', user_name: 'Lisa' },
         { id: 13, kind: 'stage_change', detail: 'Stage moved', created_at: '2026-01-06T09:00:00Z', user_name: null },
       ],
     );

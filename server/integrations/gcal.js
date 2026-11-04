@@ -1,5 +1,5 @@
 // ============================================================
-// Google Calendar adapter (OAuth2, raw REST — no SDK dependency).
+// Google Calendar adapter (OAuth2, raw REST - no SDK dependency).
 // Requirement 5.2: each office user connects their own calendar.
 // CRM → Google on book/update/cancel; Google → CRM via poll of linked
 // events (time moves and cancels). Booking still works unconnected
@@ -189,7 +189,7 @@ async function saveCalendarId(userId, calendarId) {
 /**
  * Only write to a named CRM calendar when it is on the user's calendar list
  * and selected. A calendar that was created but never inserted into
- * calendarList is invisible — events "succeed" and never show in the UI.
+ * calendarList is invisible - events "succeed" and never show in the UI.
  */
 async function ensureCrmCalendar(userId) {
   let list;
@@ -213,7 +213,7 @@ async function ensureCrmCalendar(userId) {
             backgroundColor: '#dc1114',
           }),
         });
-      } catch { /* still listed — user can tick it */ }
+      } catch { /* still listed - user can tick it */ }
     }
     await saveCalendarId(userId, existing.id);
     return existing.id;
@@ -406,10 +406,10 @@ async function status(userId) {
     env_needed: ['GOOGLE_CLIENT_ID', 'GOOGLE_CLIENT_SECRET', 'GOOGLE_REDIRECT_URI'],
     connect_url: '/api/integrations/google/connect',
     detail: !isConfigured()
-      ? 'Simulated — events stay in-app until OAuth client keys are set, then each user connects their own calendar from Profile.'
+      ? 'Simulated - events stay in-app until OAuth client keys are set, then each user connects their own calendar from Profile.'
       : connected
-        ? 'Live — visits, jobs, holidays and tasks sync onto your Paul Douglas Roofing Google Calendar'
-        : 'Keys present — connect Google Calendar from Profile. Nothing is pushed until you connect.',
+        ? 'Live - visits, jobs, holidays and tasks sync onto your Paul Douglas Roofing Google Calendar'
+        : 'Keys present - connect Google Calendar from Profile. Nothing is pushed until you connect.',
   };
 }
 

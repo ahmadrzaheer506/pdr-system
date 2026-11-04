@@ -314,7 +314,7 @@ export default function Dashboard() {
         />
         <MetricCard
           label="Win rate"
-          value={data.winRate !== null && data.winRate !== undefined ? `${data.winRate}%` : '—'}
+          value={data.winRate !== null && data.winRate !== undefined ? `${data.winRate}%` : '-'}
           sub={`${data.won ?? 0} won · ${data.lost ?? 0} lost`}
           icon={Trophy}
           tone="amber"
@@ -322,7 +322,7 @@ export default function Dashboard() {
         />
         <MetricCard
           label="Avg job value"
-          value={data.avgJobValue != null ? money(data.avgJobValue) : '—'}
+          value={data.avgJobValue != null ? money(data.avgJobValue) : '-'}
           sub={rangeHint}
           icon={PoundSterling}
           tone="rose"
@@ -485,7 +485,7 @@ export default function Dashboard() {
         <div className="mb-5 flex items-start justify-between gap-3">
           <div>
             <h2 className="font-semibold text-slate-900">Leads by pipeline stage</h2>
-            <p className="mt-0.5 text-xs text-slate-400">Live board — every enquiry</p>
+            <p className="mt-0.5 text-xs text-slate-400">Live board - every enquiry</p>
           </div>
           <Link to="/pipeline" className="inline-flex items-center gap-1 text-sm font-medium text-slate-500 hover:text-brand-500">
             Open pipeline
@@ -531,7 +531,7 @@ export default function Dashboard() {
           </div>
           {tasks.overdue > 0 ? (
             <span className="mt-2 inline-flex rounded-full bg-rose-50 px-2 py-0.5 text-xs font-medium text-rose-700">
-              {tasks.overdue} overdue — click to review
+              {tasks.overdue} overdue - click to review
             </span>
           ) : (
             <p className="mt-2 text-sm text-slate-500">Nothing overdue</p>

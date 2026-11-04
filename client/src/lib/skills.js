@@ -137,7 +137,7 @@ export function skillLabel(req, catalogue = []) {
   const name = skillName(req, catalogue);
   if (req && typeof req === 'object' && req.level) {
     const level = LEVEL_LABELS[parseLevel(req.level)] || req.level;
-    return `${name} — ${level}`;
+    return `${name} - ${level}`;
   }
   return name;
 }

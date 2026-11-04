@@ -318,6 +318,24 @@ describe('Timesheets review (requirement 9.4)', () => {
     expect(screen.getByRole('tooltip')).not.toHaveTextContent(/office correction/i);
   });
 
+  it('shows clock-out notes and photo on the review row', async () => {
+    reviewRows = [
+      {
+        id: 1, status: 'completed', labour_cost: 196, worked_minutes: 480, user_name: 'Liam', color: '#000',
+        work_date: '2026-09-21', clock_in: '2026-09-21T08:00:00', clock_out: '2026-09-21T16:00:00', job_title: 'Re-roof',
+        notes: 'Ridge to finish tomorrow. Used 2 rolls of membrane.',
+        photo_file: 'shift-3-1.jpg',
+      },
+    ];
+    const user = userEvent.setup();
+    render(<Timesheets />);
+    await user.click(await screen.findByRole('button', { name: /review & approve/i }));
+    expect(await screen.findByText(/ridge to finish tomorrow/i)).toBeInTheDocument();
+    expect(screen.getByAltText('Clock-out site photo')).toHaveAttribute('src', '/api/files/shift-3-1.jpg');
+    await user.click(screen.getByRole('button', { name: /view clock-out notes and site photo/i }));
+    expect(screen.getByRole('dialog')).toHaveTextContent(/ridge to finish tomorrow/i);
+  });
+
   it('filters the table and CSV by status and staff', async () => {
     reviewRows = [
       {

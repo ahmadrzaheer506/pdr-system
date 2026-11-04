@@ -6,21 +6,32 @@ import DatePicker from './DatePicker.jsx';
 import { localIsoDate, proposalCrewConflicts } from '../lib/schedule';
 import CrewConflictModal from './CrewConflictModal.jsx';
 
+function nothingWaiting(result) {
+  const waiting = result?.context?.unscheduledJobs;
+  if (Array.isArray(waiting) && waiting.length === 0) return true;
+  return result?.provider === 'none'
+    && !(result.assignments || []).length
+    && !(result.unassigned || []).length;
+}
+
+const EMPTY_QUEUE_TOAST = 'No unscheduled jobs waiting. Place a job on the queue first, then propose a schedule.';
+
 /**
- * Office AI schedule composer — same propose/approve payloads as before.
+ * Office AI schedule composer - same propose/approve payloads as before.
  */
 export default function AiAssistant({ proposeDate, setProposeDate, onApproved, show }) {
   const [transcript, setTranscript] = useState('');
   const [listening, setListening] = useState(false);
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState(null);
+  const [emptyNotice, setEmptyNotice] = useState(false);
   const [edited, setEdited] = useState({});
   const [conflicts, setConflicts] = useState([]);
   const recogRef = useRef(null);
 
   const startListening = () => {
     const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
-    if (!SR) { show('Voice input isn\'t supported in this browser — type your instruction instead.', 'error'); return; }
+    if (!SR) { show('Voice input isn\'t supported in this browser - type your instruction instead.', 'error'); return; }
     const recog = new SR();
     recog.lang = 'en-GB';
     recog.continuous = true;
@@ -45,12 +56,18 @@ export default function AiAssistant({ proposeDate, setProposeDate, onApproved, s
   const propose = async () => {
     setLoading(true);
     setResult(null);
+    setEmptyNotice(false);
     setEdited({});
     try {
       const r = await api.post('/jobs/ai/propose', { date: proposeDate, transcript });
+      if (nothingWaiting(r)) {
+        setEmptyNotice(true);
+        show(EMPTY_QUEUE_TOAST);
+        return;
+      }
       setResult(r);
       const initEdit = {};
-      r.assignments.forEach((a) => { initEdit[a.job_id] = a.user_ids; });
+      (r.assignments || []).forEach((a) => { initEdit[a.job_id] = a.user_ids; });
       setEdited(initEdit);
     } catch (err) { show(err.message, 'error'); }
     finally { setLoading(false); }
@@ -131,7 +148,7 @@ export default function AiAssistant({ proposeDate, setProposeDate, onApproved, s
             {result ? <ModeBadge mode={simulated ? 'simulated' : 'live'} /> : null}
           </div>
           <p className="mt-1 text-sm leading-relaxed text-slate-500">
-            Tell it who's off, what's a priority, or anything unusual — it already knows every job and every lad.
+            Tell it who's off, what's a priority, or anything unusual - it already knows every job and every lad.
           </p>
         </div>
       </div>
@@ -192,6 +209,12 @@ export default function AiAssistant({ proposeDate, setProposeDate, onApproved, s
         </div>
       </div>
 
+      {emptyNotice ? (
+        <div className="mt-4 rounded-2xl bg-slate-50 px-4 py-3.5 text-sm leading-relaxed text-slate-600 ring-1 ring-slate-200/80">
+          No unscheduled jobs waiting. Place a job on the Unscheduled queue first, then propose a schedule.
+        </div>
+      ) : null}
+
       {result && (
         <div className="mt-4 space-y-3 rounded-2xl bg-slate-50 p-4 ring-1 ring-slate-200/80 sm:p-5">
           <p className="text-sm leading-relaxed text-slate-600">{result.summary}</p>
@@ -251,15 +274,17 @@ export default function AiAssistant({ proposeDate, setProposeDate, onApproved, s
             })}
             {result.unassigned?.map((u, i) => (
               <div key={i} className="rounded-xl border border-dashed border-slate-300 bg-white p-3 text-sm text-slate-500">
-                Could not staff: {result.context.unscheduledJobs.find((j) => j.id === u.job_id)?.title} — {u.reason}
+                Could not staff: {result.context.unscheduledJobs.find((j) => j.id === u.job_id)?.title} - {u.reason}
               </div>
             ))}
           </div>
 
           <div className="flex flex-col-reverse gap-2 pt-1 sm:flex-row">
-            <button type="button" onClick={approve} disabled={loading} className="btn-primary flex-1 !rounded-full">
-              <Check size={15} /> Approve & schedule
-            </button>
+            {(result.assignments || []).length > 0 ? (
+              <button type="button" onClick={approve} disabled={loading} className="btn-primary flex-1 !rounded-full">
+                <Check size={15} /> Approve & schedule
+              </button>
+            ) : null}
             <button type="button" onClick={() => { setResult(null); setConflicts([]); }} className="btn-secondary !rounded-full">
               <XIcon size={15} /> Discard
             </button>

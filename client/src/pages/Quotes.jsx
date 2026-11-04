@@ -88,7 +88,7 @@ export default function Quotes() {
                       )}
                     </div>
                   </td>
-                  <td className="px-4 py-3 text-slate-400">{qt.sent_at ? fmtDate(qt.sent_at) : '—'}</td>
+                  <td className="px-4 py-3 text-slate-400">{qt.sent_at ? fmtDate(qt.sent_at) : '-'}</td>
                 </tr>
               ))}
             </tbody>

@@ -2,8 +2,9 @@ import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { CheckSquare, Search } from 'lucide-react';
 import { api } from '../../lib/api';
-import { PageLoading, EmptyState, Modal, useToast, Toast } from '../../components/ui.jsx';
+import { PageLoading, EmptyState, useToast, Toast } from '../../components/ui.jsx';
 import TaskCard from '../../components/TaskCard.jsx';
+import TaskDoneModal from '../../components/TaskDoneModal.jsx';
 import FilterCountCards from '../../components/FilterCountCards.jsx';
 import {
   TASK_VIEWS, normalizeTaskView, staffTasksQueryPath, viewForDueDate, filterTasks,
@@ -80,11 +81,11 @@ export default function StaffTasks() {
     setSearchParams(params);
   };
 
-  const complete = async () => {
+  const complete = async (note) => {
     if (!pendingDone) return;
     setBusy(true);
     try {
-      await api.put(`/staff/tasks/${pendingDone.id}`, { status: 'done' });
+      await api.put(`/staff/tasks/${pendingDone.id}`, { status: 'done', complete_note: note || null });
       show('Task completed');
       setPendingDone(null);
       load();
@@ -106,7 +107,7 @@ export default function StaffTasks() {
     <div className="space-y-5">
       <div>
         <h1 className="text-xl font-bold text-slate-900">My Tasks</h1>
-        <p className="text-slate-500 text-sm mt-0.5">Things assigned to you — tap Done when they are finished.</p>
+        <p className="text-slate-500 text-sm mt-0.5">Things assigned to you - tap Done when they are finished.</p>
       </div>
 
       <FilterCountCards
@@ -154,19 +155,13 @@ export default function StaffTasks() {
         </div>
       )}
 
-      <Modal open={!!pendingDone} onClose={() => !busy && setPendingDone(null)} title="Mark task done">
-        <p className="text-sm text-slate-600">
-          Are you sure you want to mark “{pendingDone?.title}” as done?
-        </p>
-        <div className="mt-5 flex justify-end gap-2">
-          <button type="button" className="btn-secondary" disabled={busy} onClick={() => setPendingDone(null)}>
-            Cancel
-          </button>
-          <button type="button" className="btn-primary" disabled={busy} onClick={complete}>
-            {busy ? 'Saving…' : 'Mark done'}
-          </button>
-        </div>
-      </Modal>
+      <TaskDoneModal
+        open={!!pendingDone}
+        task={pendingDone}
+        saving={busy}
+        onClose={() => setPendingDone(null)}
+        onConfirm={complete}
+      />
       <Toast {...toast} />
     </div>
   );

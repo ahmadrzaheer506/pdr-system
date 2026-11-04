@@ -29,12 +29,54 @@ describe('CustomerAttachments (requirement 2.4)', () => {
     );
     expect(screen.getByText('Attachments')).toBeInTheDocument();
     expect(screen.getByText('roof.jpg')).toBeInTheDocument();
+    expect(screen.getByText('General')).toBeInTheDocument();
     await user.upload(screen.getByLabelText(/upload attachment/i), file);
     expect(api.upload).toHaveBeenCalled();
     const [path, fd] = api.upload.mock.calls[0];
     expect(path).toBe('/customers/9/files');
     expect(fd).toBeInstanceOf(FormData);
     expect(onChanged).toHaveBeenCalled();
+  });
+
+  it('badges landing-page photos as from the customer', () => {
+    render(
+      <CustomerAttachments
+        customerId={9}
+        leadId={40}
+        files={[{
+          id: 1,
+          original_name: 'valley.jpg',
+          mime: 'image/jpeg',
+          size_bytes: 2048,
+          created_at: '2026-01-02T10:00:00Z',
+          source: 'customer',
+        }]}
+        onChanged={vi.fn()}
+        onError={vi.fn()}
+      />,
+    );
+    expect(screen.getByText('From customer')).toBeInTheDocument();
+    expect(screen.getByText('valley.jpg')).toBeInTheDocument();
+  });
+
+  it('badges clock-out site photos', () => {
+    render(
+      <CustomerAttachments
+        customerId={9}
+        leadId={40}
+        files={[{
+          id: 2,
+          original_name: 'Clock-out site photo.jpg',
+          mime: 'image/jpeg',
+          size_bytes: 2048,
+          created_at: '2026-01-02T16:00:00Z',
+          source: 'clock',
+        }]}
+        onChanged={vi.fn()}
+        onError={vi.fn()}
+      />,
+    );
+    expect(screen.getByText('Clock-out photo')).toBeInTheDocument();
   });
 
   it('does not scroll attachments when there are three or fewer', () => {

@@ -208,7 +208,7 @@ export default function SkillsSettings({ canEdit }) {
             <div className="min-w-0">
               <h3 className="text-[15px] font-semibold text-slate-900">Job types</h3>
               <p className="mt-0.5 text-xs leading-relaxed text-slate-500">
-                Apply a type on a job to fill the required skills automatically — Re-roof, Lead valley, Extension, and so on.
+                Apply a type on a job to fill the required skills automatically - Re-roof, Lead valley, Extension, and so on.
               </p>
             </div>
           </div>

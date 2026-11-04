@@ -1,5 +1,5 @@
 // ============================================================
-// Database layer — PostgreSQL via Sequelize.
+// Database layer - PostgreSQL via Sequelize.
 // Schema lives in migrations/; models in models/.
 // Settings helpers and reference generators stay here so routes
 // keep a single import for DATA_DIR / getSetting / nextRef.
@@ -132,7 +132,7 @@ const DEFAULT_SETTINGS = {
       {
         delay_days: 5,
         channel: 'email',
-        body: "Hi {name}, following up one last time on quotation {ref}. If you'd like us to adjust anything or talk it through, just let us know — otherwise we'll leave it with you.",
+        body: "Hi {name}, following up one last time on quotation {ref}. If you'd like us to adjust anything or talk it through, just let us know - otherwise we'll leave it with you.",
       },
     ],
   },

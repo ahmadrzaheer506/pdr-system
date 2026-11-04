@@ -5,6 +5,7 @@ import { fmtDate } from '../lib/api';
 import { isOverdueTask, taskPeople, assigneeRoleLabel } from '../lib/taskList.js';
 import { leadPath } from '../lib/customerRoutes.js';
 import { PriorityBadge, StatusBadge, Avatar } from './ui.jsx';
+import { VisitCompleteRemarks } from './VisitCompleteTick.jsx';
 
 /**
  * Shared task row for office and field-staff lists.
@@ -71,7 +72,7 @@ export default function TaskCard({
               }`}
             >
               <Calendar size={12} strokeWidth={2} />
-              {task.due_date ? `Due ${fmtDate(task.due_date)}${overdue ? ' — overdue' : ''}` : 'No due date'}
+              {task.due_date ? `Due ${fmtDate(task.due_date)}${overdue ? ' - overdue' : ''}` : 'No due date'}
             </span>
             {leadChip}
           </div>
@@ -97,6 +98,9 @@ export default function TaskCard({
               );
             })}
           </div>
+          {task.status === 'done' || isDoneView ? (
+            <VisitCompleteRemarks note={task.complete_note} className="mt-3" />
+          ) : null}
         </div>
         {showActions ? (
           <div className="flex shrink-0 items-center gap-2 self-end sm:self-start">

@@ -1,5 +1,5 @@
 /**
- * Pipeline card owner (requirement 4.4). Office users only — not field staff.
+ * Pipeline card owner (requirement 4.4). Office users only - not field staff.
  * Auto-set on create; editable afterwards. Inbound webhooks stay unassigned.
  */
 const { Op } = require('sequelize');

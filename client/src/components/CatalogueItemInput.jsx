@@ -163,7 +163,7 @@ export default function CatalogueItemInput({
           {matches.length === 0 ? (
             <li className="px-3 py-2.5 text-sm text-slate-500">
               {String(value || '').trim()
-                ? <>No catalogue match — keep <span className="font-medium text-slate-800">“{String(value).trim()}”</span> as the item name</>
+                ? <>No catalogue match - keep <span className="font-medium text-slate-800">“{String(value).trim()}”</span> as the item name</>
                 : 'Type to search the catalogue, or enter a custom name'}
             </li>
           ) : matches.map((row, i) => {

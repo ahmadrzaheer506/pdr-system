@@ -85,7 +85,7 @@ async function findContactConflicts(lists = {}) {
 }
 
 /**
- * Phone first, then email — same keys as ingest matchCustomer (requirement 3.4).
+ * Phone first, then email - same keys as ingest matchCustomer (requirement 3.4).
  * Used by POST /api/leads so office sees a 409 notice instead of a second customer.
  * @param {unknown} phone
  * @param {unknown} email

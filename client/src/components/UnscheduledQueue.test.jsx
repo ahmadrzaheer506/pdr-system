@@ -8,7 +8,7 @@ import { addIsoDays, localIsoDate, shortUkDate } from '../lib/schedule';
 
 vi.mock('../lib/api', () => ({
   api: { put: vi.fn(), get: vi.fn() },
-  fmtDate: (d) => d || '—',
+  fmtDate: (d) => d || '-',
 }));
 
 const STAFF = [

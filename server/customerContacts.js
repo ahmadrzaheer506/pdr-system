@@ -277,7 +277,7 @@ async function updateWithPrimary(model, row, attrs, isPrimary) {
         transaction: t,
       });
       if (siblings > 0) {
-        return { error: 'Exactly one primary is required — set another as primary first' };
+        return { error: 'Exactly one primary is required - set another as primary first' };
       }
       return { error: 'Exactly one primary is required' };
     }
@@ -449,7 +449,7 @@ function leadContactSelection(lead = {}) {
 }
 
 /**
- * Overlay this enquiry's chosen contacts. Unselected kinds stay empty — do not
+ * Overlay this enquiry's chosen contacts. Unselected kinds stay empty - do not
  * fall back to every number/site on the customer (lead workspace).
  */
 function applyLeadContacts(customer, lead) {

@@ -227,7 +227,7 @@ describe('PUT /api/auth/password (requirement 1.2 set/change)', () => {
 
     const me = await agent.get('/api/auth/me');
     expect(me.status).toBe(401);
-    expect(me.body.error).toBe('Session expired — sign in again');
+    expect(me.body.error).toBe('Session expired - sign in again');
   });
 });
 

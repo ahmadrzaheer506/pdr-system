@@ -452,8 +452,8 @@ describe('JobModal (requirement 7.2)', () => {
     });
     renderJob(<JobModal jobId={8} onClose={() => {}} onChanged={() => {}} staff={STAFF} />);
     expect(await screen.findByLabelText(/needs a driver/i)).toBeChecked();
-    expect(screen.getByText(/nobody covering: roofing — advanced/i)).toBeInTheDocument();
-    expect(screen.getByText(/needs a driver — nobody assigned can drive/i)).toBeInTheDocument();
+    expect(screen.getByText(/nobody covering: roofing - advanced/i)).toBeInTheDocument();
+    expect(screen.getByText(/needs a driver - nobody assigned can drive/i)).toBeInTheDocument();
     await user.click(screen.getByLabelText(/needs a driver/i));
     expect(api.put).toHaveBeenCalledWith('/jobs/8', { needs_driver: false });
   });

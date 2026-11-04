@@ -1,6 +1,6 @@
 // ============================================================
 // Reminders & Task Engine (PRD §10.4).
-// System tasks are deduplicated by rule_key — a rule can fire
+// System tasks are deduplicated by rule_key - a rule can fire
 // repeatedly without spamming duplicates while one is open.
 // ============================================================
 const { Op } = require('sequelize');
@@ -141,24 +141,30 @@ async function completeVisit(appointment, setStage, actorId = null, completeNote
     || await Customer.findByPk(appointment.customer_id, { attributes: ['id', 'name', 'stage'] });
   const lead = await resolveLeadForCustomer(appointment.customer_id, appointment.lead_id);
   const leadKey = lead?.id || appointment.lead_id || null;
+  if (note) {
+    await require('../customerNotes').copyRemark(appointment.customer_id, actorId, note, {
+      source: 'visit',
+      leadId: leadKey,
+    });
+  }
   const stage = lead?.stage || customer?.stage;
   const name = customer?.name || 'the customer';
   const hasQuote = await customerHasQuote(appointment.customer_id, leadKey);
 
   if (hasQuote) {
     if (['ENQUIRY', 'SITE_VISIT_BOOKED', 'QUOTE_PENDING'].includes(stage)) {
-      await setStage(appointment.customer_id, 'QUOTED', actorId, 'Site visit completed — quote already on the lead', { leadId: leadKey });
+      await setStage(appointment.customer_id, 'QUOTED', actorId, 'Site visit completed - quote already on the lead', { leadId: leadKey });
     }
     return { already: false, hasQuote: true, taskId: null };
   }
 
   if (['ENQUIRY', 'SITE_VISIT_BOOKED'].includes(stage)) {
-    await setStage(appointment.customer_id, 'QUOTE_PENDING', actorId, 'Site visit completed — quote needed', { leadId: leadKey });
+    await setStage(appointment.customer_id, 'QUOTE_PENDING', actorId, 'Site visit completed - quote needed', { leadId: leadKey });
   }
   const taskId = await ensureTask({
     ruleKey: leadKey ? `produce_quote:lead:${leadKey}` : `produce_quote:customer:${appointment.customer_id}`,
     title: `Produce quote for ${name}`,
-    detail: `Site visit "${appointment.title}" completed — quotation needs producing.`,
+    detail: `Site visit "${appointment.title}" completed - quotation needs producing.`,
     dueDate: todayStr(),
     priority: 'high',
     entityType: 'customer',
@@ -190,7 +196,7 @@ async function scanJobsTomorrow() {
   for (const jb of rows) {
     await ensureTask({
       ruleKey: `job_tomorrow:job:${jb.id}`,
-      title: `Job starts tomorrow — ${jb.title}`,
+      title: `Job starts tomorrow - ${jb.title}`,
       detail: `${jb.Customer?.name} · ${jb.address || 'no address'}. Confirm materials and team.${jb.materials ? ` Materials: ${jb.materials}` : ''}`,
       dueDate: todayStr(),
       priority: 'high',
@@ -214,7 +220,7 @@ async function scanUninvoicedJobs() {
   for (const jb of rows) {
     await ensureTask({
       ruleKey: `invoice_job:job:${jb.id}`,
-      title: `Invoice job — ${jb.title}`,
+      title: `Invoice job - ${jb.title}`,
       detail: `${jb.Customer?.name}'s job is completed and has no invoice yet.`,
       dueDate: todayStr(),
       priority: 'high',
@@ -239,7 +245,7 @@ async function scanOverdueInvoices(logActivity) {
     await logActivity(inv.customer_id, null, 'invoice_overdue', `Invoice ${inv.ref} is overdue`);
     await ensureTask({
       ruleKey: `chase_payment:invoice:${inv.id}`,
-      title: `Payment overdue — ${inv.ref} (${inv.Customer?.name})`,
+      title: `Payment overdue - ${inv.ref} (${inv.Customer?.name})`,
       detail: `Invoice ${inv.ref} was due ${inv.due_date} and is unpaid. Chase payment.`,
       dueDate: todayStr(),
       priority: 'high',
@@ -274,7 +280,7 @@ async function scanExpiredQuotes(logActivity) {
     await resolveQuoteFollowupTask(q.id);
     await ensureTask({
       ruleKey: `quote_expired:quote:${q.id}`,
-      title: `Quote expired — ${q.ref} (${q.Customer?.name})`,
+      title: `Quote expired - ${q.ref} (${q.Customer?.name})`,
       detail: 'Quote passed its validity date with no decision. Re-issue or mark lost.',
       dueDate: todayStr(),
       priority: 'normal',

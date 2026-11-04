@@ -1,5 +1,5 @@
 /**
- * Requirement 1.4 — three-role model.
+ * Requirement 1.4 - three-role model.
  * Spec names: Director, Office, Operative.
  * Stored and API values stay ADMIN, OFFICE, STAFF (no rename, no UI label change).
  */
@@ -17,7 +17,7 @@ export function isValidRole(role) {
 
 /**
  * Job costing / labour-cost for office users (requirement 1.6).
- * Pay rates (hourly_cost, cis_status) are requirement 1.8 — OFFICE may see them; only ADMIN edits.
+ * Pay rates (hourly_cost, cis_status) are requirement 1.8 - OFFICE may see them; only ADMIN edits.
  */
 export function canSeeLabourCosts(user) {
   if (!user) return false;

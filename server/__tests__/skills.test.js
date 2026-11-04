@@ -80,6 +80,6 @@ describe('skill catalogue and matching (requirement 1.8 / 7.2 / 8.3)', () => {
 
   test('requiredSkillLabel includes the level', () => {
     expect(requiredSkillLabel({ skill_id: id('roofing'), level: 'advanced' }, CATALOGUE))
-      .toBe('Roofing — Advanced');
+      .toBe('Roofing - Advanced');
   });
 });

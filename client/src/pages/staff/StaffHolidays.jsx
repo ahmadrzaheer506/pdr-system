@@ -129,7 +129,7 @@ function RequestModal({ open, onClose, noticeDays, onSaved, onError }) {
   return (
     <Modal open={open} onClose={onClose} title="Request holiday">
       <form onSubmit={submit} className="space-y-3">
-        <p className="text-xs text-slate-400">Dates less than {noticeDays} days away can't be selected — company policy.</p>
+        <p className="text-xs text-slate-400">Dates less than {noticeDays} days away can't be selected - company policy.</p>
         <HolidayKindTabs kind={kind} onChange={changeKind} />
         <HolidayDateFields
           kind={kind}

@@ -454,7 +454,7 @@ describe('PUT /api/customers/:id/stage lost reason (requirement 2.6)', () => {
     });
     expect(res.status).toBe(200);
     expect(Customer.update).toHaveBeenCalledWith(
-      { lost_reason: 'Other — Went with a neighbour' },
+      { lost_reason: 'Other - Went with a neighbour' },
       { where: { id: '9' } },
     );
   });

@@ -1,6 +1,7 @@
 import React, { useRef, useState } from 'react';
 import { Paperclip, Trash2, Download, FileText } from 'lucide-react';
 import { api, fmtDateTime } from '../lib/api';
+import { attachmentSourceMeta } from '../lib/noteSources.js';
 import ScrollableLeadList from './ScrollableLeadList.jsx';
 
 const ACCEPT = 'image/jpeg,image/png,image/webp,application/pdf,.jpg,.jpeg,.png,.webp,.pdf';
@@ -20,7 +21,7 @@ function fileUrl(customerId, fileId, download) {
  * Customer-only photo/PDF attachments (requirement 2.4).
  * Stored on the server under data/files; never sent to the customer.
  */
-export default function CustomerAttachments({ customerId, files, onChanged, onError }) {
+export default function CustomerAttachments({ customerId, leadId, files, onChanged, onError }) {
   const inputRef = useRef(null);
   const [uploading, setUploading] = useState(false);
 
@@ -30,6 +31,7 @@ export default function CustomerAttachments({ customerId, files, onChanged, onEr
     try {
       const fd = new FormData();
       fd.append('file', file);
+      if (leadId) fd.append('lead_id', String(leadId));
       await api.upload(`/customers/${customerId}/files`, fd);
       onChanged();
     } catch (err) {
@@ -89,7 +91,10 @@ export default function CustomerAttachments({ customerId, files, onChanged, onEr
                   </div>
                 )}
                 <div className="min-w-0 flex-1">
-                  <div className="text-sm font-medium text-slate-800 truncate">{f.original_name}</div>
+                  <span className={`badge !text-[10px] ${attachmentSourceMeta(f.source).className}`}>
+                    {attachmentSourceMeta(f.source).label}
+                  </span>
+                  <div className="mt-1 text-sm font-medium text-slate-800 truncate">{f.original_name}</div>
                   <div className="text-[11px] text-slate-400 mt-0.5">
                     {fmtBytes(f.size_bytes)} · {fmtDateTime(f.created_at)}
                     {f.user_name ? ` · ${f.user_name}` : ''}

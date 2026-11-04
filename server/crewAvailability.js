@@ -9,7 +9,7 @@ const { parseIsoDate, parseUserIds } = require('./jobDays');
 const { JOB_STATUSES } = require('./jobStatus');
 const skillsLib = require('./skills');
 
-/** Any dated job on the board occupies crew — same rule as week-view “Already booked”. */
+/** Any dated job on the board occupies crew - same rule as week-view “Already booked”. */
 const BUSY_JOB_STATUSES = [...JOB_STATUSES];
 
 function asIsoDate(value) {

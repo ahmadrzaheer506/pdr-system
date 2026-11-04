@@ -21,7 +21,7 @@ function isDirty(form, customer) {
 }
 
 /**
- * Shared customer identity form — used inline on the master record and in the lead-page edit modal.
+ * Shared customer identity form - used inline on the master record and in the lead-page edit modal.
  */
 export default function CustomerEditForm({
   customer,
@@ -113,7 +113,7 @@ export default function CustomerEditForm({
           rows={3}
           value={form.notes}
           onChange={(e) => setForm({ ...form, notes: e.target.value })}
-          placeholder="Anything the office should know — access, preferences, how they like to be contacted."
+          placeholder="Anything the office should know - access, preferences, how they like to be contacted."
         />
       </div>
       <div className={`flex items-center pt-1 ${fullWidth ? '' : 'justify-end'}`}>

@@ -1,5 +1,5 @@
 /**
- * Appointment types (requirement 5.3). Labels only — they do not change
+ * Appointment types (requirement 5.3). Labels only - they do not change
  * pipeline stage or the produce-quote task.
  */
 const VISIT_TYPES = Object.freeze([
@@ -16,7 +16,7 @@ function visitTypeLabel(value) {
 }
 
 function visitTitle(visitType, customerName) {
-  return `${visitTypeLabel(visitType)} — ${customerName}`;
+  return `${visitTypeLabel(visitType)} - ${customerName}`;
 }
 
 /**

@@ -436,7 +436,7 @@ function cardPlace(customer) {
   return [customer.address, customer.postcode].filter(Boolean).join(', ');
 }
 
-/** Kanban card — same fields as before, easier to scan (requirement 4.1). */
+/** Kanban card - same fields as before, easier to scan (requirement 4.1). */
 function PipelineCard({ customer, accent, onDragStart, onDragOverCard, onDropOnCard }) {
   const ago = fmtTimeAgo(customer.updated_at);
   const place = cardPlace(customer);
@@ -469,9 +469,7 @@ function PipelineCard({ customer, accent, onDragStart, onDragOverCard, onDropOnC
         <div className="p-3 pb-2">
           <div className="flex items-start justify-between gap-2">
             <div className="font-semibold text-sm text-slate-900 leading-snug group-hover:text-brand-600 line-clamp-2">{leadDisplayName(customer)}</div>
-            {Number(customer.pipeline_value || 0) > 0 ? (
-              <div className="text-sm font-bold tabular-nums text-slate-900 flex-shrink-0">{money(customer.pipeline_value)}</div>
-            ) : null}
+            <div className="text-sm font-bold tabular-nums text-slate-900 flex-shrink-0">{money(customer.pipeline_value || 0)}</div>
           </div>
           {place ? (
             <div className="flex items-start gap-1 text-xs text-slate-500 mt-1">

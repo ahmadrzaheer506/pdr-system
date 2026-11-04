@@ -12,7 +12,7 @@ vi.mock('../../lib/api', () => ({
 
 const VISIT = {
   id: 50,
-  title: 'Site visit — Sandra Cole',
+  title: 'Site visit - Sandra Cole',
   customer_name: 'Sandra Cole',
   customer_phone: '07700 111222',
   address: '22 Birch Close, Caversham',

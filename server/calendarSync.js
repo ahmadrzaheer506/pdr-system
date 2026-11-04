@@ -1,7 +1,7 @@
 'use strict';
 
 /**
- * Requirement 16.3 — push CRM events onto each connected user's Google Calendar.
+ * Requirement 16.3 - push CRM events onto each connected user's Google Calendar.
  * Admin and office see the full CRM set; field staff see assigned visits/jobs,
  * their own holidays, and tasks assigned to them. Unconnected users are skipped.
  */

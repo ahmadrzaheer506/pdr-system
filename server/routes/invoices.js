@@ -188,7 +188,7 @@ router.post('/', asyncHandler(async (req, res) => {
       await setStage(custId, 'INVOICED', req.user.id, `Invoice ${ref} created`, { leadId: lead?.id || leadId });
     }
   }
-  await logActivity(custId, req.user.id, 'invoice_created', `Invoice ${ref} created — ${money(cols.grand_total)}`, 'invoice', created.id);
+  await logActivity(custId, req.user.id, 'invoice_created', `Invoice ${ref} created - ${money(cols.grand_total)}`, 'invoice', created.id);
   res.json({ id: created.id, ref, calc });
 }));
 

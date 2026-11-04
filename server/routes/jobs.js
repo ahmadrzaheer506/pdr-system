@@ -528,7 +528,7 @@ router.post('/ai/propose', asyncHandler(async (req, res) => {
   }
   const context = await buildContext(forDate);
   if (!context.unscheduledJobs.length) {
-    return res.json({ provider: 'none', assignments: [], unassigned: [], warnings: [], errors: [], summary: 'No unscheduled jobs waiting — nothing to propose.' });
+    return res.json({ provider: 'none', assignments: [], unassigned: [], warnings: [], errors: [], summary: 'No unscheduled jobs waiting - nothing to propose.' });
   }
   try {
     const { provider, proposal } = await ai.proposeSchedule(context, transcript || '');

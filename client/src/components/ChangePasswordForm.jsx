@@ -60,7 +60,7 @@ export default function ChangePasswordForm({ bare = false }) {
       setCurrent('');
       setNext('');
       setConfirm('');
-      show('Password updated — sign in again');
+      show('Password updated - sign in again');
       try { await logout(); } catch { /* session already gone */ }
     } catch (err) {
       show(err.message || 'Could not update password', 'error');

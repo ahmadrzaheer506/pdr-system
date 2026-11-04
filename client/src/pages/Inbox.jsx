@@ -137,7 +137,7 @@ export default function Inbox() {
             <Plus size={16} /> Log enquiry
           </button>
         </div>
-        <p className="mt-1 text-sm text-slate-500">Every enquiry, whatever channel it came from — one place, nothing missed.</p>
+        <p className="mt-1 text-sm text-slate-500">Every enquiry, whatever channel it came from - one place, nothing missed.</p>
       </div>
 
       <div className="grid grid-cols-2 gap-2 sm:flex sm:flex-wrap sm:gap-3">

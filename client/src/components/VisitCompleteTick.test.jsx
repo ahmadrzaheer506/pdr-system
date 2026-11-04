@@ -41,4 +41,11 @@ describe('VisitCompleteTick', () => {
     expect(screen.getByLabelText(/completion remarks/i)).toBeInTheDocument();
     expect(screen.getByText('Valley flashing is sound')).toBeInTheDocument();
   });
+
+  it('offers show more after two lines of remarks', () => {
+    const note = 'Mark the site visit as completed. Add remarks if anything is worth recording. Extra line for clamp.';
+    render(<VisitCompleteRemarks note={note} />);
+    expect(screen.getByRole('button', { name: /show more/i })).toBeInTheDocument();
+    expect(screen.getByText(note).className).toMatch(/line-clamp-2/);
+  });
 });

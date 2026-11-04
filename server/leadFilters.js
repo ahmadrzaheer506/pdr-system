@@ -56,6 +56,7 @@ function leadTextSearchOr(value, sequelize) {
   const like = `%${q}%`;
   const esc = sequelize.escape(like);
   const or = [
+    { ref: { [Op.iLike]: like } },
     { message: { [Op.iLike]: like } },
     { subject: { [Op.iLike]: like } },
     literal(`EXISTS (SELECT 1 FROM customers c WHERE c.id = "Lead".customer_id AND (c.name ILIKE ${esc} OR COALESCE(c.company_name,'') ILIKE ${esc}))`),

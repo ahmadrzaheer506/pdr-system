@@ -504,7 +504,7 @@ function DeclineModal({ row, onClose, onSaved, onError }) {
   };
 
   return (
-    <Modal open={!!row} onClose={onClose} title={`Decline — ${row.user_name}`}>
+    <Modal open={!!row} onClose={onClose} title={`Decline - ${row.user_name}`}>
       <form onSubmit={save} className="space-y-3">
         <p className="text-sm text-slate-500">{holidayDateRange(row, fmtDate)}. A reason is required.</p>
         <div>
@@ -582,7 +582,7 @@ function BookModal({ open, onClose, onSaved, onError }) {
   return (
     <Modal open={open} onClose={onClose} title="Book holiday">
       <form onSubmit={submit} className="space-y-3" noValidate>
-        <p className="text-xs text-slate-400">Approved immediately on the team calendar. Notice is not applied — for emergency or compassionate leave. Overlapping pending or approved dates are still blocked.</p>
+        <p className="text-xs text-slate-400">Approved immediately on the team calendar. Notice is not applied - for emergency or compassionate leave. Overlapping pending or approved dates are still blocked.</p>
         <div>
           <label className="label" htmlFor="holiday-staff">Staff</label>
           <SelectMenu

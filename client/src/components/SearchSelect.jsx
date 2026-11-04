@@ -187,7 +187,7 @@ export default function SearchSelect({
                   type="button"
                   role="option"
                   data-value={String(opt.value)}
-                  aria-label={opt.hint ? `${opt.label} — ${opt.hint}` : opt.label}
+                  aria-label={opt.hint ? `${opt.label} - ${opt.hint}` : opt.label}
                   aria-selected={selectedRow}
                   className={`flex w-full items-center justify-between gap-3 px-3 py-2.5 text-left ${
                     selectedRow ? 'bg-rose-50 font-medium text-slate-900' : 'text-slate-700 hover:bg-slate-50'

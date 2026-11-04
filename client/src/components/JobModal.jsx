@@ -59,7 +59,7 @@ function Alert({ tone = 'error', children, role }) {
 
 const STATUS_COPY = {
   PENDING: 'Waiting to be placed on the calendar',
-  SCHEDULED: 'Booked — crew can be assigned',
+  SCHEDULED: 'Booked - crew can be assigned',
   IN_PROGRESS: 'Work is underway on site',
   COMPLETED: 'Job finished, ready to bill',
   INVOICED: 'Invoice raised, waiting for payment',
@@ -667,7 +667,7 @@ export default function JobModal({ jobId, crewDate, onClose, onChanged, staff = 
                   value={jobTypeId ? String(jobTypeId) : ''}
                   onChange={applyJobType}
                   options={[
-                    { value: '', label: 'Custom — pick skills below' },
+                    { value: '', label: 'Custom - pick skills below' },
                     ...jobTypes.map((t) => ({ value: String(t.id), label: t.name })),
                   ]}
                 />

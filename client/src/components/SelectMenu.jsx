@@ -118,7 +118,7 @@ export default function SelectMenu({
       >
         <span className="min-w-0 flex-1 overflow-hidden text-left">
           <span className={`block ${multiline ? 'whitespace-normal break-words leading-snug' : 'truncate'}`}>
-            {current?.label || '—'}
+            {current?.label || '-'}
           </span>
           {current?.hint ? (
             <span className="mt-0.5 block truncate text-[11px] font-normal text-slate-400">{current.hint}</span>

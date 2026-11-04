@@ -43,7 +43,7 @@ app.use((err, req, res, next) => { res.status(500).json({ error: err.message });
 
 const VISIT = {
   id: 50,
-  title: 'Site visit — Sandra Cole',
+  title: 'Site visit - Sandra Cole',
   start: new Date('2026-10-03T09:00:00.000Z'),
   end: new Date('2026-10-03T10:00:00.000Z'),
   address: '22 Birch Close',
@@ -77,7 +77,7 @@ describe('GET /api/staff/visits', () => {
     expect(res.status).toBe(200);
     expect(res.body.visits).toEqual([expect.objectContaining({
       id: 50,
-      title: 'Site visit — Sandra Cole',
+      title: 'Site visit - Sandra Cole',
       customer_name: 'Sandra Cole',
       customer_phone: '07700 111222',
       assignee_name: 'Jamie Fisher',
@@ -114,7 +114,7 @@ describe('GET/POST /api/staff/visits/:id', () => {
     expect(res.status).toBe(200);
     expect(completeVisit).toHaveBeenCalled();
     expect(logActivity).toHaveBeenCalledWith(
-      12, 3, 'appointment_completed', 'Site visit completed — quote needed', 'appointment', 50,
+      12, 3, 'appointment_completed', 'Site visit completed - quote needed', 'appointment', 50,
     );
     expect(res.body.task_id).toBe(44);
   });
@@ -127,7 +127,7 @@ describe('GET/POST /api/staff/visits/:id', () => {
     expect(res.status).toBe(200);
     expect(completeVisit).toHaveBeenCalledWith(expect.anything(), expect.anything(), 3, 'Measured the valley');
     expect(logActivity).toHaveBeenCalledWith(
-      12, 3, 'appointment_completed', 'Site visit completed — quote needed. Remarks: Measured the valley', 'appointment', 50,
+      12, 3, 'appointment_completed', 'Site visit completed - quote needed. Remarks: Measured the valley', 'appointment', 50,
     );
   });
 });

@@ -1,5 +1,5 @@
 // ============================================================
-// Sequelize instance — PostgreSQL via DATABASE_URL.
+// Sequelize instance - PostgreSQL via DATABASE_URL.
 // ============================================================
 require('../loadEnv');
 const { Sequelize } = require('sequelize');

@@ -1,7 +1,7 @@
 /**
  * Office CRM has two customer surfaces:
- * - `/leads/:id` — enquiry / job workspace (quotes, visits, timeline)
- * - `/customers/:id` — master record (details, sites, contacts, lead list)
+ * - `/leads/:id` - enquiry / job workspace (quotes, visits, timeline)
+ * - `/customers/:id` - master record (details, sites, contacts, lead list)
  */
 export function customerPath(customerId) {
   return `/customers/${customerId}`;

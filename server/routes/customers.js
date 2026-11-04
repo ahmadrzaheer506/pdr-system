@@ -49,7 +49,7 @@ router.get('/', asyncHandler(async (req, res) => {
   res.json({ customers: plain(rows) });
 }));
 
-/** Visual Kanban payload — one card per enquiry (requirement 4.1). Filters: 4.4. Totals: 4.5. */
+/** Visual Kanban payload - one card per enquiry (requirement 4.1). Filters: 4.4. Totals: 4.5. */
 router.get('/pipeline/board', asyncHandler(async (req, res) => {
   const built = buildPipelineBoardWhere(req.query, Customer.sequelize);
   if (built.error) return res.status(400).json({ error: built.error });
@@ -429,7 +429,7 @@ router.post('/:id/messages', asyncHandler(async (req, res) => {
   const { channel, body, subject, lead_id } = req.body || {};
   if (!channel || !body) return res.status(400).json({ error: 'channel and body required' });
   if (channel === 'note') {
-    return res.status(400).json({ error: 'Use internal notes — notes are not sent as messages' });
+    return res.status(400).json({ error: 'Use internal notes - notes are not sent as messages' });
   }
   try {
     const result = await sendToCustomer(Number(req.params.id), channel, body, {
@@ -445,7 +445,10 @@ router.post('/:id/messages', asyncHandler(async (req, res) => {
 
 router.post('/:id/notes', asyncHandler(async (req, res) => {
   if (!(await requireCustomer(req, res))) return;
-  sendContactResult(res, await notes.addNote(Number(req.params.id), req.user.id, req.body?.body));
+  sendContactResult(res, await notes.addNote(Number(req.params.id), req.user.id, req.body?.body, {
+    source: 'general',
+    leadId: req.body?.lead_id,
+  }));
 }));
 router.delete('/:id/notes/:noteId', asyncHandler(async (req, res) => {
   if (!(await requireCustomer(req, res))) return;
@@ -454,7 +457,10 @@ router.delete('/:id/notes/:noteId', asyncHandler(async (req, res) => {
 
 router.post('/:id/files', files.handleUpload, asyncHandler(async (req, res) => {
   if (!(await requireCustomer(req, res))) return;
-  sendContactResult(res, await files.addFile(Number(req.params.id), req.user.id, req.file));
+  sendContactResult(res, await files.addFile(Number(req.params.id), req.user.id, req.file, {
+    source: 'general',
+    leadId: req.body?.lead_id,
+  }));
 }));
 router.get('/:id/files/:fileId', asyncHandler(async (req, res) => {
   if (!(await requireCustomer(req, res))) return;

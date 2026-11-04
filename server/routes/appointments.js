@@ -229,7 +229,7 @@ router.post('/', asyncHandler(async (req, res) => {
     const when = startAt.date.toLocaleString('en-GB', { timeZone: 'Europe/London' });
     await safeNotify(() => notifyOffice({
       kind: 'visit_booked',
-      message: `${customer.name} — ${useTitle} on ${when}`,
+      message: `${customer.name} - ${useTitle} on ${when}`,
       entity_type: 'customer',
       entity_id: customer.id,
     }, { excludeId: req.user.id }));
@@ -337,8 +337,8 @@ router.put('/:id', asyncHandler(async (req, res) => {
 
 function visitCompletedActivity(result, completeNote) {
   const summary = result.hasQuote
-    ? 'Site visit completed — quote already on the lead'
-    : 'Site visit completed — quote needed';
+    ? 'Site visit completed - quote already on the lead'
+    : 'Site visit completed - quote needed';
   return completeNote ? `${summary}. Remarks: ${completeNote}` : summary;
 }
 

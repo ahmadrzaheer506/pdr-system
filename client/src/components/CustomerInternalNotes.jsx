@@ -1,13 +1,14 @@
 import React, { useState } from 'react';
 import { StickyNote, Trash2 } from 'lucide-react';
 import { api, fmtDateTime } from '../lib/api';
+import { noteSourceMeta } from '../lib/noteSources.js';
 import ScrollableLeadList from './ScrollableLeadList.jsx';
 
 /**
  * Dated internal notes on the customer record (requirement 2.4).
  * Separate from Conversation; never sent as WhatsApp or email.
  */
-export default function CustomerInternalNotes({ customer, notes, onChanged, onError }) {
+export default function CustomerInternalNotes({ customer, notes, leadId, onChanged, onError }) {
   const [body, setBody] = useState('');
   const [saving, setSaving] = useState(false);
 
@@ -15,7 +16,10 @@ export default function CustomerInternalNotes({ customer, notes, onChanged, onEr
     if (!body.trim()) return;
     setSaving(true);
     try {
-      await api.post(`/customers/${customer.id}/notes`, { body: body.trim() });
+      await api.post(`/customers/${customer.id}/notes`, {
+        body: body.trim(),
+        ...(leadId ? { lead_id: leadId } : {}),
+      });
       setBody('');
       onChanged();
     } catch (err) {
@@ -39,10 +43,13 @@ export default function CustomerInternalNotes({ customer, notes, onChanged, onEr
       <h3 id="internal-notes-heading" className="font-semibold text-slate-800 mb-3 flex items-center gap-2">
         <StickyNote size={16} /> Internal notes
       </h3>
-      <p className="text-xs text-slate-400 mb-3">Office only — never sent to the customer.</p>
+      <p className="text-xs text-slate-400 mb-3">Office only - never sent to the customer.</p>
       {customer.notes ? (
         <div className="mb-4 rounded-lg bg-amber-50 border border-amber-100 px-3 py-2 text-sm text-slate-700 whitespace-pre-wrap">
-          {customer.notes}
+          <span className={`badge !text-[10px] mb-1.5 ${noteSourceMeta('general').className}`}>
+            {noteSourceMeta('general').label}
+          </span>
+          <div>{customer.notes}</div>
         </div>
       ) : null}
       {(!notes || notes.length === 0) && !customer.notes && (
@@ -59,7 +66,12 @@ export default function CustomerInternalNotes({ customer, notes, onChanged, onEr
           {notes.map((n) => (
             <div key={n.id} role="listitem" className="border border-slate-100 rounded-lg px-3 py-2">
               <div className="flex items-start justify-between gap-2">
-                <p className="text-sm text-slate-800 whitespace-pre-wrap flex-1">{n.body}</p>
+                <div className="min-w-0 flex-1">
+                  <span className={`badge !text-[10px] ${noteSourceMeta(n.source).className}`}>
+                    {noteSourceMeta(n.source).label}
+                  </span>
+                  <p className="mt-1.5 text-sm text-slate-800 whitespace-pre-wrap">{n.body}</p>
+                </div>
                 <button type="button" className="text-slate-400 hover:text-rose-600" onClick={() => remove(n.id)} aria-label="Delete note">
                   <Trash2 size={14} />
                 </button>

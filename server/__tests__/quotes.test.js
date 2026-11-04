@@ -580,7 +580,7 @@ describe('POST /api/quotes/:id/send (requirement 6.7)', () => {
     getSetting.mockImplementation(async (key) => {
       if (key === 'templates') {
         return {
-          quote_sent_whatsapp: 'Hi {name} — {ref}',
+          quote_sent_whatsapp: 'Hi {name} - {ref}',
           quote_email_body: 'Quote {ref}',
           quote_email_subject: 'Quote {ref}',
         };

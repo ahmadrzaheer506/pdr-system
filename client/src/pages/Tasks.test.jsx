@@ -21,22 +21,24 @@ const PEOPLE = [
 ];
 
 const LEADS = [
-  { id: 9, name: 'Dave Whitfield', address: '12 Harbour Road', phone: '07700 111222' },
-  { id: 12, name: 'Helen Ackroyd', address: '4 Ridge Lane', email: 'helen@example.com' },
+  { id: 40, customer_id: 9, ref: 'L-0001', customer_name: 'Dave Whitfield', address: '12 Harbour Road', phone: '07700 111222' },
+  { id: 41, customer_id: 12, ref: 'L-0002', customer_name: 'Helen Ackroyd', address: '4 Ridge Lane', email: 'helen@example.com' },
+  { id: 42, customer_id: 9, ref: 'L-0003', customer_name: 'Dave Whitfield', address: '12 Harbour Road', phone: '07700 111222' },
 ];
 
 const OPEN_TASKS = [
   {
     id: 87,
     title: 'Produce quote for Dave',
-    detail: 'Site visit completed — quotation needs producing.',
+    detail: 'Site visit completed - quotation needs producing.',
     type: 'system',
     priority: 'high',
     due_date: '2026-09-26',
     status: 'open',
-    entity_type: 'customer',
+    entity_type: 'lead',
+    enquiry_id: 40,
     lead_id: 9,
-    lead_name: 'Dave Whitfield',
+    lead_name: 'L-0001 - Dave Whitfield',
     assignees: [{ id: 2, name: 'Lisa Grant', role: 'OFFICE' }],
     assignee_ids: [2],
   },
@@ -48,8 +50,10 @@ const OPEN_TASKS = [
     priority: 'normal',
     due_date: '2026-09-22',
     status: 'open',
+    enquiry_id: 41,
+    entity_type: 'lead',
     lead_id: 12,
-    lead_name: 'Helen Ackroyd',
+    lead_name: 'L-0002 - Helen Ackroyd',
     assignees: [{ id: 3, name: 'Jamie Fisher', role: 'STAFF' }],
     assignee_ids: [3],
   },
@@ -73,7 +77,7 @@ describe('Tasks views (requirement 12.3)', () => {
     api.get.mockImplementation(async (path) => {
       const p = String(path);
       if (p.startsWith('/settings/users')) return { users: PEOPLE };
-      if (p === '/customers' || p.startsWith('/customers?')) return { customers: LEADS };
+      if (p === '/leads?status=ALL' || p.startsWith('/leads?')) return { leads: LEADS };
       if (p.includes('when=due')) {
         return {
           tasks: [{ id: 24, title: 'Follow up quote Q-2026-0023', type: 'system', priority: 'normal', due_date: '2026-09-27', status: 'open' }],
@@ -82,7 +86,15 @@ describe('Tasks views (requirement 12.3)', () => {
       }
       if (p.includes('when=done')) {
         return {
-          tasks: [{ id: 9, title: 'Old chase', type: 'system', priority: 'high', due_date: '2026-09-01', status: 'done' }],
+          tasks: [{
+            id: 9,
+            title: 'Old chase',
+            type: 'system',
+            priority: 'high',
+            due_date: '2026-09-01',
+            status: 'done',
+            complete_note: 'Left a voicemail - they will call back Monday.',
+          }],
           counts: COUNTS,
         };
       }
@@ -121,6 +133,7 @@ describe('Tasks views (requirement 12.3)', () => {
     expect(screen.getByText('Due')).toBeInTheDocument();
     await user.click(screen.getByRole('button', { name: /4\s+done/i }));
     expect(await screen.findByText('Old chase')).toBeInTheDocument();
+    expect(screen.getByText('Left a voicemail - they will call back Monday.')).toBeInTheDocument();
     expect(api.get).toHaveBeenCalledWith('/tasks?when=done');
   });
 
@@ -133,8 +146,10 @@ describe('Tasks views (requirement 12.3)', () => {
     await user.click(screen.getByRole('button', { name: /mark "produce quote for dave" done/i }));
     expect(screen.getByRole('heading', { name: /mark task done/i })).toBeInTheDocument();
     expect(api.put).not.toHaveBeenCalled();
+    expect(screen.getByLabelText(/completion remarks/i)).toBeInTheDocument();
+    await user.type(screen.getByLabelText(/completion remarks/i), 'Quote emailed.');
     await user.click(screen.getByRole('button', { name: /^mark done$/i }));
-    expect(api.put).toHaveBeenCalledWith('/tasks/87', { status: 'done' });
+    expect(api.put).toHaveBeenCalledWith('/tasks/87', { status: 'done', complete_note: 'Quote emailed.' });
   });
 
   it('asks before deleting a task instead of dismissing it', async () => {
@@ -156,20 +171,22 @@ describe('Tasks views (requirement 12.3)', () => {
     api.put.mockResolvedValue({ ok: true });
     renderTasks('/tasks');
     expect(await screen.findByText('Produce quote for Dave')).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: /lead: l-0001 - dave whitfield/i }))
+      .toHaveAttribute('href', '/leads/9?from=tasks&lead=40');
     await user.click(screen.getByRole('button', { name: /edit produce quote for dave/i }));
     expect(screen.getByRole('heading', { name: /edit task/i })).toBeInTheDocument();
     const dialog = screen.getByRole('dialog');
-    expect(within(dialog).getByText('Dave Whitfield')).toBeInTheDocument();
+    expect(within(dialog).getByText('L-0001 - Dave Whitfield')).toBeInTheDocument();
     expect(within(dialog).getByRole('button', { name: /^change$/i })).toBeInTheDocument();
     expect(within(dialog).getByText('Lisa Grant')).toBeInTheDocument();
     const title = screen.getByLabelText(/^title$/i);
     await user.clear(title);
-    await user.type(title, 'Produce quote for Dave — updated');
+    await user.type(title, 'Produce quote for Dave - updated');
     await user.click(screen.getByRole('button', { name: /save changes/i }));
     expect(api.put).toHaveBeenCalledWith('/tasks/87', expect.objectContaining({
-      title: 'Produce quote for Dave — updated',
+      title: 'Produce quote for Dave - updated',
       priority: 'high',
-      lead_id: 9,
+      enquiry_id: 40,
       assignee_ids: [2],
     }));
   });
@@ -181,13 +198,14 @@ describe('Tasks views (requirement 12.3)', () => {
     await user.click(await screen.findByRole('button', { name: /add task/i }));
     expect(await screen.findByRole('heading', { name: /add a task/i })).toBeInTheDocument();
     await user.type(screen.getByLabelText(/^title$/i), 'Site photos');
-    await waitFor(() => expect(api.get).toHaveBeenCalledWith('/customers'));
+    await waitFor(() => expect(api.get).toHaveBeenCalledWith('/leads?status=ALL'));
     await waitFor(() => expect(api.get).toHaveBeenCalledWith('/settings/users'));
 
     await user.click(screen.getByLabelText(/^lead$/i));
-    expect(await screen.findByRole('option', { name: /dave whitfield/i })).toBeInTheDocument();
-    expect(screen.getByText('12 Harbour Road · 07700 111222')).toBeInTheDocument();
-    await user.click(screen.getByRole('option', { name: /dave whitfield/i }));
+    expect(await screen.findByRole('option', { name: /l-0001 - dave whitfield/i })).toBeInTheDocument();
+    expect(screen.getByRole('option', { name: /l-0003 - dave whitfield/i })).toBeInTheDocument();
+    expect(screen.getAllByText('12 Harbour Road · 07700 111222').length).toBeGreaterThanOrEqual(1);
+    await user.click(screen.getByRole('option', { name: /l-0003 - dave whitfield/i }));
 
     await user.click(screen.getByLabelText(/^assigned to$/i));
     expect(await screen.findByRole('option', { name: /lisa grant/i })).toBeInTheDocument();
@@ -204,7 +222,7 @@ describe('Tasks views (requirement 12.3)', () => {
     await waitFor(() => {
       expect(api.post).toHaveBeenCalledWith('/tasks', expect.objectContaining({
         title: 'Site photos',
-        lead_id: 9,
+        enquiry_id: 42,
         assignee_ids: [2, 3],
       }));
     });
@@ -241,7 +259,7 @@ describe('Tasks views (requirement 12.3)', () => {
     api.get.mockImplementation(async (path) => {
       const p = String(path);
       if (p.startsWith('/settings/users')) return { users: PEOPLE };
-      if (p === '/customers' || p.startsWith('/customers?')) return { customers: LEADS };
+      if (p === '/leads?status=ALL' || p.startsWith('/leads?')) return { leads: LEADS };
       if (p.includes('when=today')) {
         return { tasks: [], counts: { ...COUNTS, today: 0 } };
       }

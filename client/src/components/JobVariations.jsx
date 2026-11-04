@@ -41,7 +41,7 @@ export default function JobVariations({ jobId, lines = [], onChanged, onError })
   return (
     <div>
       <div className="label mb-2 flex items-center gap-1.5"><ListPlus size={13} /> Variations</div>
-      <p className="text-xs text-slate-400 mb-2">Office only. Listed here — not added to the job value, and not billed until invoicing (11.1).</p>
+      <p className="text-xs text-slate-400 mb-2">Office only. Listed here - not added to the job value, and not billed until invoicing (11.1).</p>
       <ul
         className={`space-y-1.5 mb-2 ${
           lines.length > 4 ? 'max-h-[13.25rem] overflow-y-auto overscroll-contain pr-0.5' : ''

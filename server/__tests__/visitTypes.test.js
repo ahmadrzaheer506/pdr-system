@@ -6,7 +6,7 @@ describe('visitTypes (requirement 5.3)', () => {
     expect(parseVisitType('inspection').error).toBe('Invalid visit type');
     expect(parseVisitType('measure')).toEqual({ value: 'measure' });
     expect(parseVisitType(undefined).skip).toBe(true);
-    expect(visitTitle('follow_up', 'Dave')).toBe('Follow-up — Dave');
+    expect(visitTitle('follow_up', 'Dave')).toBe('Follow-up - Dave');
   });
 
   test('blocks changes after the visit has ended or is not booked', () => {

@@ -1,5 +1,5 @@
 // ============================================================
-// Paul Douglas Roofing — Business OS
+// Paul Douglas Roofing - Business OS
 // Server entry point: Express app, cron jobs, static hosting.
 // ============================================================
 require('./loadEnv');
@@ -100,7 +100,7 @@ async function start() {
   await initDb();
   await applyIntervalFromSettings();
   app.listen(PORT, HOST, () => {
-    console.log(`\n  Paul Douglas Roofing — Business OS`);
+    console.log(`\n  Paul Douglas Roofing - Business OS`);
     console.log(`  Server running on http://${HOST}:${PORT}`);
     console.log(`  Data dir: ${DATA_DIR}\n`);
     setTimeout(runAutomationCycle, 4000);

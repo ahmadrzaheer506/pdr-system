@@ -46,7 +46,7 @@ export default function Schedule() {
       <div className="flex items-end justify-between flex-wrap gap-3">
         <div>
           <h1 className="text-[1.7rem] font-semibold tracking-tight text-slate-900">Schedule & AI Assistant</h1>
-          <p className="text-slate-500 text-sm mt-1">Speak or type tomorrow's situation — the assistant proposes a schedule from real job & staff data.</p>
+          <p className="text-slate-500 text-sm mt-1">Speak or type tomorrow's situation - the assistant proposes a schedule from real job & staff data.</p>
         </div>
       </div>
 

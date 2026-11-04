@@ -4,9 +4,10 @@ import { api, fmtDate } from '../../lib/api';
 import { formatClockTime } from '../../lib/clockTime';
 import { PageLoading, EmptyState, StatusBadge } from '../../components/ui.jsx';
 import ClockWidget from '../../components/ClockWidget.jsx';
+import ClockOutHandover from '../../components/ClockOutHandover.jsx';
 
 function hrs(mins) {
-  if (!mins) return '—';
+  if (!mins) return '-';
   const h = Math.floor(mins / 60);
   const m = Math.round(mins % 60);
   return `${h}h ${String(m).padStart(2, '0')}m`;
@@ -76,7 +77,11 @@ export default function StaffHours() {
                         <span className="badge bg-amber-100 text-amber-700 gap-1"><MapPin size={9} /> off site</span>
                       )}
                     </div>
-                    {t.notes && <p className="text-xs text-slate-500 mt-1.5 border-t border-slate-100 pt-1.5">{t.notes}</p>}
+                    {(t.notes || t.photo_file) && (
+                      <div className="mt-1.5 border-t border-slate-100 pt-1.5">
+                        <ClockOutHandover notes={t.notes} photoFile={t.photo_file} compact />
+                      </div>
+                    )}
                   </div>
                 ))}
               </div>

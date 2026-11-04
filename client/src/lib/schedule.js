@@ -318,7 +318,7 @@ export function proposalCrewConflicts(assignments, staff = [], jobs = []) {
           user_id: person.id,
           type: 'holiday',
           name: person.name,
-          detail: jobTitle ? `On holiday — ${jobTitle}` : 'On approved holiday',
+          detail: jobTitle ? `On holiday - ${jobTitle}` : 'On approved holiday',
         });
       }
       if ((person.busy_on || []).length) {
@@ -326,7 +326,7 @@ export function proposalCrewConflicts(assignments, staff = [], jobs = []) {
           user_id: person.id,
           type: 'double_book',
           name: person.name,
-          detail: jobTitle ? `Already booked — ${jobTitle}` : 'Already booked that day',
+          detail: jobTitle ? `Already booked - ${jobTitle}` : 'Already booked that day',
         });
       }
     }

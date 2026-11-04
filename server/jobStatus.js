@@ -38,7 +38,7 @@ function canAdvanceJobStatus(from, to) {
   return next >= current;
 }
 
-/** Office may pull a live booking off the calendar — not a general go-back. */
+/** Office may pull a live booking off the calendar - not a general go-back. */
 function canUnscheduleJob(status) {
   return status === 'SCHEDULED' || status === 'IN_PROGRESS';
 }

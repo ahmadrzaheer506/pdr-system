@@ -68,7 +68,7 @@ describe('calendarSync (requirement 16.3)', () => {
 
   test('pushes a visit onto admin/office and assigned staff calendars', async () => {
     Appointment.findByPk.mockResolvedValue({
-      id: 50, title: 'Site visit — Dave', start: new Date('2026-10-08T09:00:00Z'),
+      id: 50, title: 'Site visit - Dave', start: new Date('2026-10-08T09:00:00Z'),
       end: new Date('2026-10-08T10:00:00Z'), status: 'booked', created_by: LISA,
       customer_id: 9, lead_id: 12, visit_type: 'site_visit', address: '14 Elm', notes: null,
       gcal_status: 'not_synced',
@@ -107,7 +107,7 @@ describe('calendarSync (requirement 16.3)', () => {
 
   test('jobs are all-day chips with the job clock in the title', async () => {
     Job.findByPk.mockResolvedValue({
-      id: 9, title: 'Full re-roof — semi-detached', start_date: '2026-10-07',
+      id: 9, title: 'Full re-roof - semi-detached', start_date: '2026-10-07',
       end_date: '2026-10-08', start_time: '08:00', end_time: '16:30',
       status: 'IN_PROGRESS', customer_id: 4, quote_id: null, address: '19 Hawthorn Drive',
       notes: null, description: null,
@@ -118,7 +118,7 @@ describe('calendarSync (requirement 16.3)', () => {
       startDate: '2026-10-07',
       endDateExclusive: '2026-10-09',
       colorId: '9',
-      title: '8:00 AM – 4:30 PM · Job · Full re-roof — semi-detached',
+      title: '8:00 AM – 4:30 PM · Job · Full re-roof - semi-detached',
     }));
   });
 

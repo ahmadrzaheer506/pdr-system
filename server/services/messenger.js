@@ -119,7 +119,7 @@ async function sendToCustomer(customerId, channel, body, { userId = null, docUrl
   };
 }
 
-/** Digits-only UK form — alias of phone.normalisePhone (requirement 2.5). */
+/** Digits-only UK form - alias of phone.normalisePhone (requirement 2.5). */
 const normPhone = normalisePhone;
 
 /** Dedup: existing customer by normalised phone, then email (requirement 3.4). */
@@ -236,14 +236,14 @@ async function ingestInbound({ source, channel = null, name = null, phone = null
   }
 
   await stopFollowupsFor(customerId);
-  await logActivity(customerId, null, 'inbound', `Inbound ${channel} ${subject ? `— ${subject}` : 'message'}`);
+  await logActivity(customerId, null, 'inbound', `Inbound ${channel} ${subject ? `- ${subject}` : 'message'}`);
   if (createdNewLead) {
     const { safeNotify, notifyOffice } = require('../notifications');
     const who = name || phone || em || 'Unknown enquirer';
     const snippet = (body || subject || '').replace(/\s+/g, ' ').trim().slice(0, 120);
     await safeNotify(() => notifyOffice({
       kind: 'new_enquiry',
-      message: snippet ? `${who} (${source}): ${snippet}` : `${who} — new ${source} enquiry`,
+      message: snippet ? `${who} (${source}): ${snippet}` : `${who} - new ${source} enquiry`,
       entity_type: 'lead',
       entity_id: leadId,
     }, { excludeId: ownerId || undefined }));

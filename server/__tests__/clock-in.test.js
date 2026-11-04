@@ -89,7 +89,7 @@ describe('clockIn (requirement 9.1)', () => {
       id: 11, user_id: 4, job_id: null, status: 'active',
       toJSON() { return this; },
     });
-    await expect(clockIn(4, {})).rejects.toThrow('You are already clocked in — clock out first');
+    await expect(clockIn(4, {})).rejects.toThrow('You are already clocked in - clock out first');
     expect(Timesheet.create).not.toHaveBeenCalled();
   });
 
@@ -97,7 +97,7 @@ describe('clockIn (requirement 9.1)', () => {
     const err = new Error('duplicate');
     err.name = 'SequelizeUniqueConstraintError';
     Timesheet.create.mockRejectedValue(err);
-    await expect(clockIn(4, {})).rejects.toThrow('You are already clocked in — clock out first');
+    await expect(clockIn(4, {})).rejects.toThrow('You are already clocked in - clock out first');
   });
 
   test('rejects a non-integer job id', async () => {

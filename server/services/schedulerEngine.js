@@ -184,7 +184,7 @@ function ruleSchedule(context, transcript = '') {
     `Rule-based proposal for ${context.forDate}: ${assignments.length} job(s) staffed from ${pool.length} available` +
     (hints.unavailable.size ? `, excluding ${hints.unavailable.size} marked unavailable in your instructions` : '') +
     `.${unassigned.length ? ` ${unassigned.length} job(s) could not be staffed.` : ''}` +
-    ' (Built-in scheduler — add an AI key for smarter free-text handling.)';
+    ' (Built-in scheduler - add an AI key for smarter free-text handling.)';
 
   return { assignments, unassigned, summary };
 }
@@ -228,7 +228,7 @@ function validateProposal(proposal, context, { allowConflicts = false } = {}) {
   for (const a of proposal.assignments || []) {
     const jb = jobById.get(Number(a.job_id));
     if (!jb) {
-      errors.push(`Proposal referenced unknown/already-scheduled job #${a.job_id} — dropped`);
+      errors.push(`Proposal referenced unknown/already-scheduled job #${a.job_id} - dropped`);
       continue;
     }
     const users = [];
@@ -236,19 +236,19 @@ function validateProposal(proposal, context, { allowConflicts = false } = {}) {
       const uid = Number(uidRaw);
       const s = staffById.get(uid);
       if (!s) {
-        errors.push(`Unknown staff #${uidRaw} proposed on "${jb.title}" — removed`);
+        errors.push(`Unknown staff #${uidRaw} proposed on "${jb.title}" - removed`);
         continue;
       }
       if (!allowConflicts && s.on_holiday) {
-        errors.push(`${s.name} is on approved holiday on ${context.forDate} — removed from "${jb.title}"`);
+        errors.push(`${s.name} is on approved holiday on ${context.forDate} - removed from "${jb.title}"`);
         continue;
       }
       if (!allowConflicts && s.busy_on.length) {
-        errors.push(`${s.name} is already scheduled on another job that day — removed from "${jb.title}"`);
+        errors.push(`${s.name} is already scheduled on another job that day - removed from "${jb.title}"`);
         continue;
       }
       if (!allowConflicts && seenUser.has(uid)) {
-        errors.push(`${s.name} was double-booked in the proposal — kept on first job only`);
+        errors.push(`${s.name} was double-booked in the proposal - kept on first job only`);
         continue;
       }
       seenUser.set(uid, jb.id);

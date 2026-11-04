@@ -1,5 +1,5 @@
 /**
- * Requirement 1.4 — three-role model.
+ * Requirement 1.4 - three-role model.
  *
  * Spec names: Director, Office, Operative.
  * Stored, API, and JWT values stay ADMIN, OFFICE, STAFF (no rename).

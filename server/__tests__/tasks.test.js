@@ -11,6 +11,9 @@ jest.mock('../calendarSync', () => ({
   syncTask: jest.fn(async () => {}),
   removeTask: jest.fn(async () => {}),
 }));
+jest.mock('../customerNotes', () => ({
+  copyTaskRemark: jest.fn(async () => ({ ok: true })),
+}));
 jest.mock('../models', () => ({
   sequelize: { transaction: jest.fn(async (fn) => fn({})) },
   Task: { findAll: jest.fn(), count: jest.fn(), create: jest.fn(), findByPk: jest.fn() },
@@ -24,6 +27,7 @@ const request = require('supertest');
 const express = require('express');
 const { Op } = require('sequelize');
 const { Task, User, Customer, Lead, TaskAssignee } = require('../models');
+const notes = require('../customerNotes');
 const tasks = require('../routes/tasks');
 
 const app = express();
@@ -57,6 +61,31 @@ describe('GET /api/tasks (requirement 12.3)', () => {
     expect(Task.findAll).toHaveBeenCalledWith(expect.objectContaining({
       where: { status: { [Op.in]: ['done', 'dismissed'] } },
     }));
+  });
+
+  test('returns enquiry ref and name for a lead-scoped task', async () => {
+    Task.findAll.mockResolvedValue([{
+      entity_type: 'lead',
+      entity_id: 40,
+      toJSON: () => ({
+        id: 8,
+        title: 'Call Dave',
+        entity_type: 'lead',
+        entity_id: 40,
+        assignee: { name: 'Lisa Grant' },
+        assignees: [{ id: 2, name: 'Lisa Grant', role: 'OFFICE' }],
+      }),
+    }]);
+    Lead.findAll.mockResolvedValue([{ id: 40, customer_id: 9, ref: 'L-0001', toJSON() { return this; } }]);
+    Customer.findAll.mockResolvedValue([{ id: 9, name: 'Dave Whitfield', toJSON() { return this; } }]);
+    const res = await request(app).get('/api/tasks?status=open');
+    expect(res.status).toBe(200);
+    expect(res.body.tasks[0]).toMatchObject({
+      enquiry_id: 40,
+      lead_id: 9,
+      lead_ref: 'L-0001',
+      lead_name: 'L-0001 - Dave Whitfield',
+    });
   });
 
   test('returns lead name and assignees', async () => {
@@ -203,6 +232,38 @@ describe('PUT / DELETE /api/tasks/:id', () => {
       [{ task_id: 7, user_id: 2 }, { task_id: 7, user_id: 3 }],
       expect.anything(),
     );
+  });
+
+  test('stores optional completion remarks when marking done', async () => {
+    const update = jest.fn().mockResolvedValue();
+    Task.findByPk.mockResolvedValue({ id: 7, type: 'manual', entity_type: 'customer', update });
+    const res = await request(app).put('/api/tasks/7').send({
+      status: 'done',
+      complete_note: '  Called Helen - quote going out Friday  ',
+    });
+    expect(res.status).toBe(200);
+    expect(update).toHaveBeenCalledWith(expect.objectContaining({
+      status: 'done',
+      done_at: expect.any(Date),
+      complete_note: 'Called Helen - quote going out Friday',
+    }), expect.anything());
+    expect(notes.copyTaskRemark).toHaveBeenCalledWith(
+      expect.objectContaining({ id: 7 }),
+      1,
+      'Called Helen - quote going out Friday',
+    );
+  });
+
+  test('clears completion remarks when a task is reopened', async () => {
+    const update = jest.fn().mockResolvedValue();
+    Task.findByPk.mockResolvedValue({ id: 7, type: 'manual', entity_type: 'customer', update });
+    const res = await request(app).put('/api/tasks/7').send({ status: 'open' });
+    expect(res.status).toBe(200);
+    expect(update).toHaveBeenCalledWith(expect.objectContaining({
+      status: 'open',
+      done_at: null,
+      complete_note: null,
+    }), expect.anything());
   });
 
   test('deletes the task', async () => {

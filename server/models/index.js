@@ -1,5 +1,5 @@
 // ============================================================
-// Sequelize models — one definition per CRM table.
+// Sequelize models - one definition per CRM table.
 // Attribute names stay snake_case so route/service consumers
 // keep the same property access as the previous SQLite layer.
 // ============================================================
@@ -27,7 +27,7 @@ const User = sequelize.define('User', {
   skills: jsonDefault([]),
   is_driver: { type: DataTypes.BOOLEAN, allowNull: false, defaultValue: false },
   active: { type: DataTypes.BOOLEAN, allowNull: false, defaultValue: true },
-  /** Seed / first owner — cannot be deactivated or deleted. */
+  /** Seed / first owner - cannot be deactivated or deleted. */
   protected: { type: DataTypes.BOOLEAN, allowNull: false, defaultValue: false },
   holiday_allowance: { type: DataTypes.DOUBLE, allowNull: false, defaultValue: 28 },
   color: { type: DataTypes.TEXT, allowNull: false, defaultValue: '#64748b' },
@@ -106,9 +106,11 @@ const CustomerNote = sequelize.define('CustomerNote', {
   customer_id: { type: DataTypes.INTEGER, allowNull: false },
   body: { type: DataTypes.TEXT, allowNull: false },
   user_id: { type: DataTypes.INTEGER },
+  source: { type: DataTypes.TEXT, allowNull: false, defaultValue: 'general' },
+  lead_id: { type: DataTypes.INTEGER },
 }, { tableName: 'customer_notes', timestamps: true, createdAt: 'created_at', updatedAt: false });
 
-/** Photo or PDF attached to the customer only — not a quote or job (requirement 2.4). */
+/** Photo or PDF attached to the customer only - not a quote or job (requirement 2.4). */
 const CustomerFile = sequelize.define('CustomerFile', {
   id: { type: DataTypes.INTEGER, primaryKey: true, autoIncrement: true },
   customer_id: { type: DataTypes.INTEGER, allowNull: false },
@@ -117,6 +119,8 @@ const CustomerFile = sequelize.define('CustomerFile', {
   mime: { type: DataTypes.TEXT, allowNull: false },
   size_bytes: { type: DataTypes.INTEGER, allowNull: false },
   user_id: { type: DataTypes.INTEGER },
+  source: { type: DataTypes.TEXT, allowNull: false, defaultValue: 'general' },
+  lead_id: { type: DataTypes.INTEGER },
 }, { tableName: 'customer_files', timestamps: true, createdAt: 'created_at', updatedAt: false });
 
 const Lead = sequelize.define('Lead', {
@@ -129,11 +133,11 @@ const Lead = sequelize.define('Lead', {
   status: { type: DataTypes.TEXT, allowNull: false, defaultValue: 'NEW' },
   next_action: { type: DataTypes.TEXT },
   meta: jsonDefault({}),
-  /** Pipeline column for this enquiry — independent of other jobs on the same customer. */
+  /** Pipeline column for this enquiry - independent of other jobs on the same customer. */
   stage: { type: DataTypes.TEXT, allowNull: false, defaultValue: 'ENQUIRY' },
   board_order: { type: DataTypes.INTEGER, allowNull: false, defaultValue: 0 },
   lost_reason: { type: DataTypes.TEXT },
-  /** One site / phone / email for this enquiry — not the full customer contact list. */
+  /** One site / phone / email for this enquiry - not the full customer contact list. */
   site_id: { type: DataTypes.INTEGER },
   phone_id: { type: DataTypes.INTEGER },
   email_id: { type: DataTypes.INTEGER },
@@ -415,6 +419,7 @@ const Task = sequelize.define('Task', {
   entity_type: { type: DataTypes.TEXT },
   entity_id: { type: DataTypes.INTEGER },
   done_at: { type: DataTypes.DATE },
+  complete_note: { type: DataTypes.TEXT },
 }, { tableName: 'tasks', timestamps: true, createdAt: 'created_at', updatedAt: false });
 
 const Followup = sequelize.define('Followup', {

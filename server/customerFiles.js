@@ -36,9 +36,25 @@ function filesDir() {
   return dir;
 }
 
+function parseLeadId(raw) {
+  if (raw == null || raw === '') return null;
+  const n = Number(raw);
+  if (!Number.isInteger(n) || n < 1) return null;
+  return n;
+}
+
+const FILE_SOURCES = ['general', 'customer', 'clock'];
+
+function normalizeFileSource(raw) {
+  const source = String(raw || 'general').trim().toLowerCase();
+  return FILE_SOURCES.includes(source) ? source : 'general';
+}
+
 function mapFile(row) {
   const o = plain(row);
   o.user_name = o.User?.name || null;
+  o.source = normalizeFileSource(o.source);
+  o.lead_id = o.lead_id || null;
   delete o.User;
   delete o.stored_name;
   return o;
@@ -85,8 +101,9 @@ async function listFiles(customerId) {
  * @param {number} customerId
  * @param {number} userId
  * @param {object} file multer file
+ * @param {{ source?: string, leadId?: unknown }} [extras]
  */
-async function addFile(customerId, userId, file) {
+async function addFile(customerId, userId, file, extras = {}) {
   const check = validateUpload(file);
   if (check.error) return check;
   const stored_name = storedName(customerId, check.ext);
@@ -98,6 +115,8 @@ async function addFile(customerId, userId, file) {
     mime: check.mime,
     size_bytes: check.bytes,
     user_id: userId || null,
+    source: normalizeFileSource(extras.source),
+    lead_id: parseLeadId(extras.leadId),
   });
   const row = await CustomerFile.findByPk(created.id, {
     include: [{ model: User, attributes: ['name'] }],
@@ -144,6 +163,7 @@ function handleUpload(req, res, next) {
 }
 
 module.exports = {
+  FILE_SOURCES,
   ALLOWED_MIME,
   MAX_BYTES,
   validateUpload,

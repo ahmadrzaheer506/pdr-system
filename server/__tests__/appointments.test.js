@@ -185,7 +185,7 @@ describe('POST /api/appointments (requirement 5.1)', () => {
     expect(Appointment.create).toHaveBeenCalledTimes(1);
     expect(Appointment.create.mock.calls[0][0]).toMatchObject({
       customer_id: 9,
-      title: 'Site visit — Dave Whitfield',
+      title: 'Site visit - Dave Whitfield',
       address: '14 Elm Grove',
       notes: 'Look at the valley',
       created_by: 1,
@@ -261,7 +261,7 @@ describe('POST /api/appointments (requirement 5.1)', () => {
     expect(res.status).toBe(200);
     expect(Appointment.create.mock.calls[0][0]).toMatchObject({
       visit_type: 'measure',
-      title: 'Measure — Dave Whitfield',
+      title: 'Measure - Dave Whitfield',
     });
   });
 });
@@ -272,7 +272,7 @@ function futureAppointment(overrides = {}) {
   const row = {
     id: 50,
     customer_id: 9,
-    title: 'Site visit — Dave Whitfield',
+    title: 'Site visit - Dave Whitfield',
     start,
     end,
     address: '14 Elm Grove',
@@ -321,7 +321,7 @@ describe('PUT /api/appointments/:id (requirement 5.3)', () => {
       visit_type: 'follow_up',
       notes: 'Moved',
       status: 'booked',
-      title: 'Follow-up — Dave Whitfield',
+      title: 'Follow-up - Dave Whitfield',
     }));
     expect(calendarSync.syncAppointment).toHaveBeenCalledWith(50);
     expect(setStage).not.toHaveBeenCalled();
@@ -386,7 +386,7 @@ describe('POST /api/appointments/:id/complete', () => {
     expect(res.status).toBe(200);
     expect(completeVisit).toHaveBeenCalled();
     expect(logActivity).toHaveBeenCalledWith(
-      9, 1, 'appointment_completed', 'Site visit completed — quote needed', 'appointment', 50,
+      9, 1, 'appointment_completed', 'Site visit completed - quote needed', 'appointment', 50,
     );
     expect(res.body).toEqual({ ok: true, already: false, has_quote: false, task_id: 44 });
   });
@@ -398,7 +398,7 @@ describe('POST /api/appointments/:id/complete', () => {
     expect(res.status).toBe(200);
     expect(completeVisit).toHaveBeenCalledWith(expect.anything(), expect.anything(), 1, 'Valley is sound');
     expect(logActivity).toHaveBeenCalledWith(
-      9, 1, 'appointment_completed', 'Site visit completed — quote needed. Remarks: Valley is sound', 'appointment', 50,
+      9, 1, 'appointment_completed', 'Site visit completed - quote needed. Remarks: Valley is sound', 'appointment', 50,
     );
   });
 

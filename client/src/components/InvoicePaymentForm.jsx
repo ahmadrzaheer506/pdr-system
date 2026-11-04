@@ -112,7 +112,7 @@ export default function InvoicePaymentForm({ invoice, onRecorded, onError }) {
 export function InvoicePaymentModal({ invoice, onClose, onRecorded, onError }) {
   if (!invoice) return null;
   return (
-    <Modal open={!!invoice} onClose={onClose} title={`Record payment — ${invoice.ref}`}>
+    <Modal open={!!invoice} onClose={onClose} title={`Record payment - ${invoice.ref}`}>
       <InvoicePaymentForm
         invoice={invoice}
         onRecorded={onRecorded}

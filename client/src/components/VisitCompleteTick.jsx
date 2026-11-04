@@ -37,7 +37,7 @@ export default function VisitCompleteTick({ done, saving, onComplete, large = fa
 export function VisitCompleteRemarks({ note, className = '' }) {
   const [expanded, setExpanded] = useState(false);
   if (!note) return null;
-  const long = note.length > 160 || note.split('\n').length > 3;
+  const long = note.length > 90 || note.split('\n').length > 2;
   return (
     <aside
       className={`rounded-xl bg-sky-50 p-3 ring-1 ring-sky-100 ${className}`}
@@ -47,7 +47,7 @@ export function VisitCompleteRemarks({ note, className = '' }) {
         <MessageSquareText size={13} strokeWidth={2.2} />
         Remarks
       </div>
-      <p className={`mt-1.5 text-sm leading-relaxed text-slate-800 whitespace-pre-wrap ${!expanded && long ? 'line-clamp-3' : ''}`}>
+      <p className={`mt-1.5 text-sm leading-relaxed text-slate-800 whitespace-pre-wrap ${!expanded && long ? 'line-clamp-2' : ''}`}>
         {note}
       </p>
       {long ? (
@@ -94,7 +94,7 @@ export function VisitCompleteModal({ visit, open, saving, onClose, onConfirm }) 
             rows={3}
             value={note}
             onChange={(e) => setNote(e.target.value)}
-            placeholder="What was found on site — access, measurements, extras…"
+            placeholder="What was found on site - access, measurements, extras…"
           />
         </div>
         <div className="flex gap-2 justify-end">

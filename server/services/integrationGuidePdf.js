@@ -1,5 +1,5 @@
 /**
- * Client-facing PDF of docs/integration-setup-guide.md — how to create
+ * Client-facing PDF of docs/integration-setup-guide.md - how to create
  * accounts and copy keys for Settings → Integrations.
  */
 const fs = require('fs');

@@ -109,7 +109,10 @@ describe('customer internal notes and files (requirement 2.4)', () => {
     notes.addNote.mockResolvedValue({ note: { id: 1, body: 'Keep off the tiles' } });
     const res = await request(app).post('/api/customers/9/notes').send({ body: 'Keep off the tiles' });
     expect(res.status).toBe(200);
-    expect(notes.addNote).toHaveBeenCalledWith(9, 1, 'Keep off the tiles');
+    expect(notes.addNote).toHaveBeenCalledWith(9, 1, 'Keep off the tiles', {
+      source: 'general',
+      leadId: undefined,
+    });
 
     notes.addNote.mockResolvedValue({ error: 'Note is required', status: 400 });
     const empty = await request(app).post('/api/customers/9/notes').send({ body: '  ' });
