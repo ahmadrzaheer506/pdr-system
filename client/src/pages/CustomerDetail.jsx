@@ -251,6 +251,8 @@ export default function CustomerDetail() {
           />
           <QuotesCard
             quotes={quotes}
+            customer={customer}
+            lead={activeLead}
             onEdit={(q) => { if (!quoteLockedForEdit(q.status)) setQuoteModal(q); }}
             onChanged={load}
             show={show}
@@ -567,7 +569,115 @@ function quoteEditLockedHint(status) {
   return '';
 }
 
-function QuotesCard({ quotes, onEdit, onChanged, show }) {
+function QuoteSendButton({ label, busyLabel, busy, disabled, blocked, blockedHint, onClick }) {
+  const button = (
+    <button
+      type="button"
+      aria-label={label}
+      aria-busy={busy || undefined}
+      disabled={disabled || blocked}
+      onClick={blocked ? undefined : onClick}
+      className={`btn-secondary !py-1 !px-2 text-xs w-full inline-flex items-center justify-center gap-1 ${blocked ? 'pointer-events-none opacity-50' : ''}`}
+    >
+      {busy ? <><Loader2 size={12} className="animate-spin" /> {busyLabel}</> : label}
+    </button>
+  );
+  const wrapClass = 'block min-w-0 flex-1 basis-0';
+  if (!blocked) return <span className={wrapClass}>{button}</span>;
+  return (
+    <HoverTooltip text={blockedHint} className={wrapClass}>
+      {button}
+    </HoverTooltip>
+  );
+}
+
+function QuoteDecisionPanel({
+  canWhatsApp,
+  canEmail,
+  busy,
+  actionBusy,
+  onSendWhatsApp,
+  onSendEmail,
+  onAccept,
+  onDecline,
+}) {
+  return (
+    <div className="mt-2 space-y-2">
+      <div>
+        <p className="mb-1 text-[11px] font-medium text-slate-500">Send to customer</p>
+        <div className="flex gap-1.5">
+          <QuoteSendButton
+            label="Send WhatsApp"
+            busyLabel="Sending…"
+            busy={actionBusy('whatsapp')}
+            disabled={busy}
+            blocked={!canWhatsApp}
+            blockedHint="No phone on this lead"
+            onClick={onSendWhatsApp}
+          />
+          <QuoteSendButton
+            label="Send Email"
+            busyLabel="Sending…"
+            busy={actionBusy('email')}
+            disabled={busy}
+            blocked={!canEmail}
+            blockedHint="No email on this lead"
+            onClick={onSendEmail}
+          />
+        </div>
+      </div>
+      <div>
+        <p className="mb-1 text-[11px] font-medium text-slate-500">Submit decision</p>
+        {!canWhatsApp && !canEmail && (
+          <p className="mb-1.5 text-[11px] leading-relaxed text-slate-500">
+            No WhatsApp or email on this lead. Record the decision if they agreed in person or by phone.
+          </p>
+        )}
+        <div className="flex gap-1.5">
+          <button
+            type="button"
+            aria-label="Accepted"
+            aria-busy={actionBusy('accepted') || undefined}
+            disabled={busy}
+            onClick={onAccept}
+            className="btn-secondary !py-1 !px-2 text-xs flex-1 inline-flex items-center justify-center gap-1 !text-emerald-700"
+          >
+            {actionBusy('accepted') ? <><Loader2 size={12} className="animate-spin" /> Saving…</> : <><Check size={12} /> Accepted</>}
+          </button>
+          <button
+            type="button"
+            aria-label="Declined"
+            aria-busy={actionBusy('declined') || undefined}
+            disabled={busy}
+            onClick={onDecline}
+            className="btn-secondary !py-1 !px-2 text-xs flex-1 inline-flex items-center justify-center gap-1 !text-rose-600"
+          >
+            {actionBusy('declined') ? <><Loader2 size={12} className="animate-spin" /> Saving…</> : <><X size={12} /> Declined</>}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function contactHasValue(list, id) {
+  const rows = Array.isArray(list) ? list : [];
+  if (id != null && id !== '') {
+    const row = rows.find((item) => Number(item.id) === Number(id));
+    return Boolean(String(row?.value || '').trim());
+  }
+  return rows.some((item) => String(item?.value || '').trim());
+}
+
+function quoteCanSendWhatsApp(quote, customer, lead) {
+  return contactHasValue(customer?.phones, quote?.phone_id || lead?.phone_id);
+}
+
+function quoteCanSendEmail(quote, customer, lead) {
+  return contactHasValue(customer?.emails, quote?.email_id || lead?.email_id);
+}
+
+function QuotesCard({ quotes, customer, lead, onEdit, onChanged, show }) {
   const [acceptQuote, setAcceptQuote] = useState(null);
   const [jobPrompt, setJobPrompt] = useState(null);
   const [pickedExtras, setPickedExtras] = useState([]);
@@ -687,52 +797,17 @@ function QuotesCard({ quotes, onEdit, onChanged, show }) {
               </div>
             )}
             {['draft', 'sent'].includes(q.status) && (
-              <div className="flex gap-1.5 mt-2">
-                <button
-                  type="button"
-                  aria-label="Send WhatsApp"
-                  aria-busy={actionBusy(q.id, 'whatsapp') || undefined}
-                  disabled={quoteBusy(q.id)}
-                  onClick={() => send(q, ['whatsapp'])}
-                  className="btn-secondary !py-1 !px-2 text-xs flex-1 inline-flex items-center justify-center gap-1"
-                >
-                  {actionBusy(q.id, 'whatsapp') ? <><Loader2 size={12} className="animate-spin" /> Sending…</> : 'Send WhatsApp'}
-                </button>
-                <button
-                  type="button"
-                  aria-label="Send Email"
-                  aria-busy={actionBusy(q.id, 'email') || undefined}
-                  disabled={quoteBusy(q.id)}
-                  onClick={() => send(q, ['email'])}
-                  className="btn-secondary !py-1 !px-2 text-xs flex-1 inline-flex items-center justify-center gap-1"
-                >
-                  {actionBusy(q.id, 'email') ? <><Loader2 size={12} className="animate-spin" /> Sending…</> : 'Send Email'}
-                </button>
-              </div>
-            )}
-            {q.status === 'sent' && (
-              <div className="flex gap-1.5 mt-2">
-                <button
-                  type="button"
-                  aria-label="Accepted"
-                  aria-busy={actionBusy(q.id, 'accepted') || undefined}
-                  disabled={quoteBusy(q.id)}
-                  onClick={() => requestAccept(q)}
-                  className="btn-secondary !py-1 !px-2 text-xs flex-1 inline-flex items-center justify-center gap-1 !text-emerald-700"
-                >
-                  {actionBusy(q.id, 'accepted') ? <><Loader2 size={12} className="animate-spin" /> Saving…</> : <><Check size={12} /> Accepted</>}
-                </button>
-                <button
-                  type="button"
-                  aria-label="Declined"
-                  aria-busy={actionBusy(q.id, 'declined') || undefined}
-                  disabled={quoteBusy(q.id)}
-                  onClick={() => decide(q, 'declined')}
-                  className="btn-secondary !py-1 !px-2 text-xs flex-1 inline-flex items-center justify-center gap-1 !text-rose-600"
-                >
-                  {actionBusy(q.id, 'declined') ? <><Loader2 size={12} className="animate-spin" /> Saving…</> : <><X size={12} /> Declined</>}
-                </button>
-              </div>
+              <QuoteDecisionPanel
+                quote={q}
+                canWhatsApp={quoteCanSendWhatsApp(q, customer, lead)}
+                canEmail={quoteCanSendEmail(q, customer, lead)}
+                busy={quoteBusy(q.id)}
+                actionBusy={(action) => actionBusy(q.id, action)}
+                onSendWhatsApp={() => send(q, ['whatsapp'])}
+                onSendEmail={() => send(q, ['email'])}
+                onAccept={() => requestAccept(q)}
+                onDecline={() => decide(q, 'declined')}
+              />
             )}
             <div className="flex flex-wrap gap-1.5 mt-1.5">
               <button type="button" onClick={() => downloadPdf(q)} className="btn-ghost !py-1 !px-2 text-xs inline-flex items-center gap-1">

@@ -849,6 +849,35 @@ describe('CustomerDetail type (requirement 2.1)', () => {
     expect(api.post).not.toHaveBeenCalledWith('/quotes/5/send', expect.anything());
   });
 
+  it('lets office record accept or decline on a draft with no WhatsApp or email', async () => {
+    const user = userEvent.setup();
+    api.get.mockImplementation((path) => {
+      if (String(path).includes('/settings/users')) {
+        return Promise.resolve({ users: [{ id: 1, name: 'Paul Douglas', role: 'ADMIN', active: true }] });
+      }
+      return Promise.resolve({
+        ...DETAIL,
+        customer: {
+          ...DETAIL.customer,
+          phones: [],
+          emails: [],
+        },
+        quotes: [{ id: 5, ref: 'Q-2026-0005', title: 'Felt', total: 1200, status: 'draft', optional_extras: [] }],
+      });
+    });
+    api.post.mockResolvedValue({ ok: true, job_id: null });
+    renderDetail();
+    expect(await screen.findByText(/no whatsapp or email on this lead/i)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /send whatsapp/i })).toBeDisabled();
+    expect(screen.getByRole('button', { name: /send email/i })).toBeDisabled();
+    await user.click(screen.getByRole('button', { name: /^accepted$/i }));
+    await waitFor(() => expect(api.post).toHaveBeenCalledWith('/quotes/5/decision', {
+      decision: 'accepted',
+      accepted_extra_indexes: undefined,
+      create_job: false,
+    }));
+  });
+
   it('shows why WhatsApp send failed instead of Quote sent', async () => {
     const user = userEvent.setup();
     api.get.mockImplementation((path) => {

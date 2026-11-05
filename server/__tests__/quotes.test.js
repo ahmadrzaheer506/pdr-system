@@ -457,6 +457,33 @@ describe('quote revisions and extras on accept (requirement 6.5)', () => {
     }));
   });
 
+  test('office can accept a draft quote without sending it', async () => {
+    const quoteRow = {
+      id: 21,
+      customer_id: 9,
+      status: 'draft',
+      ref: 'Q-2026-0021',
+      title: 'Re-roof',
+      total: 1200,
+      notes: null,
+      optional_extras: [],
+      update: jest.fn(async function patch(fields) { Object.assign(this, fields); }),
+    };
+    Quote.findByPk.mockResolvedValue(quoteRow);
+    contacts.loadCustomerWithContacts.mockResolvedValue({ id: 9, name: 'Dave', sites: [] });
+    Followup.update.mockResolvedValue([0]);
+    Job.findOne.mockResolvedValue(null);
+    const { setStage, logActivity } = require('../services/pipeline');
+    const res = await request(app).post('/api/quotes/21/decision').send({
+      decision: 'accepted',
+      create_job: false,
+    });
+    expect(res.status).toBe(200);
+    expect(quoteRow.update).toHaveBeenCalledWith(expect.objectContaining({ status: 'accepted' }));
+    expect(setStage).toHaveBeenCalledWith(9, 'WON', 1, 'Quote Q-2026-0021 accepted (recorded by office)', expect.anything());
+    expect(logActivity).toHaveBeenCalledWith(9, 1, 'quote_accepted', 'Quote Q-2026-0021 accepted (recorded by office)', 'quote', 21);
+  });
+
   test('a later create_job on an accepted quote creates the job once', async () => {
     const quoteRow = {
       id: 20,

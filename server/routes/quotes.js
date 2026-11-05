@@ -498,6 +498,10 @@ router.post('/:id/decision', asyncHandler(async (req, res) => {
     }
 
     const alreadyAccepted = quote.status === 'accepted';
+    const recordedByOffice = quote.status === 'draft';
+    const acceptedDetail = recordedByOffice
+      ? `Quote ${quote.ref} accepted (recorded by office)`
+      : `Quote ${quote.ref} accepted`;
     let acceptedExtras = Array.isArray(quote.accepted_optional_extras) ? quote.accepted_optional_extras : [];
     if (!alreadyAccepted) {
       const picked = pickAcceptedExtras(quote.optional_extras, accepted_extra_indexes);
@@ -510,7 +514,7 @@ router.post('/:id/decision', asyncHandler(async (req, res) => {
       });
       await cancelPendingForQuote(quote.id, 'quote accepted');
       await resolveQuoteFollowupTask(quote.id);
-      await setStage(customer.id, 'WON', req.user.id, `Quote ${quote.ref} accepted`, { leadId: quote.lead_id });
+      await setStage(customer.id, 'WON', req.user.id, acceptedDetail, { leadId: quote.lead_id });
       const { safeNotify, notifyOffice } = require('../notifications');
       await safeNotify(() => notifyOffice({
         kind: 'quote_accepted',
@@ -530,7 +534,7 @@ router.post('/:id/decision', asyncHandler(async (req, res) => {
         entityId: quote.id,
       });
       if (!alreadyAccepted) {
-        await logActivity(customer.id, req.user.id, 'quote_accepted', `Quote ${quote.ref} accepted`, 'quote', quote.id);
+        await logActivity(customer.id, req.user.id, 'quote_accepted', acceptedDetail, 'quote', quote.id);
       }
       return res.json({ ok: true, job_id: null });
     }
@@ -540,13 +544,17 @@ router.post('/:id/decision', asyncHandler(async (req, res) => {
       customer.id,
       req.user.id,
       'quote_accepted',
-      alreadyAccepted ? `Job created from quote ${quote.ref}` : `Quote ${quote.ref} accepted - job created`,
+      alreadyAccepted
+        ? `Job created from quote ${quote.ref}`
+        : (recordedByOffice ? `${acceptedDetail} - job created` : `Quote ${quote.ref} accepted - job created`),
       'job',
       job.id,
     );
     return res.json({ ok: true, job_id: job.id, job_value: jobValue });
   }
 
+  const recordedByOffice = quote.status === 'draft';
+  const declinedDetail = `Quote ${quote.ref} declined${reason ? ` - ${reason}` : ''}${recordedByOffice ? ' (recorded by office)' : ''}`;
   await quote.update({
     status: decision,
     decided_at: new Date(),
@@ -554,9 +562,9 @@ router.post('/:id/decision', asyncHandler(async (req, res) => {
   });
   await cancelPendingForQuote(quote.id, `quote ${decision}`);
   await resolveQuoteFollowupTask(quote.id);
-  await setStage(customer.id, 'LOST', req.user.id, `Quote ${quote.ref} declined${reason ? ` - ${reason}` : ''}`, { leadId: quote.lead_id });
+  await setStage(customer.id, 'LOST', req.user.id, declinedDetail, { leadId: quote.lead_id });
   if (reason) await Customer.update({ lost_reason: reason }, { where: { id: customer.id } });
-  await logActivity(customer.id, req.user.id, 'quote_declined', `Quote ${quote.ref} declined${reason ? ` - ${reason}` : ''}`, 'quote', quote.id);
+  await logActivity(customer.id, req.user.id, 'quote_declined', declinedDetail, 'quote', quote.id);
   res.json({ ok: true });
 }));
 
