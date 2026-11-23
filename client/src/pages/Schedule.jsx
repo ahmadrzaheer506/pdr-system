@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { ChevronLeft, ChevronRight } from 'lucide-react';
+import { CalendarDays, ChevronLeft, ChevronRight, LayoutGrid } from 'lucide-react';
 import { api } from '../lib/api';
 import { useToast, Toast } from '../components/ui.jsx';
 import WeekView from '../components/WeekView.jsx';
@@ -72,12 +72,34 @@ export default function Schedule() {
         <div className="card p-4">
           {!dayIso ? (
             <>
-              <div className="flex items-center justify-between mb-4">
-                <h3 className="font-semibold text-slate-800">Week view</h3>
-                <div className="flex items-center gap-2">
-                  <button type="button" onClick={() => setAnchorDate(new Date(anchorDate.getFullYear(), anchorDate.getMonth(), anchorDate.getDate() - 7))} className="btn-ghost !p-1.5" aria-label="Previous week"><ChevronLeft size={16} /></button>
-                  <button type="button" onClick={showToday} className="btn-ghost !py-1 !px-2.5 text-xs">Today</button>
-                  <button type="button" onClick={() => setAnchorDate(new Date(anchorDate.getFullYear(), anchorDate.getMonth(), anchorDate.getDate() + 7))} className="btn-ghost !p-1.5" aria-label="Next week"><ChevronRight size={16} /></button>
+              <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                <div className="flex min-w-0 items-start gap-3">
+                  <span className="mt-0.5 inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-slate-100 text-slate-600 ring-1 ring-slate-200/80">
+                    <LayoutGrid size={16} strokeWidth={2} />
+                  </span>
+                  <div className="min-w-0">
+                    <h3 className="text-base font-semibold tracking-tight text-slate-900">Week view</h3>
+                    <p className="mt-0.5 text-xs text-slate-500">Open a day for crew, or switch to day view.</p>
+                  </div>
+                </div>
+                <div className="flex flex-wrap items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const iso = availabilityIso || localIsoDate();
+                      focusDate(iso);
+                      setDayIso(iso);
+                    }}
+                    className="inline-flex items-center gap-1.5 rounded-full bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 shadow-[0_1px_2px_rgba(15,23,42,0.04)] ring-1 ring-slate-200/90 transition hover:bg-slate-50 hover:ring-slate-300"
+                  >
+                    <CalendarDays size={14} strokeWidth={2} />
+                    Day view
+                  </button>
+                  <div className="inline-flex items-center rounded-full bg-slate-100 p-0.5 ring-1 ring-slate-200/80">
+                    <button type="button" onClick={() => setAnchorDate(new Date(anchorDate.getFullYear(), anchorDate.getMonth(), anchorDate.getDate() - 7))} className="rounded-full p-1.5 text-slate-600 hover:bg-white hover:text-slate-900" aria-label="Previous week"><ChevronLeft size={16} /></button>
+                    <button type="button" onClick={showToday} className="rounded-full px-2.5 py-1 text-xs font-semibold text-slate-700 hover:bg-white">Today</button>
+                    <button type="button" onClick={() => setAnchorDate(new Date(anchorDate.getFullYear(), anchorDate.getMonth(), anchorDate.getDate() + 7))} className="rounded-full p-1.5 text-slate-600 hover:bg-white hover:text-slate-900" aria-label="Next week"><ChevronRight size={16} /></button>
+                  </div>
                 </div>
               </div>
               <WeekView

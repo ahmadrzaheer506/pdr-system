@@ -1,10 +1,10 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { ChevronLeft, ChevronRight } from 'lucide-react';
+import { CalendarDays, ChevronLeft, ChevronRight, LayoutGrid } from 'lucide-react';
 import { api } from '../lib/api';
 import CrewChips, { CrewFitNotes, CrewConflictNotes } from './CrewChips.jsx';
 import {
   addIsoDays, jobOnDate, parseIsoDate, crewIdsForDate,
-  holidaysOnDate, bookingsFromJobs, crewSaveConflicts,
+  holidaysOnDate, bookingsFromJobs, crewSaveConflicts, localIsoDate,
 } from '../lib/schedule';
 import { missingRequiredSkills, crewHasDriver } from '../lib/skills';
 import CrewConflictModal from './CrewConflictModal.jsx';
@@ -138,22 +138,49 @@ export default function DayView({
   const dayJobs = (jobs || []).filter((j) => jobOnDate(j, dateIso));
   const dayHolidays = holidaysOnDate(holidays, dateIso);
   const dayBookings = bookingsFromJobs(jobs, dateIso);
+  const today = localIsoDate();
+  const isToday = dateIso === today;
 
   return (
     <div>
-      <div className="flex items-center justify-between mb-3 flex-wrap gap-2">
-        <button type="button" onClick={onBackToWeek} className="btn-ghost !py-1 !px-2.5 text-xs">Week view</button>
-        <div className="flex items-center gap-2">
-          <button type="button" onClick={() => onDateChange(addIsoDays(dateIso, -1))} className="btn-ghost !p-1.5" aria-label="Previous day">
-            <ChevronLeft size={16} />
+      <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <div className="flex min-w-0 items-start gap-3">
+          <span className="mt-0.5 inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-indigo-50 text-indigo-600 ring-1 ring-indigo-100">
+            <CalendarDays size={16} strokeWidth={2} />
+          </span>
+          <div className="min-w-0">
+            <h3 className="text-base font-semibold tracking-tight text-slate-900">Day view</h3>
+            <p className="mt-0.5 flex flex-wrap items-center gap-1.5 text-xs text-slate-500">
+              <span>{heading(dateIso)}</span>
+              {isToday ? (
+                <span className="rounded-full bg-rose-50 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-rose-700 ring-1 ring-rose-100">
+                  Today
+                </span>
+              ) : null}
+            </p>
+          </div>
+        </div>
+        <div className="flex flex-wrap items-center gap-2">
+          <button
+            type="button"
+            onClick={onBackToWeek}
+            className="inline-flex items-center gap-1.5 rounded-full bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 shadow-[0_1px_2px_rgba(15,23,42,0.04)] ring-1 ring-slate-200/90 transition hover:bg-slate-50 hover:ring-slate-300"
+          >
+            <LayoutGrid size={14} strokeWidth={2} />
+            Week view
           </button>
-          <div className="text-sm font-semibold text-slate-800 min-w-[10rem] text-center">{heading(dateIso)}</div>
-          <button type="button" onClick={() => onDateChange(addIsoDays(dateIso, 1))} className="btn-ghost !p-1.5" aria-label="Next day">
-            <ChevronRight size={16} />
-          </button>
+          <div className="inline-flex items-center rounded-full bg-slate-100 p-0.5 ring-1 ring-slate-200/80">
+            <button type="button" onClick={() => onDateChange(addIsoDays(dateIso, -1))} className="rounded-full p-1.5 text-slate-600 hover:bg-white hover:text-slate-900" aria-label="Previous day">
+              <ChevronLeft size={16} />
+            </button>
+            <div className="min-w-[7.5rem] px-2 text-center text-xs font-semibold tabular-nums text-slate-800">{heading(dateIso)}</div>
+            <button type="button" onClick={() => onDateChange(addIsoDays(dateIso, 1))} className="rounded-full p-1.5 text-slate-600 hover:bg-white hover:text-slate-900" aria-label="Next day">
+              <ChevronRight size={16} />
+            </button>
+          </div>
         </div>
       </div>
-      <div className="rounded-lg border border-slate-200 bg-white p-3 min-h-[6rem]">
+      <div className="rounded-2xl bg-slate-50/80 p-3 min-h-[6rem] ring-1 ring-slate-200/80">
         <div
           role="region"
           aria-label={`Jobs on ${heading(dateIso)}`}

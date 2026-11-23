@@ -77,7 +77,8 @@ describe('Schedule page availability sync', () => {
     expect(await screen.findByText('2 available')).toBeInTheDocument();
 
     await user.click(screen.getByRole('button', { name: openDayLabel(pickIso) }));
-    expect(await screen.findByRole('button', { name: /week view/i })).toBeInTheDocument();
+    expect(await screen.findByRole('heading', { name: 'Day view' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /week view/i })).toBeInTheDocument();
     const [year, month, day] = pickIso.split('-').map(Number);
     const boardDate = new Date(year, month - 1, day).toLocaleDateString('en-GB', {
       weekday: 'long',

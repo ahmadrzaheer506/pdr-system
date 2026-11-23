@@ -41,7 +41,8 @@ describe('DayView (requirement 8.1)', () => {
       />,
     );
     expect(screen.getByText('Porch roof rebuild')).toBeInTheDocument();
-    expect(screen.getByText(/tuesday 22 sep/i)).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'Day view' })).toBeInTheDocument();
+    expect(screen.getAllByText(/tuesday 22 sep/i).length).toBeGreaterThan(0);
     await user.click(screen.getByRole('button', { name: /week view/i }));
     expect(onBackToWeek).toHaveBeenCalled();
   });
