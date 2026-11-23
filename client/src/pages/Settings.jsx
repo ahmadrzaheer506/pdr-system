@@ -16,6 +16,7 @@ import BrandLogo, { bumpBrandLogo } from '../components/BrandLogo.jsx';
 import SelectMenu from '../components/SelectMenu.jsx';
 import DatePicker from '../components/DatePicker.jsx';
 import ScrollTabBar from '../components/ScrollTabBar.jsx';
+import PhotoUploadButton from '../components/PhotoUploadButton.jsx';
 
 const TABS = [
   { id: 'company', label: 'Company', icon: Building2 },
@@ -427,9 +428,7 @@ function CompanyTab({ canEdit }) {
     timesheets: timesheetSettingsPayload({ ...(s.timesheets || {}), [k]: Number(e.target.value) }),
   }));
 
-  const uploadLogo = async (e) => {
-    const file = e.target.files?.[0];
-    e.target.value = '';
+  const uploadLogo = async (file) => {
     if (!file) return;
     const fd = new FormData();
     fd.append('file', file);
@@ -491,20 +490,15 @@ function CompanyTab({ canEdit }) {
             </div>
             {canEdit && (
               <div className="mt-4">
-                <input
-                  id="company-logo"
-                  className="sr-only"
-                  type="file"
+                <PhotoUploadButton
                   accept="image/png,image/jpeg"
                   disabled={logoBusy}
-                  onChange={uploadLogo}
-                />
-                <label
-                  htmlFor="company-logo"
-                  className={`btn-secondary w-full cursor-pointer ${logoBusy ? 'pointer-events-none opacity-50' : ''}`}
+                  ariaLabel="company logo"
+                  onFile={uploadLogo}
+                  className="btn-secondary w-full"
                 >
                   <Upload size={15} /> {logoBusy ? 'Uploading…' : 'Upload company logo'}
-                </label>
+                </PhotoUploadButton>
               </div>
             )}
           </div>
@@ -1328,7 +1322,6 @@ function UserPhotoField({
   onRemove,
   busy,
 }) {
-  const inputRef = useRef(null);
   const [blobUrl, setBlobUrl] = useState(null);
 
   useEffect(() => {
@@ -1346,9 +1339,7 @@ function UserPhotoField({
   const src = blobUrl || existingSrc || DEFAULT_USER_AVATAR;
   const hasCustom = !!(file || existingSrc);
 
-  const pick = (e) => {
-    const next = e.target.files?.[0];
-    e.target.value = '';
+  const pick = (next) => {
     if (!next) return;
     const err = photoFileError(next);
     if (err) {
@@ -1360,55 +1351,58 @@ function UserPhotoField({
 
   return (
     <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
-      <div className="relative w-fit shrink-0">
-        <Avatar name={name} color={color} src={src} size={20} />
-        <button
-          type="button"
-          onClick={() => inputRef.current?.click()}
-          disabled={busy}
-          className="absolute -bottom-0.5 -right-0.5 flex h-8 w-8 items-center justify-center rounded-full border-2 border-white bg-navy-900 text-white shadow-sm hover:bg-slate-800 disabled:opacity-50"
-          aria-label="Change profile photo"
-          title="Change photo"
-        >
-          <Camera size={14} />
-        </button>
-        <input
-          ref={inputRef}
-          id={inputId}
-          type="file"
-          accept="image/png,image/jpeg"
-          className="sr-only"
-          aria-label="Upload profile photo"
-          onChange={pick}
-        />
-      </div>
-      <div className="min-w-0">
-        <p className="text-sm font-semibold text-slate-900">Profile photo</p>
-        <p className="mt-0.5 text-xs leading-relaxed text-slate-500">
-          PNG or JPEG, up to 2MB. If you skip this, the default photo is used.
-        </p>
-        <div className="mt-2 flex flex-wrap items-center gap-2">
-          <button
-            type="button"
-            className="btn-secondary text-xs"
-            disabled={busy}
-            onClick={() => inputRef.current?.click()}
-          >
-            {hasCustom ? 'Change photo' : 'Upload photo'}
-          </button>
-          {hasCustom ? (
-            <button
-              type="button"
-              className="inline-flex items-center gap-1 text-xs font-medium text-rose-600 hover:text-rose-700 disabled:opacity-50"
-              disabled={busy}
-              onClick={onRemove}
-            >
-              <Trash2 size={12} />
-              Use default
-            </button>
-          ) : null}
-        </div>
-      </div>
+      <PhotoUploadButton
+        accept="image/png,image/jpeg"
+        disabled={busy}
+        ariaLabel="profile photo"
+        onFile={pick}
+        wrapperClassName="contents"
+      >
+        {({ openSheet, disabled }) => (
+          <>
+            <div className="relative w-fit shrink-0">
+              <Avatar name={name} color={color} src={src} size={20} />
+              <button
+                type="button"
+                onClick={openSheet}
+                disabled={disabled}
+                className="absolute -bottom-0.5 -right-0.5 z-10 flex h-8 w-8 items-center justify-center rounded-full border-2 border-white bg-navy-900 text-white shadow-sm hover:bg-slate-800 disabled:opacity-50"
+                aria-label="Change profile photo"
+                title="Change photo"
+              >
+                <Camera size={14} />
+              </button>
+            </div>
+            <div className="min-w-0">
+              <p className="text-sm font-semibold text-slate-900">Profile photo</p>
+              <p className="mt-0.5 text-xs leading-relaxed text-slate-500">
+                PNG or JPEG, up to 2MB. If you skip this, the default photo is used.
+              </p>
+              <div className="mt-2 flex flex-wrap items-center gap-2">
+                <button
+                  type="button"
+                  className="btn-secondary text-xs"
+                  disabled={disabled}
+                  onClick={openSheet}
+                >
+                  {hasCustom ? 'Change photo' : 'Upload photo'}
+                </button>
+                {hasCustom ? (
+                  <button
+                    type="button"
+                    className="inline-flex items-center gap-1 text-xs font-medium text-rose-600 hover:text-rose-700 disabled:opacity-50"
+                    disabled={busy}
+                    onClick={onRemove}
+                  >
+                    <Trash2 size={12} />
+                    Use default
+                  </button>
+                ) : null}
+              </div>
+            </div>
+          </>
+        )}
+      </PhotoUploadButton>
     </div>
   );
 }

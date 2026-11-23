@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router-dom';
 import { FileText } from 'lucide-react';
 import { api, money, fmtDate } from '../lib/api';
 import { PageLoading, StatusBadge, EmptyState } from '../components/ui.jsx';
@@ -17,29 +17,42 @@ const FILTERS = [
 ];
 
 export default function Quotes() {
+  const [searchParams] = useSearchParams();
   const [status, setStatus] = useState('ALL');
   const [q, setQ] = useState('');
   const [createdFrom, setCreatedFrom] = useState('');
   const [createdTo, setCreatedTo] = useState('');
+  const [sentFrom, setSentFrom] = useState(() => searchParams.get('sent_from') || '');
+  const [sentTo, setSentTo] = useState(() => searchParams.get('sent_to') || '');
   const [data, setData] = useState(null);
+  const issuedMode = Boolean(sentFrom || sentTo);
 
   useEffect(() => {
     const t = setTimeout(() => {
       const params = new URLSearchParams();
       params.set('status', status);
       if (q.trim()) params.set('q', q.trim());
-      if (createdFrom) params.set('created_from', createdFrom);
-      if (createdTo) params.set('created_to', createdTo);
+      if (issuedMode) {
+        if (sentFrom) params.set('sent_from', sentFrom);
+        if (sentTo) params.set('sent_to', sentTo);
+      } else {
+        if (createdFrom) params.set('created_from', createdFrom);
+        if (createdTo) params.set('created_to', createdTo);
+      }
       api.get(`/quotes?${params.toString()}`).then((d) => setData(d.quotes)).catch(() => setData([]));
     }, 200);
     return () => clearTimeout(t);
-  }, [status, q, createdFrom, createdTo]);
+  }, [status, q, createdFrom, createdTo, sentFrom, sentTo, issuedMode]);
 
   return (
     <div className="space-y-5">
       <div>
         <h1 className="text-2xl font-bold text-slate-900">Quotes</h1>
-        <p className="text-slate-500 text-sm mt-0.5">Every quotation sent, and how it's getting on.</p>
+        <p className="text-slate-500 text-sm mt-0.5">
+          {issuedMode
+            ? 'Quotes issued in the dashboard window (sent, or recorded in the office).'
+            : 'Every quotation, and how it\'s getting on.'}
+        </p>
       </div>
 
       <ListFilterBar
@@ -49,10 +62,12 @@ export default function Quotes() {
         searchValue={q}
         onSearchChange={setQ}
         searchLabel="Search quotes"
-        from={createdFrom}
-        to={createdTo}
-        onFromChange={setCreatedFrom}
-        onToChange={setCreatedTo}
+        from={issuedMode ? sentFrom : createdFrom}
+        to={issuedMode ? sentTo : createdTo}
+        onFromChange={issuedMode ? setSentFrom : setCreatedFrom}
+        onToChange={issuedMode ? setSentTo : setCreatedTo}
+        fromLabel={issuedMode ? 'Sent from' : 'Created from'}
+        toLabel={issuedMode ? 'Sent to' : 'Created to'}
       />
 
       {!data ? <PageLoading /> : data.length === 0 ? (

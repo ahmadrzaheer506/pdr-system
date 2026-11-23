@@ -75,8 +75,9 @@ describe('GET/POST /api/catalogue (requirement 17.2)', () => {
     expect(CatalogueItem.create).toHaveBeenCalled();
   });
 
-  test('office cannot create an item', async () => {
+  test('office can create an item (quote builder add)', async () => {
     __setUser({ id: 2, role: 'OFFICE' });
+    CatalogueItem.create.mockImplementation(async (payload) => row(payload));
     const res = await request(app).post('/api/catalogue').send({
       id: 'ridge_vent',
       description: 'Ridge vent',
@@ -85,8 +86,26 @@ describe('GET/POST /api/catalogue (requirement 17.2)', () => {
       vat_code: 'standard',
       kind: 'materials',
     });
-    expect(res.status).toBe(403);
-    expect(CatalogueItem.create).not.toHaveBeenCalled();
+    expect(res.status).toBe(200);
+    expect(res.body.item.id).toBe('ridge_vent');
+  });
+
+  test('office cannot update or delete an item', async () => {
+    __setUser({ id: 2, role: 'OFFICE' });
+    const existing = row({
+      id: 'skip', description: 'Skip hire', unit: 'each', unit_price: 220, vat_code: 'standard', kind: 'materials',
+    });
+    CatalogueItem.findByPk.mockResolvedValue(existing);
+    const put = await request(app).put('/api/catalogue/skip').send({
+      description: 'Skip hire (8 yard)',
+      unit: 'each',
+      unit_price: 240,
+      vat_code: 'standard',
+      kind: 'materials',
+    });
+    expect(put.status).toBe(403);
+    const del = await request(app).delete('/api/catalogue/skip');
+    expect(del.status).toBe(403);
   });
 
   test('admin updates and deletes an item', async () => {

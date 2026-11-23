@@ -110,6 +110,21 @@ describe('crewAvailability (requirement 8.2)', () => {
     expect(warnings).toEqual([]);
   });
 
+  test('assignmentWarnings does not warn when an advanced roofer covers a competent requirement', async () => {
+    User.findAll.mockResolvedValue([{
+      id: 3, name: 'Jamie Fisher', skills: [{ skill_id: 1, level: 'advanced' }], is_driver: true,
+    }]);
+    HolidayRequest.findAll.mockResolvedValue([]);
+    JobDayAssignment.findAll.mockResolvedValue([]);
+
+    const warnings = await crewAvailability.assignmentWarnings(
+      { id: 8, required_skills: [{ skill_id: 1, level: 'competent' }], needs_driver: true },
+      '2026-09-22',
+      [3],
+    );
+    expect(warnings).toEqual([]);
+  });
+
   test('assignmentWarnings reports missing skills and a missing driver without blocking (requirement 8.3)', async () => {
     User.findAll.mockResolvedValue([{ id: 4, name: 'Liam Ozturk', skills: [{ skill_id: 15, level: 'competent' }], is_driver: false }]);
     HolidayRequest.findAll.mockResolvedValue([]);

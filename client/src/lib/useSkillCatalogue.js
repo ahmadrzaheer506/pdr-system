@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { api } from './api';
+import { rememberSkillCatalogue } from './skills';
 
 let cachedSkills = null;
 let cachedTypes = null;
@@ -12,6 +13,7 @@ async function fetchSkills() {
   skillsInflight = skillsInflight || api.get('/skills')
     .then((d) => {
       cachedSkills = d.skills || [];
+      rememberSkillCatalogue(cachedSkills);
       return cachedSkills;
     })
     .catch(() => {

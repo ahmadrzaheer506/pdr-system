@@ -29,6 +29,21 @@ describe('WeekView (requirement 8.1)', () => {
     expect(onDayClick).toHaveBeenCalledWith('2026-09-21');
   });
 
+  it('marks the selected weekday for the availability board', () => {
+    render(
+      <WeekView
+        anchorDate={new Date(2026, 8, 21)}
+        selectedIso="2026-09-23"
+        jobs={[]}
+        holidays={[]}
+        onJobClick={() => {}}
+        onDayClick={() => {}}
+      />,
+    );
+    expect(screen.getByRole('button', { name: /open wed 23/i })).toHaveAttribute('aria-current', 'date');
+    expect(screen.getByRole('button', { name: /open mon 21/i })).not.toHaveAttribute('aria-current');
+  });
+
   it('shows the full title and customer on hover, without ellipsis', async () => {
     const user = userEvent.setup();
     render(

@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { Briefcase, PlaneTakeoff, UserCheck, Users } from 'lucide-react';
 import { Avatar, avatarUrl } from './ui.jsx';
 import { LEVEL_RANK, parseLevel, requirementId, skillName } from '../lib/skills';
@@ -37,7 +37,8 @@ const GROUPS = [
     status: 'available',
     title: 'Available',
     hint: 'Ready to assign',
-    empty: 'Nobody free today',
+    emptyToday: 'Nobody free today',
+    emptyOther: 'Nobody free this day',
     Icon: UserCheck,
     column: 'bg-emerald-50/80 ring-emerald-100/90',
     rail: 'bg-emerald-400',
@@ -58,8 +59,10 @@ const GROUPS = [
   {
     status: 'holiday',
     title: 'On holiday',
-    hint: 'Not working today',
-    empty: 'Nobody off today',
+    hintToday: 'Not working today',
+    hintOther: 'Not working this day',
+    emptyToday: 'Nobody off today',
+    emptyOther: 'Nobody off this day',
     Icon: PlaneTakeoff,
     column: 'bg-slate-50 ring-slate-200/80',
     rail: 'bg-slate-300',
@@ -153,8 +156,10 @@ function PersonRow({ row, catalogue, expanded, onToggleSkills }) {
   );
 }
 
-function StatusColumn({ group, rows, catalogue, openSkillsId, onToggleSkills }) {
+function StatusColumn({ group, rows, catalogue, openSkillsId, onToggleSkills, isCalendarToday }) {
   const Icon = group.Icon;
+  const hint = group.hint || (isCalendarToday ? group.hintToday : group.hintOther);
+  const empty = (isCalendarToday ? group.emptyToday : group.emptyOther) || group.empty;
   return (
     <section className={`relative flex h-full min-h-[12rem] flex-col overflow-hidden rounded-2xl p-3 ring-1 ${group.column}`}>
       <span className={`absolute inset-y-0 left-0 w-1 ${group.rail}`} aria-hidden="true" />
@@ -164,14 +169,14 @@ function StatusColumn({ group, rows, catalogue, openSkillsId, onToggleSkills }) 
             <Icon size={14} strokeWidth={2.2} />
             {group.title}
           </h4>
-          <p className="mt-0.5 text-[11px] text-slate-500">{group.hint}</p>
+          {hint ? <p className="mt-0.5 text-[11px] text-slate-500">{hint}</p> : null}
         </div>
         <span className={`rounded-full px-2 py-0.5 text-xs font-semibold tabular-nums ring-1 ${group.count}`}>
           {rows.length}
         </span>
       </header>
       {rows.length === 0 ? (
-        <p className="pl-2 text-sm text-slate-400">{group.empty}</p>
+        <p className="pl-2 text-sm text-slate-400">{empty}</p>
       ) : (
         <ul className="max-h-[22rem] space-y-2 overflow-y-auto overscroll-contain pr-0.5" aria-label={group.title}>
           {rows.map((row) => (
@@ -190,17 +195,23 @@ function StatusColumn({ group, rows, catalogue, openSkillsId, onToggleSkills }) 
 }
 
 /**
- * Schedule board: who is free, already on a job, or off today.
+ * Schedule board: who is free, already on a job, or off on the focused day.
  */
 export default function TeamAvailability({ staff, holidays, jobs, today = localIsoDate(), catalogue: catalogueProp }) {
   const loaded = useSkillCatalogue();
   const catalogue = catalogueProp || loaded.skills;
   const [openSkillsId, setOpenSkillsId] = useState(null);
-  const rows = teamAvailabilityRows(staff, holidays, jobs, today);
+  const boardDay = today || localIsoDate();
+  const isCalendarToday = boardDay === localIsoDate();
+  const rows = teamAvailabilityRows(staff, holidays, jobs, boardDay);
   const available = rows.filter((row) => row.status === 'available').length;
   const busy = rows.filter((row) => row.status === 'busy').length;
   const holiday = rows.filter((row) => row.status === 'holiday').length;
-  const dateLabel = formatBoardDate(today);
+  const dateLabel = formatBoardDate(boardDay);
+
+  useEffect(() => {
+    setOpenSkillsId(null);
+  }, [boardDay]);
 
   return (
     <div className="card overflow-hidden" id="team-availability">
@@ -209,7 +220,7 @@ export default function TeamAvailability({ staff, holidays, jobs, today = localI
           <span className="flex h-8 w-8 items-center justify-center rounded-xl bg-slate-100 text-slate-600">
             <Users size={16} />
           </span>
-          Team availability today
+          {isCalendarToday ? 'Team availability today' : 'Team availability'}
         </h3>
         <p className="mt-1 pl-10 text-sm text-slate-500">
           {dateLabel ? `${dateLabel} - who can take work, already booked, or off.` : 'Who can take work, already booked, or off.'}
@@ -237,6 +248,7 @@ export default function TeamAvailability({ staff, holidays, jobs, today = localI
               catalogue={catalogue}
               openSkillsId={openSkillsId}
               onToggleSkills={(id) => setOpenSkillsId((cur) => (cur === id ? null : id))}
+              isCalendarToday={isCalendarToday}
               rows={rows.filter((row) => row.status === group.status)}
             />
           ))}

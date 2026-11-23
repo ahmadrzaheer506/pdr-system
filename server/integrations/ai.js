@@ -31,7 +31,7 @@ Rules you must never break:
 - Never assign someone who is on holiday or already scheduled that day.
 - Never assign the same person to two jobs.
 - Each team should include at least one driver whenever drivers are available.
-- Cover each job's required skills with at least one team member holding that skill where possible.
+- Cover each job's required skills with at least one team member holding that skill at the required level or higher where possible. Advanced covers Competent and Trainee; Competent covers Trainee. Do not treat a higher level as a miss.
 - Respect the owner's spoken instructions over everything except the rules above.
 - Only use job ids and staff ids that appear in the provided data.
 
@@ -131,9 +131,17 @@ async function transcribe(audioBuffer, mime = 'audio/webm') {
   if (!process.env.OPENAI_API_KEY) {
     return { available: false, hint: 'No OPENAI_API_KEY - use the in-browser microphone (built-in speech recognition) or type the instruction.' };
   }
+  const type = String(mime || 'audio/webm').split(';')[0] || 'audio/webm';
+  const ext = type.includes('mp4') ? 'mp4' : type.includes('mpeg') || type.includes('mp3') ? 'mp3' : type.includes('ogg') ? 'ogg' : 'webm';
   const form = new FormData();
-  form.append('file', new Blob([audioBuffer], { type: mime }), 'note.webm');
+  form.append('file', new Blob([audioBuffer], { type }), `note.${ext}`);
   form.append('model', 'whisper-1');
+  form.append('language', 'en');
+  form.append('temperature', '0');
+  form.append(
+    'prompt',
+    'English dictation with punctuation. Independent clause, subject and verb. Roofing jobs, staff and customer names.',
+  );
   const res = await fetch('https://api.openai.com/v1/audio/transcriptions', {
     method: 'POST',
     headers: { Authorization: `Bearer ${process.env.OPENAI_API_KEY}` },
@@ -141,7 +149,7 @@ async function transcribe(audioBuffer, mime = 'audio/webm') {
   });
   const data = await res.json();
   if (!res.ok) throw new Error(`Whisper ${res.status}: ${JSON.stringify(data.error || data)}`);
-  return { available: true, text: data.text };
+  return { available: true, text: String(data.text || '').trim() };
 }
 
 function status() {

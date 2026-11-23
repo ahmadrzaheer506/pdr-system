@@ -70,9 +70,106 @@ function slugify(name) {
     .slice(0, 60);
 }
 
+const RANK_TO_LEVEL = Object.freeze({ 1: 'trainee', 2: 'competent', 3: 'advanced' });
+
 function parseLevel(value, fallback = 'competent') {
+  if (value && typeof value === 'object') {
+    return parseLevel(value.id || value.level || value.name, fallback);
+  }
   const key = String(value || '').toLowerCase().trim();
-  return SKILL_LEVELS.includes(key) ? key : fallback;
+  if (SKILL_LEVELS.includes(key)) return key;
+  if (RANK_TO_LEVEL[key]) return RANK_TO_LEVEL[key];
+  return fallback;
+}
+
+function numericSkillId(value) {
+  const n = Number(value);
+  return Number.isInteger(n) && n > 0 ? n : null;
+}
+
+function addSlugToken(tokens, raw) {
+  const key = String(raw || '').toLowerCase().trim();
+  if (!key || /^\d+$/.test(key)) return;
+  tokens.add(key);
+  if (LEGACY_SKILL_SLUG[key]) tokens.add(LEGACY_SKILL_SLUG[key]);
+}
+
+function stripLevelFromKey(key) {
+  return String(key || '')
+    .replace(/^(trainee|competent|advanced)_/, '')
+    .replace(/_(trainee|competent|advanced)$/, '')
+    .replace(/\b(trainee|competent|advanced)\b/g, '')
+    .replace(/_+/g, '_')
+    .replace(/^_|_$/g, '');
+}
+
+function impliedLevelFromText(text) {
+  const t = String(text || '').toLowerCase();
+  if (/\badvanced\b/.test(t)) return 'advanced';
+  if (/\btrainee\b/.test(t)) return 'trainee';
+  if (/\bcompetent\b/.test(t)) return 'competent';
+  return null;
+}
+
+/** Ids, slugs, and aliases used to recognise the same catalogue skill. */
+function skillTokens(raw, catalogue = []) {
+  const tokens = new Set();
+  if (raw == null || raw === '') return tokens;
+  if (typeof raw === 'string' || typeof raw === 'number') {
+    const id = numericSkillId(raw);
+    if (id) tokens.add(`#${id}`);
+    addSlugToken(tokens, raw);
+  } else {
+    const id = numericSkillId(raw.skill_id ?? raw.id);
+    if (id) tokens.add(`#${id}`);
+    addSlugToken(tokens, raw.slug);
+    addSlugToken(tokens, raw.skill);
+    addSlugToken(tokens, slugify(raw.name));
+  }
+  const { byId, bySlug } = catalogueIndex(catalogue);
+  for (const token of [...tokens]) {
+    if (token.startsWith('#')) {
+      const row = byId.get(Number(token.slice(1)));
+      if (row?.slug) addSlugToken(tokens, row.slug);
+      if (row?.name) addSlugToken(tokens, slugify(row.name));
+    } else {
+      const row = bySlug.get(token);
+      if (row?.id) tokens.add(`#${Number(row.id)}`);
+      if (row?.slug) addSlugToken(tokens, row.slug);
+    }
+  }
+  return tokens;
+}
+
+function skillFamilyKey(raw, catalogue = []) {
+  const tokens = skillTokens(raw, catalogue);
+  const row = (catalogue || []).find((s) => (
+    tokens.has(`#${Number(s.id)}`) || (s.slug && tokens.has(s.slug))
+  ));
+  const nameKey = stripLevelFromKey(slugify(row?.name || (raw && typeof raw === 'object' ? raw.name : '') || ''));
+  const slugKey = stripLevelFromKey([...tokens].find((t) => !t.startsWith('#')) || '');
+  const family = LEGACY_SKILL_SLUG[nameKey] || nameKey || LEGACY_SKILL_SLUG[slugKey] || slugKey;
+  return family || '';
+}
+
+function entryLevel(item, catalogue = []) {
+  const field = typeof item === 'object' && item ? item.level : null;
+  const row = (catalogue || []).find((s) => {
+    const tokens = skillTokens(item, catalogue);
+    return tokens.has(`#${Number(s.id)}`) || (s.slug && tokens.has(s.slug));
+  });
+  const named = impliedLevelFromText([
+    typeof item === 'string' ? item : '',
+    item && typeof item === 'object' ? (item.name || item.slug || '') : '',
+    row?.name,
+    row?.slug,
+  ].join(' '));
+  const parsedField = field != null && field !== '' ? parseLevel(field, null) : null;
+  const parsedNamed = named ? parseLevel(named, null) : null;
+  if (parsedField && parsedNamed) {
+    return LEVEL_RANK[parsedNamed] > LEVEL_RANK[parsedField] ? parsedNamed : parsedField;
+  }
+  return parsedField || parsedNamed || parseLevel(field);
 }
 
 function publicSkill(row) {
@@ -157,17 +254,23 @@ function parseStaffSkills(list, catalogue = []) {
   return normaliseEntries(list, catalogue);
 }
 
-function staffLevelFor(staffSkills, skillId) {
+function staffLevelFor(staffSkills, skillId, catalogue = []) {
   if (skillId == null) return null;
+  const want = skillTokens(skillId, catalogue);
+  const wantFamily = skillFamilyKey(skillId, catalogue);
+  if (!want.size && !wantFamily) return null;
+  let best = null;
   for (const item of Array.isArray(staffSkills) ? staffSkills : []) {
-    if (typeof item === 'string' || typeof item === 'number') {
-      if (String(item) === String(skillId)) return 'competent';
-      continue;
-    }
-    const id = item?.skill_id ?? item?.id ?? item?.slug;
-    if (String(id) === String(skillId)) return parseLevel(item.level);
+    const haveTokens = skillTokens(item, catalogue);
+    const sameSkill = [...want].some((token) => haveTokens.has(token));
+    const haveFamily = skillFamilyKey(item, catalogue);
+    if (!sameSkill && !(wantFamily && haveFamily && wantFamily === haveFamily)) continue;
+    const level = typeof item === 'string' || typeof item === 'number'
+      ? (entryLevel(item, catalogue) || 'competent')
+      : entryLevel(item, catalogue);
+    if (!best || LEVEL_RANK[level] > LEVEL_RANK[best]) best = level;
   }
-  return null;
+  return best;
 }
 
 function requirementId(required) {
@@ -176,32 +279,37 @@ function requirementId(required) {
   return required.skill_id ?? required.id ?? required.slug ?? null;
 }
 
-function requirementLevel(required) {
-  if (required && typeof required === 'object') return parseLevel(required.level);
-  return 'competent';
+function requirementLevel(required, catalogue = []) {
+  if (required && typeof required === 'object') {
+    return entryLevel(required, catalogue);
+  }
+  return entryLevel(required, catalogue) || 'competent';
 }
 
-function staffCoversRequirement(staffSkills, required) {
-  const id = requirementId(required);
-  if (id == null) return false;
-  const have = staffLevelFor(staffSkills, id);
+/**
+ * True when the person holds this skill at the required level or higher
+ * (Advanced covers Competent and Trainee; Competent covers Trainee).
+ */
+function staffCoversRequirement(staffSkills, required, catalogue = []) {
+  if (requirementId(required) == null && skillFamilyKey(required, catalogue) === '') return false;
+  const have = staffLevelFor(staffSkills, required, catalogue);
   if (!have) return false;
-  return LEVEL_RANK[have] >= LEVEL_RANK[requirementLevel(required)];
+  return LEVEL_RANK[have] >= LEVEL_RANK[requirementLevel(required, catalogue)];
 }
 
-function staffMatchesRequiredSkills(staffSkills, required) {
+function staffMatchesRequiredSkills(staffSkills, required, catalogue = []) {
   const needed = Array.isArray(required) ? required : [];
   if (!needed.length) return false;
-  return needed.some((req) => staffCoversRequirement(staffSkills, req));
+  return needed.some((req) => staffCoversRequirement(staffSkills, req, catalogue));
 }
 
-function staffCoverageScore(staffSkills, required) {
+function staffCoverageScore(staffSkills, required, catalogue = []) {
   const needed = Array.isArray(required) ? required : [];
   if (!needed.length) return 0;
-  return needed.filter((req) => staffCoversRequirement(staffSkills, req)).length;
+  return needed.filter((req) => staffCoversRequirement(staffSkills, req, catalogue)).length;
 }
 
-function missingRequiredSkills(staff, selectedIds, required) {
+function missingRequiredSkills(staff, selectedIds, required, catalogue = []) {
   const needed = Array.isArray(required) ? required : [];
   if (!needed.length) return [];
   const selected = new Set((selectedIds || []).map((id) => Number(id)));
@@ -212,7 +320,7 @@ function missingRequiredSkills(staff, selectedIds, required) {
     const list = Array.isArray(person.skills) ? person.skills : [];
     crewSkills.push(...list);
   }
-  return needed.filter((req) => !staffCoversRequirement(crewSkills, req));
+  return needed.filter((req) => !staffCoversRequirement(crewSkills, req, catalogue));
 }
 
 function skillDisplayName(req, catalogue = []) {

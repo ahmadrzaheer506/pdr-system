@@ -203,10 +203,11 @@ router.get('/users', requireOffice, asyncHandler(async (req, res) => {
     attributes: ['id', 'name', 'email', 'phone', 'role', 'skills', 'is_driver', 'active', 'protected', 'holiday_allowance', 'color', 'financials_restricted', 'hourly_cost', 'cis_status', 'created_at', 'avatar_file'],
     order: [['created_at', 'DESC'], ['id', 'DESC']],
   });
+  const catalogue = await skillsLib.listSkillRows();
   res.json({
     users: plain(rows).map((u) => ({
       ...u,
-      skills: Array.isArray(u.skills) ? u.skills : [],
+      skills: u.role === ROLES.STAFF ? skillsLib.parseStaffSkills(u.skills, catalogue) : (Array.isArray(u.skills) ? u.skills : []),
       hourly_cost: Number(u.hourly_cost) || 0,
       cis_status: CIS_STATUS_VALUES.includes(u.cis_status) ? u.cis_status : 'none',
     })),

@@ -37,8 +37,22 @@ export default function QuoteBuilder({ open, onClose, customerId, customer, lead
   const [showTax, setShowTax] = useState(false);
   const [showGuarantee, setShowGuarantee] = useState(false);
   const [options, setOptions] = useState(null);
+  const [catalogue, setCatalogue] = useState([]);
 
-  useEffect(() => { if (open && !options) api.get('/quotes/meta/options').then(setOptions).catch(() => setOptions({})); }, [open]);
+  useEffect(() => {
+    if (!open || options) return undefined;
+    let cancelled = false;
+    api.get('/quotes/meta/options')
+      .then((data) => {
+        if (cancelled) return;
+        setOptions(data || {});
+        setCatalogue(Array.isArray(data?.catalogue) ? data.catalogue : []);
+      })
+      .catch(() => {
+        if (!cancelled) setOptions({});
+      });
+    return () => { cancelled = true; };
+  }, [open, options]);
 
   useEffect(() => {
     if (!open) return;
@@ -76,7 +90,7 @@ export default function QuoteBuilder({ open, onClose, customerId, customer, lead
     });
     setError('');
     setNotice('');
-  }, [open, existingQuote, options, customer, lead]);
+  }, [open, existingQuote, options?.defaults, options?.uk, customer, lead]);
 
   // Live totals from the server so the preview uses the exact same engine
   // that will produce the PDF - no second implementation to drift.
@@ -101,25 +115,41 @@ export default function QuoteBuilder({ open, onClose, customerId, customer, lead
   };
 
   const setLineDescription = (i, description) => {
-    const next = [...form.items];
-    next[i] = { ...next[i], description, catalogue_id: null };
-    set('items', next);
+    setForm((f) => {
+      if (!f) return f;
+      const next = [...f.items];
+      next[i] = { ...next[i], description, catalogue_id: null };
+      return { ...f, items: next };
+    });
   };
 
   const applyCatalogueLine = (i, cat) => {
     if (!cat) return;
-    const next = [...form.items];
-    next[i] = {
-      ...blankItem(),
-      ...next[i],
-      catalogue_id: cat.id,
-      description: cat.description,
-      unit: cat.unit,
-      unit_price: cat.unit_price,
-      vat_code: cat.vat_code || next[i].vat_code,
-      kind: cat.kind || next[i].kind,
-    };
-    set('items', next);
+    setForm((f) => {
+      if (!f?.items?.[i]) return f;
+      const next = [...f.items];
+      next[i] = {
+        ...blankItem(),
+        ...next[i],
+        catalogue_id: cat.id,
+        description: cat.description,
+        unit: cat.unit,
+        unit_price: cat.unit_price,
+        vat_code: cat.vat_code || next[i].vat_code,
+        kind: cat.kind || next[i].kind,
+      };
+      return { ...f, items: next };
+    });
+  };
+
+  const rememberCatalogueItem = (item) => {
+    if (!item?.id) return;
+    setCatalogue((list) => {
+      if (list.some((row) => row.id === item.id)) {
+        return list.map((row) => (row.id === item.id ? item : row));
+      }
+      return [...list, item];
+    });
   };
 
   const isDomestic = (customer?.customer_type || 'domestic') === 'domestic';
@@ -245,7 +275,15 @@ export default function QuoteBuilder({ open, onClose, customerId, customer, lead
                         value={it.description || ''}
                         onChange={(description) => setLineDescription(i, description)}
                         onPick={(cat) => applyCatalogueLine(i, cat)}
-                        catalogue={options?.catalogue || []}
+                        onCreated={rememberCatalogueItem}
+                        catalogue={catalogue}
+                        vatRates={options?.vat_rates || []}
+                        lineDefaults={{
+                          unit: it.unit,
+                          unit_price: it.unit_price,
+                          vat_code: it.vat_code,
+                          kind: it.kind,
+                        }}
                         placeholder="Search or type an item"
                         required
                       />

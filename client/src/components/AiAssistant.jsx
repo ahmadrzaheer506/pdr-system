@@ -1,10 +1,12 @@
-import React, { useRef, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { Mic, Square, Sparkles, AlertTriangle, Check, X as XIcon } from 'lucide-react';
 import { api } from '../lib/api';
 import { Avatar, ModeBadge, avatarUrl } from './ui.jsx';
 import DatePicker from './DatePicker.jsx';
 import { localIsoDate, proposalCrewConflicts } from '../lib/schedule';
 import CrewConflictModal from './CrewConflictModal.jsx';
+import { createDictationSession, glueDictation, speechRecognitionCtor } from '../lib/speechDictation';
+import { createVoiceRecorder } from '../lib/voiceRecorder';
 
 function nothingWaiting(result) {
   const waiting = result?.context?.unscheduledJobs;
@@ -27,31 +29,65 @@ export default function AiAssistant({ proposeDate, setProposeDate, onApproved, s
   const [emptyNotice, setEmptyNotice] = useState(false);
   const [edited, setEdited] = useState({});
   const [conflicts, setConflicts] = useState([]);
-  const recogRef = useRef(null);
+  const [hearing, setHearing] = useState(false);
+  const [polishing, setPolishing] = useState(false);
+  const sessionRef = useRef(null);
+  const recorderRef = useRef(null);
+  const prefixRef = useRef('');
+  const transcriptRef = useRef(transcript);
+  transcriptRef.current = transcript;
 
-  const startListening = () => {
-    const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
-    if (!SR) { show('Voice input isn\'t supported in this browser - type your instruction instead.', 'error'); return; }
-    const recog = new SR();
-    recog.lang = 'en-GB';
-    recog.continuous = true;
-    recog.interimResults = true;
-    let finalText = transcript;
-    recog.onresult = (e) => {
-      let interim = '';
-      for (let i = e.resultIndex; i < e.results.length; i++) {
-        if (e.results[i].isFinal) finalText += (finalText ? ' ' : '') + e.results[i][0].transcript;
-        else interim += e.results[i][0].transcript;
-      }
-      setTranscript(finalText + (interim ? ' ' + interim : ''));
-    };
-    recog.onerror = () => setListening(false);
-    recog.onend = () => setListening(false);
-    recogRef.current = recog;
-    recog.start();
-    setListening(true);
+  useEffect(() => () => {
+    sessionRef.current?.dispose();
+    recorderRef.current?.dispose();
+  }, []);
+
+  const startListening = async () => {
+    const Recognition = speechRecognitionCtor();
+    if (!Recognition) {
+      show('Voice input isn\'t supported in this browser - type your instruction instead.', 'error');
+      return;
+    }
+    if (!sessionRef.current) {
+      sessionRef.current = createDictationSession({
+        Recognition,
+        getPrefix: () => transcriptRef.current,
+        onUpdate: setTranscript,
+        onListeningChange: (on, phase) => {
+          setListening(on);
+          setHearing(on && phase === 'speech');
+        },
+        onError: (message) => show(message, 'error'),
+      });
+    }
+    prefixRef.current = transcriptRef.current;
+    sessionRef.current.start();
+    if (!recorderRef.current) recorderRef.current = createVoiceRecorder();
+    try {
+      await recorderRef.current.start();
+    } catch {
+      /* Live dictation still works without a second recording track. */
+    }
   };
-  const stopListening = () => { recogRef.current?.stop(); setListening(false); };
+  const stopListening = async () => {
+    sessionRef.current?.stop();
+    const blob = await recorderRef.current?.stop();
+    if (!blob || blob.size < 1500) return;
+    setPolishing(true);
+    try {
+      const form = new FormData();
+      form.append('file', blob, blob.type.includes('mp4') ? 'note.mp4' : 'note.webm');
+      const result = await api.upload('/jobs/ai/transcribe', form);
+      const spoken = String(result?.text || '').trim();
+      if (result?.available && spoken) {
+        setTranscript(glueDictation(prefixRef.current, spoken));
+      }
+    } catch {
+      /* Keep the live browser transcript if Whisper is off or the upload fails. */
+    } finally {
+      setPolishing(false);
+    }
+  };
 
   const propose = async () => {
     setLoading(true);
@@ -175,10 +211,14 @@ export default function AiAssistant({ proposeDate, setProposeDate, onApproved, s
               min={localIsoDate()}
               onChange={setProposeDate}
             />
-            {listening ? (
-              <span className="inline-flex items-center gap-1.5 text-[11px] font-medium text-rose-600">
+            {polishing ? (
+              <span className="inline-flex items-center gap-1.5 text-[11px] font-medium text-indigo-600" aria-live="polite">
+                Matching what you said…
+              </span>
+            ) : listening ? (
+              <span className="inline-flex items-center gap-1.5 text-[11px] font-medium text-rose-600" aria-live="polite">
                 <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-rose-500" aria-hidden="true" />
-                Listening
+                {hearing ? 'Hearing you…' : 'Listening — speak now'}
               </span>
             ) : null}
           </div>
@@ -186,6 +226,7 @@ export default function AiAssistant({ proposeDate, setProposeDate, onApproved, s
             <button
               type="button"
               onClick={listening ? stopListening : startListening}
+              disabled={polishing}
               aria-label={listening ? 'Stop recording' : 'Start voice input'}
               aria-pressed={listening}
               className={`inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-full transition ${

@@ -26,7 +26,7 @@ const holidays = [{ user_id: 3, start_date: '2026-10-02', end_date: '2026-10-02'
 describe('TeamAvailability', () => {
   it('groups available, on-job, and holiday people into status columns', () => {
     render(<TeamAvailability staff={staff} holidays={holidays} jobs={jobs} today="2026-10-02" />);
-    expect(screen.getByRole('heading', { name: 'Team availability today' })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: /^team availability$/i })).toBeInTheDocument();
     expect(screen.getByRole('heading', { name: 'Available' })).toBeInTheDocument();
     expect(screen.getByRole('heading', { name: 'On a job' })).toBeInTheDocument();
     expect(screen.getByRole('heading', { name: 'On holiday' })).toBeInTheDocument();
@@ -86,5 +86,22 @@ describe('TeamAvailability', () => {
   it('empty staff shows a quiet empty state', () => {
     render(<TeamAvailability staff={[]} holidays={[]} jobs={[]} today="2026-10-02" />);
     expect(screen.getByText('No field staff to show.')).toBeInTheDocument();
+  });
+
+  it('regroups the same staff when the board date changes', () => {
+    const { rerender } = render(
+      <TeamAvailability staff={staff} holidays={holidays} jobs={jobs} today="2026-10-02" />,
+    );
+    expect(screen.getByText('1 available')).toBeInTheDocument();
+    expect(screen.getByText('1 on a job')).toBeInTheDocument();
+    expect(screen.getByText('1 on holiday')).toBeInTheDocument();
+    expect(screen.getByText(/friday 2 oct/i)).toBeInTheDocument();
+
+    rerender(<TeamAvailability staff={staff} holidays={holidays} jobs={jobs} today="2026-10-03" />);
+    expect(screen.getByText('3 available')).toBeInTheDocument();
+    expect(screen.getByText('0 on a job')).toBeInTheDocument();
+    expect(screen.getByText('0 on holiday')).toBeInTheDocument();
+    expect(screen.getByText(/saturday 3 oct/i)).toBeInTheDocument();
+    expect(screen.queryByText('Full re-roof - semi-detached')).not.toBeInTheDocument();
   });
 });

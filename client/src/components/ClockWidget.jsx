@@ -1,7 +1,8 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { Play, Square, Coffee, MapPin, Camera, Loader2, AlertTriangle } from 'lucide-react';
 import { api } from '../lib/api';
 import { Modal } from './ui.jsx';
+import PhotoUploadButton from './PhotoUploadButton.jsx';
 
 /** Ask the browser for a position. Never rejects - resolves null if declined. */
 function getPosition(timeout = 8000) {
@@ -180,12 +181,10 @@ function ClockOutModal({ open, onClose, requirePhoto, onDone }) {
   const [photo, setPhoto] = useState(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
-  const fileRef = useRef(null);
 
   useEffect(() => { if (open) { setNotes(''); setPhoto(null); setError(''); } }, [open]);
 
-  const pickPhoto = (e) => {
-    const file = e.target.files?.[0];
+  const pickPhoto = (file) => {
     if (!file) return;
     // Downscale on the device - a raw phone photo is far too big to post.
     const img = new Image();
@@ -230,13 +229,17 @@ function ClockOutModal({ open, onClose, requirePhoto, onDone }) {
         </div>
         <div>
           <label className="label">Site photo {requirePhoto ? '(required)' : '(optional)'}</label>
-          <input ref={fileRef} type="file" accept="image/*" capture="environment" className="hidden" onChange={pickPhoto} />
           {photo ? (
             <ClockOutPhotoPreview src={photo} onClear={() => setPhoto(null)} />
           ) : (
-            <button onClick={() => fileRef.current?.click()} className="btn-secondary w-full py-3">
-              <Camera size={16} /> Take a photo
-            </button>
+            <PhotoUploadButton
+              accept="image/*"
+              ariaLabel="clock-out site photo"
+              onFile={pickPhoto}
+              className="btn-secondary w-full py-3"
+            >
+              <Camera size={16} /> Take or choose a photo
+            </PhotoUploadButton>
           )}
         </div>
         <button onClick={submit} disabled={busy} className="btn-primary w-full py-3">

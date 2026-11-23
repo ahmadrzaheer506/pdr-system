@@ -225,9 +225,9 @@ function check(name, condition, detail = '') {
   r = await req('GET', '/api/catalogue');
   check('Office can list the service catalogue', r.status === 200 && Array.isArray(r.data.items), `(got ${r.status})`);
   r = await req('POST', '/api/catalogue', {
-    id: 'office_block', description: 'Nope', unit: 'each', unit_price: 1, vat_code: 'standard', kind: 'labour',
+    id: `e2e_office_${Date.now()}`, description: 'Office quote add', unit: 'each', unit_price: 1, vat_code: 'standard', kind: 'labour',
   });
-  check('Office BLOCKED from creating catalogue items', r.status === 403, `(got ${r.status})`);
+  check('Office can create a catalogue item from quoting', r.status === 200, `(got ${r.status})`);
   r = await req('POST', '/api/settings/logo', {});
   check('Office BLOCKED from uploading a logo', r.status === 403, `(got ${r.status})`);
   const officeJar = { ...cookieJar };

@@ -1,6 +1,6 @@
 jest.mock('../models', () => ({
   Lead: { findAll: jest.fn() },
-  Quote: { findOne: jest.fn(), findAll: jest.fn() },
+  Quote: { findOne: jest.fn(), findAll: jest.fn(), count: jest.fn(), sum: jest.fn() },
   Customer: { findAll: jest.fn() },
   Job: { findAll: jest.fn() },
   Invoice: { findAll: jest.fn() },
@@ -17,6 +17,7 @@ jest.mock('../invoicePayments', () => ({
 const { Lead, Quote, Customer, Job, Invoice } = require('../models');
 const {
   parseReportRange, winRate, leadVolume, winLoss, pipelineValueSnapshot,
+  quotesIssuedInRange, quotesIssuedWhere,
   listCustomers, listJobs, listInvoices, listProfitability,
 } = require('../reports');
 
@@ -46,6 +47,26 @@ describe('parseReportRange (requirement 14.1)', () => {
   test('required range needs both from and to', () => {
     expect(parseReportRange({}, { required: true }).error).toMatch(/required/);
     expect(parseReportRange({ from: '2026-09-01', to: '2026-09-10' }, { required: true }).from).toBe('2026-09-01');
+  });
+});
+
+describe('quotesIssuedInRange', () => {
+  const { Op } = require('sequelize');
+
+  beforeEach(() => jest.clearAllMocks());
+
+  test('counts digitally sent quotes and office-recorded decisions in the window', async () => {
+    Quote.count.mockResolvedValue(5);
+    Quote.sum.mockResolvedValue(1620);
+    const fromDt = new Date('2026-10-24T00:00:00.000Z');
+    const toDt = new Date('2026-11-23T23:59:59.999Z');
+    const data = await quotesIssuedInRange(fromDt, toDt);
+    expect(data).toEqual({ quotesSent: 5, quotesValue: 1620 });
+    const where = quotesIssuedWhere(fromDt, toDt);
+    expect(where.status).toEqual({ [Op.in]: ['sent', 'accepted', 'declined', 'expired'] });
+    expect(where[Op.and]).toHaveLength(1);
+    expect(Quote.count).toHaveBeenCalledWith({ where });
+    expect(Quote.sum).toHaveBeenCalledWith('total', { where });
   });
 });
 

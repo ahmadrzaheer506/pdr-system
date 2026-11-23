@@ -7,13 +7,14 @@ const { plain } = require('../db');
 const skillsLib = require('../skills');
 
 async function buildContext(forDate) {
+  const catalogue = await skillsLib.listSkillRows().catch(() => []);
   const staffRows = await User.findAll({
     where: { role: 'STAFF', active: true },
     attributes: ['id', 'name', 'skills', 'is_driver', 'color', 'avatar_file'],
   });
   const staff = staffRows.map((s) => {
     const o = plain(s);
-    o.skills = Array.isArray(o.skills) ? o.skills : [];
+    o.skills = skillsLib.parseStaffSkills(o.skills, catalogue);
     o.is_driver = !!o.is_driver;
     return o;
   });
@@ -39,7 +40,7 @@ async function buildContext(forDate) {
   const unscheduledJobs = unscheduledRows.map((jb) => {
     const o = plain(jb);
     o.customer_name = o.Customer?.name;
-    o.required_skills = Array.isArray(o.required_skills) ? o.required_skills : [];
+    o.required_skills = skillsLib.normaliseJobSkills(o.required_skills, catalogue);
     delete o.Customer;
     return o;
   });
@@ -84,6 +85,7 @@ async function buildContext(forDate) {
 
   return {
     forDate,
+    catalogue,
     staff: staff.map((s) => ({
       ...s,
       on_holiday: onHoliday.has(s.id),
@@ -133,24 +135,24 @@ function ruleSchedule(context, transcript = '') {
   const free = () => pool.filter((s) => !taken.has(s.id));
   const teamSize = Math.max(1, Math.min(3, Math.floor(pool.length / Math.max(1, jobs.length)) || 1));
 
+  const catalogue = context.catalogue || [];
   for (const jb of jobs) {
     const team = [];
     const notes = [];
     for (const skill of jb.required_skills) {
-      if (team.some((m) => skillsLib.staffCoversRequirement(m.skills, skill))) continue;
+      if (team.some((m) => skillsLib.staffCoversRequirement(m.skills, skill, catalogue))) continue;
       const match = free()
-        .filter((s) => skillsLib.staffCoversRequirement(s.skills, skill) && !team.includes(s))
+        .filter((s) => skillsLib.staffCoversRequirement(s.skills, skill, catalogue) && !team.includes(s))
         .sort((a, b) => {
-          const skillId = skill?.skill_id ?? skill;
-          const ra = skillsLib.LEVEL_RANK[skillsLib.staffLevelFor(a.skills, skillId)] || 0;
-          const rb = skillsLib.LEVEL_RANK[skillsLib.staffLevelFor(b.skills, skillId)] || 0;
+          const ra = skillsLib.LEVEL_RANK[skillsLib.staffLevelFor(a.skills, skill, catalogue)] || 0;
+          const rb = skillsLib.LEVEL_RANK[skillsLib.staffLevelFor(b.skills, skill, catalogue)] || 0;
           return rb - ra;
         })[0];
       if (match) {
         team.push(match);
         taken.add(match.id);
       } else {
-        notes.push(`no available staff with skill "${skillsLib.requiredSkillLabel(skill)}"`);
+        notes.push(`no available staff with skill "${skillsLib.requiredSkillLabel(skill, catalogue)}" at the required level or above`);
       }
     }
     if (!team.some((m) => m.is_driver)) {
@@ -259,9 +261,10 @@ function validateProposal(proposal, context, { allowConflicts = false } = {}) {
       continue;
     }
     const teamSkills = users.flatMap((u) => staffById.get(u).skills);
+    const catalogue = context.catalogue || [];
     for (const skill of jb.required_skills || []) {
-      if (!skillsLib.staffCoversRequirement(teamSkills, skill)) {
-        warnings.push(`"${jb.title}": nobody on the team has required skill "${skillsLib.requiredSkillLabel(skill)}"`);
+      if (!skillsLib.staffCoversRequirement(teamSkills, skill, catalogue)) {
+        warnings.push(`"${jb.title}": nobody on the team has required skill "${skillsLib.requiredSkillLabel(skill, catalogue)}" at the required level or above`);
       }
     }
     if (!users.some((u) => staffById.get(u).is_driver)) warnings.push(`"${jb.title}": no driver on the team`);

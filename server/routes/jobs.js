@@ -18,14 +18,23 @@ const ai = require('../integrations/ai');
 const contacts = require('../customerContacts');
 const geocode = require('../geocode');
 const calendarSync = require('../calendarSync');
+const multer = require('multer');
+
+const voiceUpload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 8 * 1024 * 1024 },
+});
 
 const router = express.Router();
 router.use(requireAuth, requireOffice);
 
-function mapJob(jobJson) {
+function mapJob(jobJson, catalogue = []) {
   return {
     ...jobJson,
-    required_skills: Array.isArray(jobJson.required_skills) ? jobJson.required_skills : [],
+    required_skills: skillsLib.normaliseJobSkills(
+      Array.isArray(jobJson.required_skills) ? jobJson.required_skills : [],
+      catalogue,
+    ),
     needs_driver: !!jobJson.needs_driver,
   };
 }
@@ -74,8 +83,9 @@ router.get('/', asyncHandler(async (req, res) => {
       : [['id', 'DESC']],
     ...(scheduleRange ? {} : { limit: 200 }),
   });
+  const catalogue = await skillsLib.listSkillRows();
   const jobs = rows.map((jb) => {
-    const o = mapJob(plain(jb));
+    const o = mapJob(plain(jb), catalogue);
     o.customer_name = o.Customer?.name;
     o.lead_ref = o.Lead?.ref || null;
     o.quote_ref = o.Quote?.ref || null;
@@ -101,13 +111,12 @@ router.get('/unscheduled', asyncHandler(async (req, res) => {
     include: [{ model: Customer, attributes: ['name'] }],
     order: [[literal(`CASE "Job"."priority" WHEN 'urgent' THEN 0 WHEN 'high' THEN 1 WHEN 'normal' THEN 2 ELSE 3 END`), 'ASC'], ['created_at', 'ASC']],
   });
+  const catalogue = await skillsLib.listSkillRows();
   res.json({
     jobs: rows.map((jb) => {
-      const o = plain(jb);
+      const o = mapJob(plain(jb), catalogue);
       o.customer_name = o.Customer?.name;
       o.customer_address = o.address;
-      o.required_skills = Array.isArray(o.required_skills) ? o.required_skills : [];
-      o.needs_driver = !!o.needs_driver;
       delete o.Customer;
       return o;
     }),
@@ -183,7 +192,7 @@ router.get('/:id', asyncHandler(async (req, res) => {
     ],
   });
   if (!jb) return res.status(404).json({ error: 'Job not found' });
-  const job = mapJob(plain(jb));
+  const job = mapJob(plain(jb), await skillsLib.listSkillRows());
   const customer = await contacts.loadCustomerWithContacts(jb.customer_id);
   job.customer_name = job.Customer?.name;
   job.phone = job.selectedPhone?.value || customer?.phone || null;
@@ -518,6 +527,21 @@ router.post('/:id/messages', asyncHandler(async (req, res) => {
 
 router.get('/ai/context/:date', asyncHandler(async (req, res) => {
   res.json(await buildContext(req.params.date));
+}));
+
+router.post('/ai/transcribe', (req, res, next) => {
+  voiceUpload.single('file')(req, res, (err) => {
+    if (err) return res.status(400).json({ error: 'Could not read the recording' });
+    next();
+  });
+}, asyncHandler(async (req, res) => {
+  if (!req.file?.buffer?.length) return res.status(400).json({ error: 'Recording is empty' });
+  try {
+    const result = await ai.transcribe(req.file.buffer, req.file.mimetype || 'audio/webm');
+    res.json(result);
+  } catch (err) {
+    res.status(502).json({ error: err.message || 'Voice transcription failed' });
+  }
 }));
 
 router.post('/ai/propose', asyncHandler(async (req, res) => {

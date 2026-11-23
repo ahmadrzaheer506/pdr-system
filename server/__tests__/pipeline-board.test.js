@@ -195,6 +195,7 @@ describe('GET /api/customers/pipeline/board totals (requirement 4.5)', () => {
     const pipelineCol = include.find((col) => Array.isArray(col) && col[1] === 'pipeline_value');
     expect(String(pipelineCol[0].val || pipelineCol[0])).toMatch(/ORDER BY q\.id DESC LIMIT 1/);
     expect(String(pipelineCol[0].val || pipelineCol[0])).toMatch(/q\.lead_id/);
+    expect(String(pipelineCol[0].val || pipelineCol[0])).toMatch(/q\.status = 'accepted'/);
     expect(String(pipelineCol[0].val || pipelineCol[0])).not.toMatch(/SUM\(/);
   });
 

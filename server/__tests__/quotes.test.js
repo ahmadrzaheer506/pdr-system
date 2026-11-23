@@ -229,11 +229,28 @@ describe('GET /api/quotes', () => {
   });
 
   test('filters the list by created date range', async () => {
+    const { Op } = require('sequelize');
     const res = await request(app).get('/api/quotes?created_from=2026-09-01&created_to=2026-09-22');
     expect(res.status).toBe(200);
     expect(Quote.findAll).toHaveBeenCalledWith(expect.objectContaining({
-      where: expect.objectContaining({ created_at: expect.any(Object) }),
+      where: expect.objectContaining({
+        [Op.and]: expect.arrayContaining([
+          expect.objectContaining({ created_at: expect.any(Object) }),
+        ]),
+      }),
     }));
+  });
+
+  test('filters the list by sent / issued date range', async () => {
+    const { Op } = require('sequelize');
+    const res = await request(app).get('/api/quotes?sent_from=2026-10-24&sent_to=2026-11-23');
+    expect(res.status).toBe(200);
+    const where = Quote.findAll.mock.calls[0][0].where;
+    expect(where[Op.and]).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        status: { [Op.in]: ['sent', 'accepted', 'declined', 'expired'] },
+      }),
+    ]));
   });
 });
 
@@ -479,7 +496,10 @@ describe('quote revisions and extras on accept (requirement 6.5)', () => {
       create_job: false,
     });
     expect(res.status).toBe(200);
-    expect(quoteRow.update).toHaveBeenCalledWith(expect.objectContaining({ status: 'accepted' }));
+    expect(quoteRow.update).toHaveBeenCalledWith(expect.objectContaining({
+      status: 'accepted',
+      sent_at: expect.any(Date),
+    }));
     expect(setStage).toHaveBeenCalledWith(9, 'WON', 1, 'Quote Q-2026-0021 accepted (recorded by office)', expect.anything());
     expect(logActivity).toHaveBeenCalledWith(9, 1, 'quote_accepted', 'Quote Q-2026-0021 accepted (recorded by office)', 'quote', 21);
   });

@@ -11,7 +11,9 @@ jest.mock('../db', () => ({
 }));
 jest.mock('../services/pipeline', () => ({ setStage: jest.fn(), logActivity: jest.fn(), resolveLeadForCustomer: jest.fn(async () => null) }));
 jest.mock('../services/schedulerEngine', () => ({ buildContext: jest.fn(), validateProposal: jest.fn(), proposalConflicts: jest.fn(() => []) }));
-jest.mock('../integrations/ai', () => ({}));
+jest.mock('../integrations/ai', () => ({
+  transcribe: jest.fn(async () => ({ available: false, hint: 'no key' })),
+}));
 jest.mock('../customerContacts', () => ({
   loadCustomerWithContacts: jest.fn(),
   resolveCustomerContactSelection: jest.fn(),
@@ -472,5 +474,31 @@ describe('GET /api/jobs list filters', () => {
     const arg = Job.findAll.mock.calls[0][0];
     expect(arg.limit).toBeUndefined();
     expect(arg.order[1]).toEqual(['start_date', 'ASC']);
+  });
+});
+
+describe('POST /api/jobs/ai/transcribe', () => {
+  const ai = require('../integrations/ai');
+
+  beforeEach(() => jest.clearAllMocks());
+
+  test('returns Whisper text when the key is configured', async () => {
+    ai.transcribe.mockResolvedValue({
+      available: true,
+      text: 'A simple sentence has one independent clause with a subject and a verb that express one complete thought.',
+    });
+    const res = await request(app)
+      .post('/api/jobs/ai/transcribe')
+      .attach('file', Buffer.from('webm-audio'), { filename: 'note.webm', contentType: 'audio/webm' });
+    expect(res.status).toBe(200);
+    expect(res.body.available).toBe(true);
+    expect(res.body.text).toMatch(/independent clause/i);
+    expect(ai.transcribe).toHaveBeenCalled();
+  });
+
+  test('rejects an empty recording', async () => {
+    const res = await request(app).post('/api/jobs/ai/transcribe');
+    expect(res.status).toBe(400);
+    expect(ai.transcribe).not.toHaveBeenCalled();
   });
 });

@@ -416,6 +416,67 @@ describe('QuoteBuilder', () => {
     expect(screen.getByLabelText(/^item 2$/i)).toBeInTheDocument();
   });
 
+  it('applies a created catalogue item to the quote line without wiping other lines', async () => {
+    const user = userEvent.setup();
+    const created = {
+      id: 'ddddd',
+      description: 'ddddd',
+      unit: 'item',
+      unit_price: 85,
+      vat_code: 'standard',
+      kind: 'labour',
+    };
+    api.post.mockImplementation(async (url, body = {}) => {
+      if (url === '/quotes/preview') {
+        return { total: 1200, subtotal: 1000, vat_breakdown: [], grand_total: 1200, due_now: 1200 };
+      }
+      if (url === '/catalogue') return { item: created };
+      return { total: 1200 };
+    });
+    render(
+      <QuoteBuilder
+        open
+        onClose={() => {}}
+        customerId={1}
+        customer={CUSTOMER}
+        existingQuote={{
+          id: 9,
+          ref: 'Q-2026-0009',
+          status: 'draft',
+          title: 'Moss',
+          items: [{
+            description: 'Roof moss removal (soft wash)',
+            qty: 1,
+            unit: 'item',
+            unit_price: 340,
+            vat_code: 'standard',
+            kind: 'labour',
+          }],
+        }}
+        onSaved={() => {}}
+      />
+    );
+    await screen.findByLabelText(/^item 1$/i);
+    await waitFor(() => {
+      expect(api.get).toHaveBeenCalledWith('/quotes/meta/options');
+    });
+    await user.click(screen.getByRole('button', { name: /add line/i }));
+    const item2 = await screen.findByLabelText(/^item 2$/i);
+    await user.type(item2, 'ddddd');
+    await user.click(screen.getByRole('button', { name: /create catalogue item/i }));
+    await user.click(screen.getByRole('button', { name: /save item/i }));
+    await waitFor(() => {
+      expect(api.post).toHaveBeenCalledWith('/catalogue', expect.objectContaining({
+        id: 'ddddd',
+        description: 'ddddd',
+      }));
+    });
+    expect(screen.getByLabelText(/^item 1$/i)).toHaveValue('Roof moss removal (soft wash)');
+    expect(item2).toHaveValue('ddddd');
+    expect(screen.getByLabelText(/unit price 2/i)).toHaveValue(85);
+    expect(screen.getByText(/2 lines/i)).toBeInTheDocument();
+  });
+
   it('lists Settings VAT rates on each scope line', async () => {
     const user = userEvent.setup();
     render(

@@ -13,6 +13,7 @@ import { addIsoDays, localIsoDate, parseIsoDate } from '../lib/schedule';
 export default function Schedule() {
   const [anchorDate, setAnchorDate] = useState(() => new Date());
   const [dayIso, setDayIso] = useState(null);
+  const [availabilityIso, setAvailabilityIso] = useState(() => localIsoDate());
   const [proposeDate, setProposeDate] = useState(addIsoDays(localIsoDate(), 1));
   const [weekJobs, setWeekJobs] = useState([]);
   const [unscheduled, setUnscheduled] = useState([]);
@@ -29,6 +30,21 @@ export default function Schedule() {
   const closeJob = () => {
     setOpenJob(null);
     setOpenCrewDate(null);
+  };
+
+  /** Keep week/day boards and team availability on the same calendar day. */
+  const focusDate = (iso) => {
+    const day = parseIsoDate(iso);
+    if (!day) return;
+    const [y, m, d] = day.split('-').map(Number);
+    setAnchorDate(new Date(y, m - 1, d));
+    setAvailabilityIso(day);
+  };
+
+  const showToday = () => {
+    const now = new Date();
+    setAnchorDate(now);
+    setAvailabilityIso(localIsoDate(now));
   };
 
   const loadWeek = () => {
@@ -60,18 +76,18 @@ export default function Schedule() {
                 <h3 className="font-semibold text-slate-800">Week view</h3>
                 <div className="flex items-center gap-2">
                   <button type="button" onClick={() => setAnchorDate(new Date(anchorDate.getFullYear(), anchorDate.getMonth(), anchorDate.getDate() - 7))} className="btn-ghost !p-1.5" aria-label="Previous week"><ChevronLeft size={16} /></button>
-                  <button type="button" onClick={() => setAnchorDate(new Date())} className="btn-ghost !py-1 !px-2.5 text-xs">Today</button>
+                  <button type="button" onClick={showToday} className="btn-ghost !py-1 !px-2.5 text-xs">Today</button>
                   <button type="button" onClick={() => setAnchorDate(new Date(anchorDate.getFullYear(), anchorDate.getMonth(), anchorDate.getDate() + 7))} className="btn-ghost !p-1.5" aria-label="Next week"><ChevronRight size={16} /></button>
                 </div>
               </div>
               <WeekView
                 anchorDate={anchorDate}
+                selectedIso={availabilityIso}
                 jobs={weekJobs}
                 holidays={holidays}
                 onJobClick={openJobAt}
                 onDayClick={(iso) => {
-                  const [y, m, d] = iso.split('-').map(Number);
-                  setAnchorDate(new Date(y, m - 1, d));
+                  focusDate(iso);
                   setDayIso(iso);
                 }}
               />
@@ -84,8 +100,7 @@ export default function Schedule() {
               staff={staff}
               onJobClick={openJobAt}
               onDateChange={(iso) => {
-                const [y, m, d] = iso.split('-').map(Number);
-                setAnchorDate(new Date(y, m - 1, d));
+                focusDate(iso);
                 setDayIso(iso);
               }}
               onBackToWeek={() => setDayIso(null)}
@@ -108,7 +123,7 @@ export default function Schedule() {
             onOpen={(id) => openJobAt(id)}
           />
         </div>
-        <TeamAvailability staff={staff} holidays={holidays} jobs={weekJobs} />
+        <TeamAvailability staff={staff} holidays={holidays} jobs={weekJobs} today={availabilityIso} />
       </div>
 
       <JobModal

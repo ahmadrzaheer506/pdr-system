@@ -274,6 +274,7 @@ export default function Dashboard() {
   }
   const rangeHint = `Last ${loadedRange || range} days`;
   const refreshing = loadedRange != null && loadedRange !== range;
+  const window = isoRange(loadedRange || range);
 
   return (
     <div className="space-y-6 pb-10">
@@ -307,10 +308,10 @@ export default function Dashboard() {
         <MetricCard
           label="Quotes sent"
           value={data.quotesSent ?? 0}
-          sub={data.quotesSent ? money(data.quotesValue) : rangeHint}
+          sub={data.quotesSent ? `${money(data.quotesValue)} · ${rangeHint}` : rangeHint}
           icon={FileText}
           tone="violet"
-          to="/quotes"
+          to={`/quotes?sent_from=${window.from}&sent_to=${window.to}`}
         />
         <MetricCard
           label="Win rate"

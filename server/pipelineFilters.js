@@ -8,14 +8,14 @@ const { Op, literal } = require('sequelize');
 const { parseCreatedRange, customerTextSearchOr } = require('./customerSearch');
 
 /**
- * Latest draft or sent quote for this customer (requirement 4.5). Used by
- * reports that still snapshot Customer.stage.
+ * Card / filter value for a customer snapshot: job if one exists, else accepted
+ * quote, else latest sent/draft (requirement 4.5 still sums Enquiry → Follow-up only).
  */
-const LATEST_QUOTE_SQL = `(SELECT q.total FROM quotes q WHERE q.customer_id = "Customer".id AND q.status IN ('sent','draft') ORDER BY q.id DESC LIMIT 1)`;
+const LATEST_QUOTE_SQL = `COALESCE((SELECT j.value FROM jobs j WHERE j.customer_id = "Customer".id AND j.value IS NOT NULL ORDER BY j.id DESC LIMIT 1), (SELECT q.total FROM quotes q WHERE q.customer_id = "Customer".id AND q.status = 'accepted' ORDER BY q.id DESC LIMIT 1), (SELECT q.total FROM quotes q WHERE q.customer_id = "Customer".id AND q.status IN ('sent','draft') ORDER BY q.id DESC LIMIT 1))`;
 const PIPELINE_VALUE_SQL = `COALESCE(${LATEST_QUOTE_SQL}, 0)`;
 
-/** Latest open quote on this enquiry - board cards and column totals. */
-const LEAD_LATEST_QUOTE_SQL = `(SELECT q.total FROM quotes q WHERE q.lead_id = "Lead".id AND q.status IN ('sent','draft') ORDER BY q.id DESC LIMIT 1)`;
+/** Board cards: job value, else accepted quote, else latest sent/draft on this enquiry. */
+const LEAD_LATEST_QUOTE_SQL = `COALESCE((SELECT j.value FROM jobs j WHERE j.lead_id = "Lead".id AND j.value IS NOT NULL ORDER BY j.id DESC LIMIT 1), (SELECT q.total FROM quotes q WHERE q.lead_id = "Lead".id AND q.status = 'accepted' ORDER BY q.id DESC LIMIT 1), (SELECT q.total FROM quotes q WHERE q.lead_id = "Lead".id AND q.status IN ('sent','draft') ORDER BY q.id DESC LIMIT 1))`;
 const LEAD_PIPELINE_VALUE_SQL = `COALESCE(${LEAD_LATEST_QUOTE_SQL}, 0)`;
 const OPEN_TASKS_SQL = `(SELECT COUNT(*) FROM tasks t WHERE t.entity_type='customer' AND t.entity_id="Lead".customer_id AND t.status='open')`;
 

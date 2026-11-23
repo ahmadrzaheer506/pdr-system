@@ -53,11 +53,15 @@ describe('buildPipelineBoardWhere (requirement 4.4)', () => {
 });
 
 describe('pipeline value SQL (requirement 4.5)', () => {
-  test('uses the latest sent or draft quote, not the sum of every revision', () => {
+  test('uses job or accepted quote when won, else latest sent/draft, not the sum of every revision', () => {
     expect(LATEST_QUOTE_SQL).toMatch(/q\.status IN \('sent','draft'\)/);
+    expect(LATEST_QUOTE_SQL).toMatch(/q\.status = 'accepted'/);
+    expect(LATEST_QUOTE_SQL).toMatch(/FROM jobs j/);
     expect(LATEST_QUOTE_SQL).toMatch(/ORDER BY q\.id DESC LIMIT 1/);
     expect(LATEST_QUOTE_SQL).not.toMatch(/SUM\(/);
     expect(LEAD_LATEST_QUOTE_SQL).toMatch(/q\.lead_id = "Lead"\.id/);
+    expect(LEAD_LATEST_QUOTE_SQL).toMatch(/j\.lead_id = "Lead"\.id/);
+    expect(LEAD_LATEST_QUOTE_SQL).toMatch(/q\.status = 'accepted'/);
     expect(LEAD_LATEST_QUOTE_SQL).toMatch(/ORDER BY q\.id DESC LIMIT 1/);
     expect(PIPELINE_VALUE_SQL).toMatch(/^COALESCE\(/);
     expect(PIPELINE_VALUE_SQL).not.toMatch(/SUM\(/);

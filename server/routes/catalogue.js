@@ -21,7 +21,7 @@ router.get('/:id', asyncHandler(async (req, res) => {
   res.json({ item });
 }));
 
-router.post('/', requireAdmin, asyncHandler(async (req, res) => {
+router.post('/', asyncHandler(async (req, res) => {
   const uk = (await getSetting('uk')) || {};
   const parsed = catalogue.parseCatalogueItem(req.body || {}, { requireId: true, uk });
   if (parsed.error) return res.status(400).json({ error: parsed.error });

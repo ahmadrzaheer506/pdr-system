@@ -2,6 +2,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import { Camera, FileText, StickyNote, Trash2, Download } from 'lucide-react';
 import { api, fmtDateTime } from '../lib/api';
 import { PHOTO_STAGES, PHOTO_STAGE_LABELS, filesForStage, documentFiles } from '../lib/jobFiles';
+import PhotoUploadButton from './PhotoUploadButton.jsx';
 
 const IMAGE_ACCEPT = 'image/jpeg,image/png,image/webp,.jpg,.jpeg,.png,.webp';
 const PDF_ACCEPT = 'application/pdf,.pdf';
@@ -31,11 +32,7 @@ export default function JobFiles({
 }) {
   const [note, setNote] = useState(notes || '');
   const [saving, setSaving] = useState(false);
-  const beforeRef = useRef(null);
-  const duringRef = useRef(null);
-  const afterRef = useRef(null);
   const docRef = useRef(null);
-  const photoRefs = { before: beforeRef, during: duringRef, after: afterRef };
 
   useEffect(() => {
     setNote(notes || '');
@@ -72,7 +69,7 @@ export default function JobFiles({
     <div className="space-y-4">
       <div>
         <div className="label mb-2 flex items-center gap-1.5"><Camera size={13} /> Site photos</div>
-        <p className="text-xs text-slate-400 mb-2">JPEG, PNG or WebP · max 10MB · tag before, during or after. Stays on this job, never sent to the customer.</p>
+        <p className="text-xs text-slate-400 mb-2">JPEG, PNG or WebP · max 10MB · take a photo or choose from your library. Stays on this job, never sent to the customer.</p>
         <div className="grid gap-3 sm:grid-cols-3">
           {PHOTO_STAGES.map((stage) => {
             const group = filesForStage(files, stage);
@@ -80,22 +77,14 @@ export default function JobFiles({
               <div key={stage} className="rounded-xl border border-slate-100 bg-slate-50/50 p-3">
                 <div className="flex items-center justify-between gap-1 mb-2">
                   <div className="text-xs font-semibold uppercase tracking-wide text-slate-500">{PHOTO_STAGE_LABELS[stage]}</div>
-                  <label className="btn-secondary relative overflow-hidden !py-1 !px-2 text-[10px] cursor-pointer">
+                  <PhotoUploadButton
+                    accept={IMAGE_ACCEPT}
+                    disabled={saving}
+                    ariaLabel={`${stage} photo`}
+                    onFile={(file) => upload(file, stage)}
+                  >
                     {saving ? '…' : 'Upload'}
-                    <input
-                      ref={photoRefs[stage]}
-                      type="file"
-                      accept={IMAGE_ACCEPT}
-                      capture="environment"
-                      className="sr-only"
-                      disabled={saving}
-                      aria-label={`Upload ${stage} photo`}
-                      onChange={(e) => {
-                        upload(e.target.files?.[0], stage);
-                        if (photoRefs[stage].current) photoRefs[stage].current.value = '';
-                      }}
-                    />
-                  </label>
+                  </PhotoUploadButton>
                 </div>
                 {group.length === 0 && <p className="text-xs text-slate-400">No {stage} photos yet.</p>}
                 <ul className="space-y-2">

@@ -10,6 +10,16 @@ export function matchCatalogueItems(items, query, limit = 20) {
   return matched.slice(0, limit);
 }
 
+/** SKU-style id from a typed description (same rules as the server slug). */
+export function suggestCatalogueId(description) {
+  return String(description || '')
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9_]+/g, '_')
+    .replace(/^_|_$/g, '')
+    .slice(0, 40);
+}
+
 export function catalogueHint(row) {
   const price = Number(row?.unit_price);
   const unit = String(row?.unit || '').trim();

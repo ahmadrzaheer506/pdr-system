@@ -12,6 +12,7 @@ const { resolveRule, ensureTask, resolveQuoteFollowupTask } = require('../servic
 const { quotePdf } = require('../services/pdf');
 const contacts = require('../customerContacts');
 const { parseCreatedRange } = require('../customerSearch');
+const { parseReportRange, quotesIssuedWhere } = require('../reports');
 const geocode = require('../geocode');
 const quickbooks = require('../integrations/quickbooks');
 
@@ -101,17 +102,46 @@ async function generateAndStoreQuotePdf(quote) {
   return { filename, customer, forDoc };
 }
 
+function parseSentRange(query = {}) {
+  const hasFrom = query.sent_from != null && String(query.sent_from).trim() !== '';
+  const hasTo = query.sent_to != null && String(query.sent_to).trim() !== '';
+  if (!hasFrom && !hasTo) return { where: null };
+  const range = parseReportRange({ from: query.sent_from, to: query.sent_to });
+  if (range.error) {
+    return {
+      error: String(range.error)
+        .replace(/\bfrom\b/g, 'sent_from')
+        .replace(/\bto\b/g, 'sent_to'),
+    };
+  }
+  return { where: quotesIssuedWhere(range.fromDt, range.toDt) };
+}
+
+/** Stamp sent_at when office records a decision on a quote that was never emailed/WhatsApped. */
+function issuedDecisionPatch(quote, fields) {
+  const now = new Date();
+  return {
+    decided_at: now,
+    ...(quote.sent_at ? {} : { sent_at: now }),
+    ...fields,
+  };
+}
+
 router.get('/', asyncHandler(async (req, res) => {
   const { status, q } = req.query;
   const dates = parseCreatedRange(req.query);
   if (dates.error) return res.status(400).json({ error: dates.error });
-  const where = {};
-  if (status && status !== 'ALL') where.status = status;
-  if (dates.range) where.created_at = dates.range;
+  const sent = parseSentRange(req.query);
+  if (sent.error) return res.status(400).json({ error: sent.error });
+  const and = [];
+  if (status && status !== 'ALL') and.push({ status });
+  if (dates.range) and.push({ created_at: dates.range });
+  if (sent.where) and.push(sent.where);
   if (q) {
     const like = `%${q}%`;
-    where[Op.or] = [{ ref: { [Op.iLike]: like } }, { title: { [Op.iLike]: like } }];
+    and.push({ [Op.or]: [{ ref: { [Op.iLike]: like } }, { title: { [Op.iLike]: like } }] });
   }
+  const where = and.length ? { [Op.and]: and } : {};
   const rows = await Quote.findAll({
     where,
     include: [{ model: Customer, attributes: ['name'], required: true }],
@@ -507,11 +537,10 @@ router.post('/:id/decision', asyncHandler(async (req, res) => {
       const picked = pickAcceptedExtras(quote.optional_extras, accepted_extra_indexes);
       if (picked.error) return res.status(400).json({ error: picked.error });
       acceptedExtras = picked.extras;
-      await quote.update({
+      await quote.update(issuedDecisionPatch(quote, {
         status: 'accepted',
-        decided_at: new Date(),
         accepted_optional_extras: acceptedExtras,
-      });
+      }));
       await cancelPendingForQuote(quote.id, 'quote accepted');
       await resolveQuoteFollowupTask(quote.id);
       await setStage(customer.id, 'WON', req.user.id, acceptedDetail, { leadId: quote.lead_id });
@@ -555,11 +584,10 @@ router.post('/:id/decision', asyncHandler(async (req, res) => {
 
   const recordedByOffice = quote.status === 'draft';
   const declinedDetail = `Quote ${quote.ref} declined${reason ? ` - ${reason}` : ''}${recordedByOffice ? ' (recorded by office)' : ''}`;
-  await quote.update({
+  await quote.update(issuedDecisionPatch(quote, {
     status: decision,
-    decided_at: new Date(),
     accepted_optional_extras: [],
-  });
+  }));
   await cancelPendingForQuote(quote.id, `quote ${decision}`);
   await resolveQuoteFollowupTask(quote.id);
   await setStage(customer.id, 'LOST', req.user.id, declinedDetail, { leadId: quote.lead_id });

@@ -1,11 +1,21 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, waitFor } from '@testing-library/react';
+import { act, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import AiAssistant from './AiAssistant.jsx';
 import { api } from '../lib/api';
 
 vi.mock('../lib/api', () => ({
-  api: { post: vi.fn() },
+  api: { post: vi.fn(), upload: vi.fn() },
+}));
+
+const recorder = {
+  start: vi.fn(async () => true),
+  stop: vi.fn(async () => new Blob([new Uint8Array(2048)], { type: 'audio/webm' })),
+  dispose: vi.fn(),
+};
+
+vi.mock('../lib/voiceRecorder', () => ({
+  createVoiceRecorder: () => recorder,
 }));
 
 const proposal = {
@@ -27,6 +37,9 @@ const proposal = {
 describe('AiAssistant', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    api.upload.mockResolvedValue({ available: false });
+    recorder.start.mockResolvedValue(true);
+    recorder.stop.mockResolvedValue(new Blob([new Uint8Array(2048)], { type: 'audio/webm' }));
   });
 
   it('keeps the composer labels and posts the same propose payload', async () => {
@@ -113,6 +126,90 @@ describe('AiAssistant', () => {
     expect(screen.queryByRole('button', { name: /approve & schedule/i })).not.toBeInTheDocument();
     expect(screen.queryByText(/nothing to propose/i)).not.toBeInTheDocument();
     expect(screen.getByText(/place a job on the unscheduled queue first/i)).toBeInTheDocument();
+  });
+
+  it('writes live speech into the composer without duplicating phrases', async () => {
+    const user = userEvent.setup();
+    const instances = [];
+    class SpeechRecognition {
+      constructor() {
+        instances.push(this);
+        this.lang = '';
+        this.continuous = false;
+        this.interimResults = false;
+        this.maxAlternatives = 1;
+      }
+      start() {}
+      stop() { this.onend?.(); }
+      abort() {}
+    }
+    window.SpeechRecognition = SpeechRecognition;
+    render(
+      <AiAssistant
+        proposeDate="2026-10-02"
+        setProposeDate={vi.fn()}
+        onApproved={vi.fn()}
+        show={vi.fn()}
+      />,
+    );
+    await user.click(screen.getByRole('button', { name: 'Start voice input' }));
+    expect(screen.getByRole('button', { name: 'Stop recording' })).toBeInTheDocument();
+    const recog = instances[0];
+    const phrase = (text, isFinal) => {
+      const row = [{ transcript: text, confidence: 0.9 }];
+      row.isFinal = isFinal;
+      return row;
+    };
+    act(() => {
+      recog.onresult({ results: [phrase('Connor is off', true), phrase(' sick', false)] });
+    });
+    expect(screen.getByLabelText(/schedule instruction/i)).toHaveValue('Connor is off sick');
+    act(() => {
+      recog.onresult({ results: [phrase('Connor is off', true), phrase(' sick', true)] });
+    });
+    expect(screen.getByLabelText(/schedule instruction/i)).toHaveValue('Connor is off sick');
+    await user.click(screen.getByRole('button', { name: 'Stop recording' }));
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: 'Start voice input' })).toBeInTheDocument();
+    });
+    delete window.SpeechRecognition;
+  });
+
+  it('replaces live speech with the server transcript when Whisper is available', async () => {
+    const user = userEvent.setup();
+    class SpeechRecognition {
+      constructor() {
+        this.lang = '';
+        this.continuous = false;
+        this.interimResults = false;
+        this.maxAlternatives = 1;
+      }
+      start() {}
+      stop() { this.onend?.(); }
+      abort() {}
+    }
+    window.SpeechRecognition = SpeechRecognition;
+    api.upload.mockResolvedValue({
+      available: true,
+      text: 'A simple sentence has one independent clause with a subject and a verb that express one complete thought.',
+    });
+    render(
+      <AiAssistant
+        proposeDate="2026-10-02"
+        setProposeDate={vi.fn()}
+        onApproved={vi.fn()}
+        show={vi.fn()}
+      />,
+    );
+    await user.click(screen.getByRole('button', { name: 'Start voice input' }));
+    await user.click(screen.getByRole('button', { name: 'Stop recording' }));
+    await waitFor(() => {
+      expect(api.upload).toHaveBeenCalledWith('/jobs/ai/transcribe', expect.any(FormData));
+    });
+    expect(screen.getByLabelText(/schedule instruction/i)).toHaveValue(
+      'A simple sentence has one independent clause with a subject and a verb that express one complete thought.',
+    );
+    delete window.SpeechRecognition;
   });
 
   it('asks to confirm before scheduling someone on holiday', async () => {

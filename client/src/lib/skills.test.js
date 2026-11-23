@@ -37,6 +37,32 @@ describe('staff skill matching (requirement 7.2 / 8.3)', () => {
     )).toBe(false);
   });
 
+  it('matches advanced staff stored by slug against a competent job skill id', () => {
+    expect(staffCoversRequirement(
+      [{ slug: 'roofing', level: 'advanced' }],
+      { skill_id: roofing, level: 'competent' },
+      CATALOGUE,
+    )).toBe(true);
+    expect(missingRequiredSkills(
+      [{ id: '4', skills: [{ skill_id: roofing, level: 'advanced' }] }],
+      ['4'],
+      [{ skill_id: roofing, level: 'competent' }],
+    )).toEqual([]);
+  });
+
+  it('treats an Advanced Roofer skill as covering Competent Roofer', () => {
+    const extra = [
+      ...CATALOGUE,
+      { id: 90, slug: 'competent_roofer', name: 'Competent Roofer' },
+      { id: 91, slug: 'advanced_roofer', name: 'Advanced Roofer' },
+    ];
+    expect(staffCoversRequirement(
+      [{ skill_id: 91, level: 'competent' }],
+      { skill_id: 90, level: 'competent' },
+      extra,
+    )).toBe(true);
+  });
+
   it('lists required skills the selected crew does not cover', () => {
     const staff = [
       { id: 3, skills: [{ skill_id: labour, level: 'competent' }], is_driver: false },

@@ -91,13 +91,15 @@ export default function CrewChips({
   requiredSkills = [],
   disabled = false,
 }) {
+  const loaded = useSkillCatalogue();
+  const catalogue = loaded.skills;
   const days = Array.isArray(workDates) && workDates.length ? workDates : [workDate];
-  const ranked = sortStaffForJob(staff, requiredSkills);
+  const ranked = sortStaffForJob(staff, requiredSkills, catalogue);
   return (
     <div className="flex flex-wrap gap-2">
       {ranked.map((s) => {
         const selected = selectedIds.some((id) => Number(id) === Number(s.id));
-        const matches = staffMatchesRequiredSkills(s.skills, requiredSkills);
+        const matches = staffMatchesRequiredSkills(s.skills, requiredSkills, catalogue);
         const flags = days.map((iso) => ({
           iso,
           ...staffDayFlags({ holidays, bookings, userId: s.id, iso, excludeJobId }),

@@ -47,6 +47,33 @@ describe('skill catalogue and matching (requirement 1.8 / 7.2 / 8.3)', () => {
     expect(staffCoversRequirement([{ skill_id: id('roofing'), level: 'trainee' }], { skill_id: id('roofing'), level: 'competent' })).toBe(false);
   });
 
+  test('higher level still matches when staff uses a slug and the job uses a catalogue id', () => {
+    const staff = [{ slug: 'roofing', level: 'advanced' }];
+    expect(staffCoversRequirement(
+      staff,
+      { skill_id: id('roofing'), level: 'competent' },
+      CATALOGUE,
+    )).toBe(true);
+    expect(staffCoversRequirement(
+      ['roofer'],
+      { skill_id: id('roofing'), level: 'competent' },
+      CATALOGUE,
+    )).toBe(true);
+  });
+
+  test('Advanced Roofer catalogue skill covers a Competent Roofer requirement', () => {
+    const extra = [
+      ...CATALOGUE,
+      { id: 90, slug: 'competent_roofer', name: 'Competent Roofer' },
+      { id: 91, slug: 'advanced_roofer', name: 'Advanced Roofer' },
+    ];
+    expect(staffCoversRequirement(
+      [{ skill_id: 91, level: 'competent' }],
+      { skill_id: 90, level: 'competent' },
+      extra,
+    )).toBe(true);
+  });
+
   test('staffMatchesRequiredSkills is true when any required skill is covered', () => {
     const staff = [{ skill_id: id('lead_work'), level: 'competent' }];
     expect(staffMatchesRequiredSkills(staff, [

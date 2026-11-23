@@ -1,9 +1,9 @@
 import React, { useEffect, useState, useCallback } from 'react';
 import { Plus, Pencil, Trash2, Package } from 'lucide-react';
 import { api, money } from '../lib/api';
-import { Modal, PageLoading, useToast, Toast } from './ui.jsx';
-import { vatSelectOptions } from '../lib/taxDefaults';
+import { PageLoading, useToast, Toast } from './ui.jsx';
 import SelectMenu from './SelectMenu.jsx';
+import CatalogueItemForm, { EMPTY_CATALOGUE_ITEM } from './CatalogueItemForm.jsx';
 
 const KINDS = [
   { value: '', label: 'All kinds' },
@@ -12,19 +12,10 @@ const KINDS = [
   { value: 'both', label: 'Both' },
 ];
 
-const KIND_EDIT = KINDS.filter((k) => k.value);
-
-const EMPTY = {
-  id: '',
-  description: '',
-  unit: 'm²',
-  unit_price: 0,
-  vat_code: 'standard',
-  kind: 'materials',
-};
+const EMPTY = { ...EMPTY_CATALOGUE_ITEM, unit: 'm²' };
 
 /**
- * Settings catalogue CRUD (requirement 17.2). ADMIN mutates; OFFICE can search/view.
+ * Settings catalogue CRUD (requirement 17.2). ADMIN add/edit/delete here; OFFICE can list and create from a quote.
  */
 export default function CatalogueSettings({ canEdit }) {
   const [items, setItems] = useState(null);
@@ -32,7 +23,6 @@ export default function CatalogueSettings({ canEdit }) {
   const [qDebounced, setQDebounced] = useState('');
   const [kind, setKind] = useState('');
   const [draft, setDraft] = useState(null);
-  const [saving, setSaving] = useState(false);
   const [vatRates, setVatRates] = useState(null);
   const { toast, show } = useToast();
 
@@ -61,24 +51,6 @@ export default function CatalogueSettings({ canEdit }) {
   }, []);
 
   const close = () => setDraft(null);
-
-  const save = async () => {
-    setSaving(true);
-    try {
-      if (draft._existing) {
-        await api.put(`/catalogue/${draft.id}`, draft);
-      } else {
-        await api.post('/catalogue', draft);
-      }
-      show('Saved');
-      close();
-      await load();
-    } catch (err) {
-      show(err.message, 'error');
-    } finally {
-      setSaving(false);
-    }
-  };
 
   const remove = async (item) => {
     if (!window.confirm(`Delete “${item.description}”? Existing quotes keep their copied price.`)) return;
@@ -168,54 +140,17 @@ export default function CatalogueSettings({ canEdit }) {
         </table>
         {items.length === 0 && <p className="text-sm text-slate-400 py-4">No catalogue items match.</p>}
       </div>
-      <Modal open={!!draft} onClose={close} title={draft?._existing ? 'Edit catalogue item' : 'Add catalogue item'}>
-        {draft && (
-          <div className="space-y-3">
-            <div>
-              <label className="label" htmlFor="cat-id">SKU</label>
-              <input id="cat-id" className="input" disabled={!!draft._existing} value={draft.id} onChange={(e) => setDraft({ ...draft, id: e.target.value })} />
-            </div>
-            <div>
-              <label className="label" htmlFor="cat-description">Description</label>
-              <input id="cat-description" className="input" value={draft.description} onChange={(e) => setDraft({ ...draft, description: e.target.value })} />
-            </div>
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <label className="label" htmlFor="cat-unit">Unit</label>
-                <input id="cat-unit" className="input" value={draft.unit} onChange={(e) => setDraft({ ...draft, unit: e.target.value })} />
-              </div>
-              <div>
-                <label className="label" htmlFor="cat-price">Unit price</label>
-                <input id="cat-price" className="input" type="number" min={0} step="0.01" value={draft.unit_price} onChange={(e) => setDraft({ ...draft, unit_price: Number(e.target.value) })} />
-              </div>
-              <div>
-                <label className="label" htmlFor="cat-vat">VAT code</label>
-                <SelectMenu
-                  id="cat-vat"
-                  label="VAT code"
-                  value={draft.vat_code}
-                  onChange={(value) => setDraft({ ...draft, vat_code: value })}
-                  options={vatSelectOptions(vatRates, draft.vat_code)}
-                />
-              </div>
-              <div>
-                <label className="label" htmlFor="cat-kind-edit">Kind</label>
-                <SelectMenu
-                  id="cat-kind-edit"
-                  label="Kind"
-                  value={draft.kind}
-                  onChange={(value) => setDraft({ ...draft, kind: value })}
-                  options={KIND_EDIT}
-                />
-              </div>
-            </div>
-            <div className="flex justify-end gap-2 pt-2">
-              <button type="button" className="btn-secondary" onClick={close}>Cancel</button>
-              <button type="button" className="btn-primary" disabled={saving} onClick={save}>{saving ? 'Saving…' : 'Save item'}</button>
-            </div>
-          </div>
-        )}
-      </Modal>
+      <CatalogueItemForm
+        open={!!draft}
+        onClose={close}
+        initial={draft}
+        existing={!!draft?._existing}
+        vatRates={vatRates}
+        onSaved={async () => {
+          show('Saved');
+          await load();
+        }}
+      />
       <Toast {...toast} />
     </section>
   );

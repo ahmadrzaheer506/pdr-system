@@ -69,6 +69,11 @@ describe('Dashboard home summary (requirement 14.1)', () => {
     expect(screen.getByText('9')).toBeInTheDocument();
     expect(screen.getByText('Quotes sent')).toBeInTheDocument();
     expect(screen.getByText('8')).toBeInTheDocument();
+    expect(screen.getByText(/£14318\.40 · Last 30 days/)).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: /quotes sent/i })).toHaveAttribute(
+      'href',
+      expect.stringMatching(/^\/quotes\?sent_from=\d{4}-\d{2}-\d{2}&sent_to=\d{4}-\d{2}-\d{2}$/),
+    );
     expect(screen.getByRole('link', { name: /win rate/i })).toHaveTextContent('50%');
     expect(screen.getByText('2 won · 2 lost')).toBeInTheDocument();
     expect(screen.getByText('Avg job value')).toBeInTheDocument();

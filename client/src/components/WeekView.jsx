@@ -63,7 +63,7 @@ export function JobChip({ job, dateIso, onJobClick, holidays = [], bookings = []
   );
 }
 
-export default function WeekView({ anchorDate, jobs, holidays, onJobClick, onDayClick }) {
+export default function WeekView({ anchorDate, selectedIso, jobs, holidays, onJobClick, onDayClick }) {
   const monday = startOfWeekMonday(anchorDate);
   const days = Array.from({ length: 7 }, (_, i) => {
     const d = new Date(monday);
@@ -71,6 +71,7 @@ export default function WeekView({ anchorDate, jobs, holidays, onJobClick, onDay
     return d;
   });
   const today = localIsoDate();
+  const selected = selectedIso || '';
 
   return (
     <div className="-mx-1 overflow-x-auto overscroll-x-contain pb-1" data-testid="week-view-scroller">
@@ -78,20 +79,27 @@ export default function WeekView({ anchorDate, jobs, holidays, onJobClick, onDay
       {days.map((d) => {
         const dISO = localIsoDate(d);
         const isToday = dISO === today;
+        const isSelected = selected && dISO === selected;
         const dayJobs = (jobs || []).filter((j) => jobOnDate(j, dISO));
         const dayHolidays = holidaysOnDate(holidays, dISO);
         const dayBookings = bookingsFromJobs(jobs, dISO);
         const heading = d.toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric' });
+        const columnClass = isSelected
+          ? 'border-brand-400 bg-brand-50/50 ring-1 ring-brand-200'
+          : isToday
+            ? 'border-brand-300 bg-brand-50/40'
+            : 'border-slate-200 bg-white';
         return (
           <div
             key={dISO}
-            className={`flex min-h-[12rem] min-w-0 flex-col rounded-lg border p-2 ${isToday ? 'border-brand-300 bg-brand-50/40' : 'border-slate-200 bg-white'}`}
+            className={`flex min-h-[12rem] min-w-0 flex-col rounded-lg border p-2 ${columnClass}`}
           >
             <button
               type="button"
               onClick={() => onDayClick?.(dISO)}
               aria-label={`Open ${heading}`}
-              className={`mb-1.5 w-full shrink-0 truncate rounded px-0.5 py-0.5 text-left text-xs font-semibold whitespace-nowrap hover:bg-white/80 ${isToday ? 'text-brand-600' : 'text-slate-500'}`}
+              aria-current={isSelected ? 'date' : undefined}
+              className={`mb-1.5 w-full shrink-0 truncate rounded px-0.5 py-0.5 text-left text-xs font-semibold whitespace-nowrap hover:bg-white/80 ${isSelected || isToday ? 'text-brand-600' : 'text-slate-500'}`}
             >
               {heading}
             </button>

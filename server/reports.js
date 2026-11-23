@@ -4,7 +4,7 @@
  * Management reports (requirements 14.1–14.3): lead volume, customer win/loss,
  * live pipeline value, generated lists, and Director-only job profitability.
  */
-const { Op, fn, col, literal } = require('sequelize');
+const { Op, fn, col, literal, where: sqlWhere } = require('sequelize');
 const { Lead, Quote, Customer, Job, Invoice, Timesheet, User, Appointment, Task } = require('./models');
 const { STAGES, ACTIVE_PIPELINE_STAGES, STAGE_LABELS } = require('./services/pipeline');
 const { LEAD_PIPELINE_VALUE_SQL } = require('./pipelineFilters');
@@ -46,6 +46,41 @@ function parseReportRange(query = {}, { required = false } = {}) {
 function winRate(won, lost) {
   const decided = won + lost;
   return decided ? +((won / decided) * 100).toFixed(1) : null;
+}
+
+const ISSUED_QUOTE_STATUSES = Object.freeze(['sent', 'accepted', 'declined', 'expired']);
+
+/**
+ * Quotes issued in the window: digitally sent (`sent_at`), or office-recorded
+ * accept/decline that never went out on WhatsApp/email (`decided_at` / `updated_at`).
+ */
+function quotesIssuedWhere(fromDt, toDt) {
+  return {
+    status: { [Op.in]: ISSUED_QUOTE_STATUSES },
+    [Op.and]: [
+      sqlWhere(
+        fn(
+          'COALESCE',
+          col('Quote.sent_at'),
+          col('Quote.decided_at'),
+          col('Quote.updated_at'),
+        ),
+        { [Op.between]: [fromDt, toDt] },
+      ),
+    ],
+  };
+}
+
+async function quotesIssuedInRange(fromDt, toDt) {
+  const where = quotesIssuedWhere(fromDt, toDt);
+  const [count, value] = await Promise.all([
+    Quote.count({ where }),
+    Quote.sum('total', { where }),
+  ]);
+  return {
+    quotesSent: Number(count || 0),
+    quotesValue: roundMoney(value || 0),
+  };
 }
 
 /**
@@ -210,7 +245,7 @@ async function dashboardHome(fromDt, toDt, { from, to, today } = {}) {
     outcome,
     pipeline,
     visits,
-    quotesRow,
+    quotesIssued,
     jobsRow,
     stageRows,
     openTasks,
@@ -226,14 +261,7 @@ async function dashboardHome(fromDt, toDt, { from, to, today } = {}) {
         status: { [Op.ne]: 'cancelled' },
       },
     }),
-    Quote.findOne({
-      attributes: [
-        [fn('COUNT', col('id')), 'count'],
-        [fn('COALESCE', fn('SUM', col('total')), 0), 'value'],
-      ],
-      where: { sent_at: { [Op.between]: [fromDt, toDt] } },
-      raw: true,
-    }),
+    quotesIssuedInRange(fromDt, toDt),
     Job.findOne({
       attributes: [
         [fn('AVG', col('value')), 'avg'],
@@ -255,8 +283,8 @@ async function dashboardHome(fromDt, toDt, { from, to, today } = {}) {
     invoicePayments.balanceSummary(),
   ]);
 
-  const quotesSent = Number(quotesRow?.count || 0);
-  const quotesValue = roundMoney(quotesRow?.value || 0);
+  const quotesSent = quotesIssued.quotesSent;
+  const quotesValue = quotesIssued.quotesValue;
   const jobCount = Number(jobsRow?.count || 0);
   const avgJobValue = jobCount ? roundMoney(jobsRow.avg) : null;
   const stageMap = Object.fromEntries((stageRows || []).map((row) => [row.stage, Number(row.count)]));
@@ -487,6 +515,8 @@ module.exports = {
   pipelineValueSnapshot,
   fillDailyTrend,
   dashboardHome,
+  quotesIssuedWhere,
+  quotesIssuedInRange,
   listCustomers,
   listJobs,
   listInvoices,

@@ -1,7 +1,8 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { Check, ChevronDown } from 'lucide-react';
-import { catalogueHint, matchCatalogueItems } from '../lib/catalogueSearch';
+import { Check, ChevronDown, Plus } from 'lucide-react';
+import { catalogueHint, matchCatalogueItems, suggestCatalogueId } from '../lib/catalogueSearch';
+import CatalogueItemForm from './CatalogueItemForm.jsx';
 
 /**
  * Combobox for a quote line name: type to search the catalogue, or keep the typed name.
@@ -15,8 +16,14 @@ export default function CatalogueItemInput({
   catalogue = [],
   placeholder = 'Search or type an item',
   required = false,
+  canCreate = true,
+  vatRates = [],
+  lineDefaults = null,
+  onCreated,
 }) {
   const [open, setOpen] = useState(false);
+  const [createOpen, setCreateOpen] = useState(false);
+  const [createDraft, setCreateDraft] = useState(null);
   const [active, setActive] = useState(0);
   const rootRef = useRef(null);
   const inputRef = useRef(null);
@@ -84,6 +91,22 @@ export default function CatalogueItemInput({
   const pick = (row) => {
     onPick?.(row);
     setOpen(false);
+  };
+
+  const openCreate = () => {
+    const description = String(value || '').trim();
+    setOpen(false);
+    setCreateDraft({
+      id: suggestCatalogueId(description),
+      description,
+      unit: lineDefaults?.unit || 'item',
+      unit_price: Number(lineDefaults?.unit_price) || 0,
+      vat_code: lineDefaults?.vat_code || 'standard',
+      kind: lineDefaults?.kind === 'labour' || lineDefaults?.kind === 'materials' || lineDefaults?.kind === 'both'
+        ? lineDefaults.kind
+        : 'materials',
+    });
+    setCreateOpen(true);
   };
 
   const onKeyDown = (e) => {
@@ -161,9 +184,31 @@ export default function CatalogueItemInput({
           }}
         >
           {matches.length === 0 ? (
-            <li className="px-3 py-2.5 text-sm text-slate-500">
+            <li className="px-2 py-2 text-sm text-slate-500">
               {String(value || '').trim()
-                ? <>No catalogue match - keep <span className="font-medium text-slate-800">“{String(value).trim()}”</span> as the item name</>
+                ? (
+                  <div className="space-y-2">
+                    <p className="px-1.5 text-xs leading-relaxed text-slate-500">
+                      No catalogue match - keep <span className="font-medium text-slate-800">“{String(value).trim()}”</span> as the item name
+                    </p>
+                    {canCreate ? (
+                      <button
+                        type="button"
+                        className="flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left ring-1 ring-slate-200/90 transition-colors hover:bg-slate-50 hover:ring-slate-300"
+                        onMouseDown={(e) => e.preventDefault()}
+                        onClick={openCreate}
+                      >
+                        <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-rose-50 text-rose-700 ring-1 ring-rose-100">
+                          <Plus size={16} strokeWidth={2.25} />
+                        </span>
+                        <span className="min-w-0 flex-1">
+                          <span className="block text-sm font-semibold text-slate-900">Create catalogue item</span>
+                          <span className="mt-0.5 block text-xs font-normal text-slate-500">Save this name, then use it on this line</span>
+                        </span>
+                      </button>
+                    ) : null}
+                  </div>
+                )
                 : 'Type to search the catalogue, or enter a custom name'}
             </li>
           ) : matches.map((row, i) => {
@@ -196,6 +241,18 @@ export default function CatalogueItemInput({
         </ul>,
         document.body,
       )}
+      <CatalogueItemForm
+        open={createOpen}
+        onClose={() => setCreateOpen(false)}
+        initial={createDraft}
+        vatRates={vatRates}
+        zClass="z-[130]"
+        onSaved={(item) => {
+          if (!item) return;
+          onCreated?.(item);
+          onPick?.(item);
+        }}
+      />
     </div>
   );
 }

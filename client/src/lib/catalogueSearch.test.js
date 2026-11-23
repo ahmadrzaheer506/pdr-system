@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { catalogueHint, matchCatalogueItems } from './catalogueSearch';
+import { catalogueHint, matchCatalogueItems, suggestCatalogueId } from './catalogueSearch';
 
 const ROWS = [
   { id: 'felt', description: 'Supply & fit 3-layer torch-on felt system', unit: 'm²', unit_price: 42 },
@@ -22,6 +22,13 @@ describe('matchCatalogueItems', () => {
 
   it('returns nothing when no row matches so the typed name can be kept', () => {
     expect(matchCatalogueItems(ROWS, 'flashing')).toEqual([]);
+  });
+});
+
+describe('suggestCatalogueId', () => {
+  it('turns a typed name into a SKU-style id', () => {
+    expect(suggestCatalogueId('Roof moss removal (soft wash)')).toBe('roof_moss_removal_soft_wash');
+    expect(suggestCatalogueId('test')).toBe('test');
   });
 });
 

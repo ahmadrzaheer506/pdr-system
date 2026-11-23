@@ -190,16 +190,19 @@ async function assignmentWarnings(job, workDate, userIds) {
     }
   }
 
-  const required = Array.isArray(job.required_skills) ? job.required_skills : [];
-  const covered = teamSkills(users);
   const catalogue = await skillsLib.listSkillRows().catch(() => []);
+  const required = skillsLib.normaliseJobSkills(
+    Array.isArray(job.required_skills) ? job.required_skills : [],
+    catalogue,
+  );
+  const covered = skillsLib.parseStaffSkills(teamSkills(users), catalogue);
   for (const skill of required) {
-    if (!skillsLib.staffCoversRequirement(covered, skill)) {
+    if (!skillsLib.staffCoversRequirement(covered, skill, catalogue)) {
       const label = skillsLib.requiredSkillLabel(skill, catalogue);
       warnings.push({
         type: 'skill',
         skill,
-        message: `Nobody on this day's crew has required skill "${label}"`,
+        message: `Nobody on this day's crew has required skill "${label}" (a higher level also counts)`,
       });
     }
   }
