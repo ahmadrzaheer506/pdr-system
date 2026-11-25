@@ -39,6 +39,7 @@ describe('QuoteBuilder', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     api.get.mockResolvedValue({
+      cancellation_notice_default: 'This notice is given to you under the Consumer Contracts (Information, Cancellation and Additional Charges) Regulations 2013.\n\nYou have the right to cancel this contract within 14 days without giving any reason.',
       defaults: {
         payment_schedule: [
           { label: 'Deposit on acceptance', percent: 25, trigger: 'On written acceptance of this quotation' },
@@ -189,6 +190,37 @@ describe('QuoteBuilder', () => {
     await user.type(price, '50');
     expect(price).toHaveValue(50);
     expect(screen.getByText('50.00')).toBeInTheDocument();
+  });
+
+  it('lets office type a payment percent over a leading zero without spinner arrows', async () => {
+    const user = userEvent.setup();
+    render(
+      <QuoteBuilder
+        open
+        onClose={() => {}}
+        customerId={1}
+        customer={CUSTOMER}
+        existingQuote={{
+          title: 'Felt replacement',
+          items: [{ description: 'Felt', qty: 1, unit_price: 180, vat_code: 'standard', kind: 'materials' }],
+          payment_schedule: [
+            { label: 'Deposit on acceptance', percent: 0, trigger: 'On written acceptance of this quotation' },
+          ],
+        }}
+        onSaved={() => {}}
+      />
+    );
+    await screen.findByDisplayValue('Felt replacement');
+    await user.click(screen.getByRole('button', { name: /Payment schedule/i }));
+    const percent = screen.getByLabelText(/stage 1 percent/i);
+    expect(percent).toHaveAttribute('type', 'text');
+    expect(percent).toHaveValue('0');
+    await user.type(percent, '34');
+    expect(percent).toHaveValue('34');
+    const due = screen.getByLabelText(/stage 1 when due/i);
+    expect(due.tagName).toBe('TEXTAREA');
+    expect(due).toHaveAttribute('rows', '2');
+    expect(due).toHaveValue('On written acceptance of this quotation');
   });
 
   it('keeps guarantee terms in their own section (requirement 6.5)', async () => {
@@ -475,6 +507,45 @@ describe('QuoteBuilder', () => {
     expect(item2).toHaveValue('ddddd');
     expect(screen.getByLabelText(/unit price 2/i)).toHaveValue(85);
     expect(screen.getByText(/2 lines/i)).toBeInTheDocument();
+  });
+
+  it('keeps the cancellation page off until office turns it on, then saves edited wording', async () => {
+    const user = userEvent.setup();
+    api.put.mockResolvedValue({ ok: true });
+    render(
+      <QuoteBuilder
+        open
+        onClose={() => {}}
+        customerId={1}
+        customer={CUSTOMER}
+        existingQuote={{
+          id: 9,
+          ref: 'Q-2026-0009',
+          status: 'draft',
+          title: 'Felt',
+          items: [{ description: 'Felt', qty: 1, unit_price: 180, vat_code: 'standard', kind: 'materials' }],
+          cancellation_rights_apply: false,
+        }}
+        onSaved={() => {}}
+      />
+    );
+    await screen.findByText(/Edit quote Q-2026-0009/);
+    expect(screen.getByText(/Not on PDF/i)).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: /Your right to cancel/i }));
+    const toggle = screen.getByRole('checkbox', { name: /Include this section on the quote PDF/i });
+    expect(toggle).not.toBeChecked();
+    await user.click(toggle);
+    const notice = await screen.findByLabelText(/Cancellation notice/i);
+    expect(notice.value).toMatch(/Consumer Contracts/);
+    await user.clear(notice);
+    await user.type(notice, 'You may cancel in writing within 14 days.');
+    await user.click(screen.getByRole('button', { name: /save changes/i }));
+    await waitFor(() => {
+      expect(api.put).toHaveBeenCalledWith('/quotes/9', expect.objectContaining({
+        cancellation_rights_apply: true,
+        cancellation_notice_text: 'You may cancel in writing within 14 days.',
+      }));
+    });
   });
 
   it('lists Settings VAT rates on each scope line', async () => {

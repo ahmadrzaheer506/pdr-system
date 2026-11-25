@@ -189,7 +189,7 @@ export default function CatalogueItemInput({
                 ? (
                   <div className="space-y-2">
                     <p className="px-1.5 text-xs leading-relaxed text-slate-500">
-                      No catalogue match - keep <span className="font-medium text-slate-800">“{String(value).trim()}”</span> as the item name
+                      Nothing in the catalogue matches this. You can keep it as a one-off line, or add it below.
                     </p>
                     {canCreate ? (
                       <button
@@ -202,8 +202,12 @@ export default function CatalogueItemInput({
                           <Plus size={16} strokeWidth={2.25} />
                         </span>
                         <span className="min-w-0 flex-1">
-                          <span className="block text-sm font-semibold text-slate-900">Create catalogue item</span>
-                          <span className="mt-0.5 block text-xs font-normal text-slate-500">Save this name, then use it on this line</span>
+                          <span className="block truncate text-sm font-semibold text-slate-900" title={String(value).trim()}>
+                            Create catalogue item “{String(value).trim()}”
+                          </span>
+                          <span className="mt-0.5 block text-xs font-normal text-slate-500">
+                            Save this name to the catalogue, then use it on this line
+                          </span>
                         </span>
                       </button>
                     ) : null}

@@ -164,6 +164,11 @@ console.log('\n13. Consumer cancellation notice (Consumer Contracts Regs 2013)')
   is('states the 14 day right', n.body[0].includes('14 days'));
   is('tells consumer how to cancel', n.body[1].includes('right to cancel'));
   is('covers work started during the period', n.body[4].includes('proportion'));
+  const custom = t.cancellationNoticeParagraphs('Office custom paragraph.\n\nSecond paragraph.');
+  is('custom first para', custom[0] === 'Office custom paragraph.');
+  is('custom second para', custom[1] === 'Second paragraph.');
+  const fallback = t.cancellationNoticeParagraphs('', { name: 'PDR', address: 'Unit 4' });
+  is('empty custom falls back to default intro', fallback[0].includes('Consumer Contracts'));
 }
 
 console.log('\n14. Empty quote does not crash or produce NaN');

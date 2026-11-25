@@ -392,6 +392,9 @@ function cisNotice(rate, labourTotal, deduction) {
   return `CIS deduction at ${rate}% has been applied to the labour element of £${Number(labourTotal).toFixed(2)}, giving a deduction of £${Number(deduction).toFixed(2)}. Materials are not subject to CIS deduction. The contractor must pay this deduction to HMRC on the subcontractor's behalf.`;
 }
 
+const CANCELLATION_NOTICE_INTRO =
+  'This notice is given to you under the Consumer Contracts (Information, Cancellation and Additional Charges) Regulations 2013.';
+
 /**
  * Consumer Contracts (Information, Cancellation and Additional Charges)
  * Regulations 2013. For an off-premises contract - which a quote given at
@@ -410,6 +413,31 @@ function cancellationNotice(companyName, address, email, phone) {
       `If you asked us to begin work during the cancellation period, you must pay us an amount in proportion to what has been performed up until you communicated your cancellation.`,
     ],
   };
+}
+
+function companyFrom(company = {}) {
+  if (typeof company === 'string') return { name: company };
+  return company || {};
+}
+
+/** Default notice shown in the quote builder and used when the PDF has no custom text. */
+function cancellationNoticeText(company = {}) {
+  const c = companyFrom(company);
+  const notice = cancellationNotice(c.name, c.address, c.email, c.phone);
+  return [CANCELLATION_NOTICE_INTRO, ...notice.body].join('\n\n');
+}
+
+/**
+ * Paragraphs for the PDF. Custom office wording is used when saved;
+ * otherwise the statutory default, including the company contact line.
+ */
+function cancellationNoticeParagraphs(customText, company = {}) {
+  const trimmed = String(customText || '').trim();
+  const source = trimmed || cancellationNoticeText(company);
+  return source
+    .split(/\n\s*\n/)
+    .map((para) => para.replace(/\s+/g, ' ').trim())
+    .filter(Boolean);
 }
 
 /**
@@ -432,6 +460,9 @@ module.exports = {
   reverseChargeNotice,
   cisNotice,
   cancellationNotice,
+  cancellationNoticeText,
+  cancellationNoticeParagraphs,
+  CANCELLATION_NOTICE_INTRO,
   latePaymentNotice,
   parseVatRate,
   parseVatRates,

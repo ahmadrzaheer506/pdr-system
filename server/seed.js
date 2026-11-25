@@ -371,7 +371,6 @@ async function addQuote({
   }, customer, ukSettings);
   const ref = await nextRef('quote');
   const ids = await contactIdsFor(customer.id, leadId || await latestLeadId(customer.id));
-  const isDomestic = (customer.customer_type || 'domestic') === 'domestic';
   const vatRate = Number((await getSetting('vat_rate')) || 20);
   const row = await Quote.create({
     customer_id: customer.id,
@@ -414,7 +413,7 @@ async function addQuote({
     provisional_sums_in_total: !!cols.provisional_sums_in_total,
     optional_extras: extras,
     accepted_optional_extras: normaliseExtras(acceptedOptionalExtras),
-    cancellation_rights_apply: isDomestic,
+    cancellation_rights_apply: false,
     ...ids,
   });
   return {

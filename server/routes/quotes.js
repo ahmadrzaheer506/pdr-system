@@ -67,6 +67,7 @@ function revisionFields(source, { ref, userId, validUntil, title }) {
     optional_extras: normaliseExtras(src.optional_extras),
     accepted_optional_extras: [],
     cancellation_rights_apply: !!src.cancellation_rights_apply,
+    cancellation_notice_text: src.cancellation_notice_text || null,
     waiver_signed: false,
     site_id: src.site_id || null,
     phone_id: src.phone_id || null,
@@ -136,7 +137,9 @@ router.get('/', asyncHandler(async (req, res) => {
   const and = [];
   if (status && status !== 'ALL') and.push({ status });
   if (dates.range) and.push({ created_at: dates.range });
-  if (sent.where) and.push(sent.where);
+  // Drafts were never emailed/WhatsApped, so an issued/sent window must not
+  // hide them when office opens the Draft tab from the dashboard drill-down.
+  if (sent.where && status !== 'draft') and.push(sent.where);
   if (q) {
     const like = `%${q}%`;
     and.push({ [Op.or]: [{ ref: { [Op.iLike]: like } }, { title: { [Op.iLike]: like } }] });
@@ -189,7 +192,6 @@ router.post('/', asyncHandler(async (req, res) => {
 
   const ref = await nextRef('quote');
   const validUntil = valid_until || new Date(Date.now() + (await getSetting('quote_validity_days')) * 86400000).toISOString().slice(0, 10);
-  const isDomestic = (customer.customer_type || 'domestic') === 'domestic';
 
   const created = await Quote.create({
     customer_id, lead_id: lead?.id || null, ref, title, items,
@@ -222,7 +224,8 @@ router.post('/', asyncHandler(async (req, res) => {
     provisional_sums_in_total: !!cols.provisional_sums_in_total,
     optional_extras: normaliseExtras(b.optional_extras),
     accepted_optional_extras: [],
-    cancellation_rights_apply: isDomestic,
+    cancellation_rights_apply: !!b.cancellation_rights_apply,
+    cancellation_notice_text: b.cancellation_notice_text != null ? String(b.cancellation_notice_text) : null,
     site_id: picked.site_id,
     phone_id: picked.phone_id,
     email_id: picked.email_id,
@@ -253,12 +256,14 @@ router.post('/preview', asyncHandler(async (req, res) => {
 
 router.get('/meta/options', asyncHandler(async (req, res) => {
   const uk = (await getSetting('uk')) || {};
+  const company = (await getSetting('company')) || {};
   res.json({
     vat_rates: ukTax.settingsVatRates(uk.vat_rates),
     cis_rates: ukTax.CIS_RATES,
     uk,
     defaults: await getSetting('quote_defaults'),
     catalogue: await catalogue.listItems(),
+    cancellation_notice_default: ukTax.cancellationNoticeText(company),
   });
 }));
 
@@ -334,6 +339,7 @@ router.put('/:id', asyncHandler(async (req, res) => {
     provisional_sums_in_total: cols.provisional_sums_in_total,
     optional_extras: b.optional_extras !== undefined ? normaliseExtras(b.optional_extras) : (quote.optional_extras || []),
     cancellation_rights_apply: b.cancellation_rights_apply !== undefined ? !!b.cancellation_rights_apply : quote.cancellation_rights_apply,
+    cancellation_notice_text: b.cancellation_notice_text !== undefined ? b.cancellation_notice_text : quote.cancellation_notice_text,
     site_id: picked.site_id,
     phone_id: picked.phone_id,
     email_id: picked.email_id,

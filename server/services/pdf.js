@@ -459,18 +459,21 @@ function buildQuote(doc, quote, customer, company, uk = {}) {
       { size: 8.5, color: GREY });
   }
 
-  // ---- Consumer cancellation rights (legally required for domestic) ----
+  // ---- Consumer cancellation rights (optional; office toggle on the quote) ----
   if (quote.cancellation_rights_apply) {
     doc.addPage();
     let cy = M;
     const notice = ukTax.cancellationNotice(company.name, company.address, company.email, company.phone);
+    const paragraphs = ukTax.cancellationNoticeParagraphs(quote.cancellation_notice_text, company);
 
     doc.rect(M, cy, CONTENT_W, 24).fill(NAVY);
     doc.font('Helvetica-Bold').fontSize(11).fill('#ffffff').text(notice.heading.toUpperCase(), M + 10, cy + 7);
     cy += 34;
 
-    cy = paragraph(doc, cy, 'This notice is given to you under the Consumer Contracts (Information, Cancellation and Additional Charges) Regulations 2013.', { size: 8, color: GREY });
-    for (const para of notice.body) cy = paragraph(doc, cy, para, { size: 9, gap: 8 });
+    for (const para of paragraphs) {
+      const isIntro = para === ukTax.CANCELLATION_NOTICE_INTRO || para.startsWith('This notice is given to you under the Consumer Contracts');
+      cy = paragraph(doc, cy, para, { size: isIntro ? 8 : 9, color: isIntro ? GREY : undefined, gap: 8 });
+    }
 
     if (quote.waiver_signed) {
       cy = ensureSpace(doc, cy, 46);

@@ -25,6 +25,18 @@ const KIND_OPTIONS = [
   { kind: 'materials', label: 'Materials' },
 ];
 
+/**
+ * Stage percent as typed digits (text field, no spinner).
+ * A leading 0 is dropped when more digits are entered, so 0 then 34 becomes 34.
+ */
+function parseStagePercentInput(raw) {
+  const digits = String(raw).replace(/[^\d]/g, '');
+  if (digits === '') return '';
+  const n = Number(digits.replace(/^0+(?=\d)/, ''));
+  if (!Number.isFinite(n)) return '';
+  return Math.min(100, n);
+}
+
 export default function QuoteBuilder({ open, onClose, customerId, customer, leadId, lead, existingQuote, onSaved }) {
   const [form, setForm] = useState(null);
   const [calc, setCalc] = useState(null);
@@ -36,6 +48,7 @@ export default function QuoteBuilder({ open, onClose, customerId, customer, lead
   const [showTerms, setShowTerms] = useState(false);
   const [showTax, setShowTax] = useState(false);
   const [showGuarantee, setShowGuarantee] = useState(false);
+  const [showCancel, setShowCancel] = useState(false);
   const [options, setOptions] = useState(null);
   const [catalogue, setCatalogue] = useState([]);
 
@@ -87,6 +100,8 @@ export default function QuoteBuilder({ open, onClose, customerId, customer, lead
       site_id: existingQuote?.site_id || lead?.site_id || lead?.meta?.site_id || primaryOf(customer?.sites)?.id || '',
       phone_id: existingQuote?.phone_id || lead?.phone_id || lead?.meta?.phone_id || primaryOf(customer?.phones)?.id || '',
       email_id: existingQuote?.email_id || lead?.email_id || lead?.meta?.email_id || primaryOf(customer?.emails)?.id || '',
+      cancellation_rights_apply: existingQuote ? !!existingQuote.cancellation_rights_apply : false,
+      cancellation_notice_text: existingQuote?.cancellation_notice_text || '',
     });
     setError('');
     setNotice('');
@@ -152,7 +167,18 @@ export default function QuoteBuilder({ open, onClose, customerId, customer, lead
     });
   };
 
-  const isDomestic = (customer?.customer_type || 'domestic') === 'domestic';
+  const defaultCancelNotice = options?.cancellation_notice_default || '';
+
+  const setCancellationOnPdf = (on) => {
+    setForm((f) => {
+      if (!f) return f;
+      const next = { ...f, cancellation_rights_apply: on };
+      if (on && !String(f.cancellation_notice_text || '').trim()) {
+        next.cancellation_notice_text = defaultCancelNotice;
+      }
+      return next;
+    });
+  };
 
   const submit = async (e) => {
     e.preventDefault();
@@ -505,20 +531,39 @@ export default function QuoteBuilder({ open, onClose, customerId, customer, lead
             <div>
               <label className="label">Payment stages</label>
               {form.payment_schedule.map((st, i) => (
-                <div key={i} className="grid grid-cols-[1fr_70px_28px] gap-2 mb-1.5 items-center">
-                  <input className="input !py-1.5 !text-sm" value={st.label} placeholder="Stage name"
-                    onChange={(e) => { const n = [...form.payment_schedule]; n[i] = { ...n[i], label: e.target.value }; set('payment_schedule', n); }} />
-                  <div className="relative">
-                    <input className="input !py-1.5 !text-sm !pr-6" type="number" min="0" max="100" value={st.percent ?? ''}
-                      onChange={(e) => { const n = [...form.payment_schedule]; n[i] = { ...n[i], percent: Number(e.target.value) }; set('payment_schedule', n); }} />
-                    <span className="absolute right-2 top-1/2 -translate-y-1/2 text-xs text-slate-400">%</span>
+                <div key={i} className="mb-3 space-y-1.5">
+                  <div className="grid grid-cols-[minmax(0,1fr)_5.75rem_28px] gap-2 items-center">
+                    <input className="input !py-1.5 !text-sm" value={st.label} placeholder="Stage name"
+                      onChange={(e) => { const n = [...form.payment_schedule]; n[i] = { ...n[i], label: e.target.value }; set('payment_schedule', n); }} />
+                    <div className="relative">
+                      <input
+                        className="input !py-1.5 !text-sm !pr-7 tabular-nums"
+                        type="text"
+                        inputMode="numeric"
+                        autoComplete="off"
+                        aria-label={`Stage ${i + 1} percent`}
+                        value={st.percent === '' || st.percent == null ? '' : String(st.percent)}
+                        onChange={(e) => {
+                          const n = [...form.payment_schedule];
+                          n[i] = { ...n[i], percent: parseStagePercentInput(e.target.value) };
+                          set('payment_schedule', n);
+                        }}
+                      />
+                      <span className="absolute right-2 top-1/2 -translate-y-1/2 text-xs text-slate-400 pointer-events-none">%</span>
+                    </div>
+                    <button type="button" onClick={() => set('payment_schedule', form.payment_schedule.filter((_, x) => x !== i))} className="text-slate-300 hover:text-red-500"><Trash2 size={14} /></button>
                   </div>
-                  <button type="button" onClick={() => set('payment_schedule', form.payment_schedule.filter((_, x) => x !== i))} className="text-slate-300 hover:text-red-500"><Trash2 size={14} /></button>
-                  <input className="input !py-1 !text-xs col-span-3 -mt-0.5" value={st.trigger || ''} placeholder="When is this due? e.g. On practical completion"
-                    onChange={(e) => { const n = [...form.payment_schedule]; n[i] = { ...n[i], trigger: e.target.value }; set('payment_schedule', n); }} />
+                  <textarea
+                    className="input !py-2 !text-sm min-h-[2.75rem] resize-y leading-snug"
+                    rows={2}
+                    aria-label={`Stage ${i + 1} when due`}
+                    value={st.trigger || ''}
+                    placeholder="When is this due? e.g. On practical completion"
+                    onChange={(e) => { const n = [...form.payment_schedule]; n[i] = { ...n[i], trigger: e.target.value }; set('payment_schedule', n); }}
+                  />
                 </div>
               ))}
-              <button type="button" onClick={() => set('payment_schedule', [...form.payment_schedule, { label: '', percent: 0, trigger: '' }])} className="btn-ghost !py-1 !px-2 text-xs"><Plus size={14} /> Add stage</button>
+              <button type="button" onClick={() => set('payment_schedule', [...form.payment_schedule, { label: '', percent: '', trigger: '' }])} className="btn-ghost !py-1 !px-2 text-xs"><Plus size={14} /> Add stage</button>
               {form.payment_schedule.length > 0 && (
                 <p className={`text-xs mt-1 ${Math.abs(form.payment_schedule.reduce((s, x) => s + (Number(x.percent) || 0), 0) - 100) > 0.01 ? 'text-amber-600' : 'text-slate-400'}`}>
                   Stages total {form.payment_schedule.reduce((s, x) => s + (Number(x.percent) || 0), 0)}% - should be 100%
@@ -588,15 +633,45 @@ export default function QuoteBuilder({ open, onClose, customerId, customer, lead
           </div>
         </Section>
 
-        {isDomestic && (
-          <p className="text-xs text-slate-500 bg-sky-50 border border-sky-100 rounded-lg px-3 py-2 flex gap-2">
-            <Info size={14} className="flex-shrink-0 mt-0.5 text-sky-600" />
-            <span>
-              This is a domestic customer, so the quote will automatically include the 14-day cancellation notice
-              and statutory cancellation form required by the Consumer Contracts Regulations 2013.
-            </span>
-          </p>
-        )}
+        <Section
+          open={showCancel}
+          onToggle={() => setShowCancel(!showCancel)}
+          title="Your right to cancel"
+          summary={form.cancellation_rights_apply ? 'Shown on PDF' : 'Not on PDF'}
+        >
+          <div className="space-y-3">
+            <label className="flex items-center gap-2 text-sm text-slate-700">
+              <input
+                type="checkbox"
+                className="h-4 w-4 shrink-0 accent-brand-500"
+                checked={!!form.cancellation_rights_apply}
+                onChange={(e) => setCancellationOnPdf(e.target.checked)}
+              />
+              Include this section on the quote PDF
+            </label>
+            {form.cancellation_rights_apply ? (
+              <>
+                <div>
+                  <label className="label" htmlFor="quote-cancel-notice">Cancellation notice</label>
+                  <textarea
+                    id="quote-cancel-notice"
+                    className="input"
+                    rows={12}
+                    value={form.cancellation_notice_text}
+                    onChange={(e) => set('cancellation_notice_text', e.target.value)}
+                  />
+                  <p className="text-xs text-slate-400 mt-1">
+                    This wording prints under “Your right to cancel”. The model cancellation form on the PDF is statutory and is not edited here.
+                  </p>
+                </div>
+              </>
+            ) : (
+              <p className="text-xs text-slate-500">
+                Off by default. Turn it on to add the 14-day cancellation notice and the model cancellation form to the PDF.
+              </p>
+            )}
+          </div>
+        </Section>
 
         {existingQuote && ['accepted', 'declined'].includes(existingQuote.status) && (
           <p className="text-xs text-amber-800 bg-amber-50 border border-amber-100 rounded-lg px-3 py-2">

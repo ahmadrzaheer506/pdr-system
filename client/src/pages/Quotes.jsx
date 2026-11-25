@@ -26,13 +26,14 @@ export default function Quotes() {
   const [sentTo, setSentTo] = useState(() => searchParams.get('sent_to') || '');
   const [data, setData] = useState(null);
   const issuedMode = Boolean(sentFrom || sentTo);
+  const issuedFilter = issuedMode && status !== 'draft';
 
   useEffect(() => {
     const t = setTimeout(() => {
       const params = new URLSearchParams();
       params.set('status', status);
       if (q.trim()) params.set('q', q.trim());
-      if (issuedMode) {
+      if (issuedFilter) {
         if (sentFrom) params.set('sent_from', sentFrom);
         if (sentTo) params.set('sent_to', sentTo);
       } else {
@@ -42,16 +43,18 @@ export default function Quotes() {
       api.get(`/quotes?${params.toString()}`).then((d) => setData(d.quotes)).catch(() => setData([]));
     }, 200);
     return () => clearTimeout(t);
-  }, [status, q, createdFrom, createdTo, sentFrom, sentTo, issuedMode]);
+  }, [status, q, createdFrom, createdTo, sentFrom, sentTo, issuedFilter]);
 
   return (
     <div className="space-y-5">
       <div>
         <h1 className="text-2xl font-bold text-slate-900">Quotes</h1>
         <p className="text-slate-500 text-sm mt-0.5">
-          {issuedMode
-            ? 'Quotes issued in the dashboard window (sent, or recorded in the office).'
-            : 'Every quotation, and how it\'s getting on.'}
+          {status === 'draft'
+            ? 'Saved quotes that have not been emailed or sent on WhatsApp yet.'
+            : issuedFilter
+              ? 'Quotes issued in the dashboard window (sent, or recorded in the office). Unsent quotes are in Draft.'
+              : 'Every quotation, and how it\'s getting on.'}
         </p>
       </div>
 
@@ -62,12 +65,12 @@ export default function Quotes() {
         searchValue={q}
         onSearchChange={setQ}
         searchLabel="Search quotes"
-        from={issuedMode ? sentFrom : createdFrom}
-        to={issuedMode ? sentTo : createdTo}
-        onFromChange={issuedMode ? setSentFrom : setCreatedFrom}
-        onToChange={issuedMode ? setSentTo : setCreatedTo}
-        fromLabel={issuedMode ? 'Sent from' : 'Created from'}
-        toLabel={issuedMode ? 'Sent to' : 'Created to'}
+        from={issuedFilter ? sentFrom : createdFrom}
+        to={issuedFilter ? sentTo : createdTo}
+        onFromChange={issuedFilter ? setSentFrom : setCreatedFrom}
+        onToChange={issuedFilter ? setSentTo : setCreatedTo}
+        fromLabel={issuedFilter ? 'Sent from' : 'Created from'}
+        toLabel={issuedFilter ? 'Sent to' : 'Created to'}
       />
 
       {!data ? <PageLoading /> : data.length === 0 ? (

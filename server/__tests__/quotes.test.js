@@ -116,10 +116,27 @@ describe('POST /api/quotes native types', () => {
     expect(Array.isArray(payload.items)).toBe(true);
     expect(payload.items).toEqual(items);
     expect(payload.cis_applies).toBe(true);
-    expect(payload.cancellation_rights_apply).toBe(true);
+    expect(payload.cancellation_rights_apply).toBe(false);
     expect(typeof payload.cis_applies).toBe('boolean');
     expect(payload.valid_until).toMatch(/^\d{4}-\d{2}-\d{2}$/);
     expect(typeof payload.items).not.toBe('string');
+  });
+
+  test('office can include an edited cancellation notice on create', async () => {
+    Customer.findByPk.mockResolvedValue({ id: 9, customer_type: 'domestic' });
+    Quote.create.mockResolvedValue({ id: 46, ref: 'Q-2026-0005' });
+
+    const res = await request(app).post('/api/quotes').send({
+      customer_id: 9,
+      title: 'With cancel page',
+      items: [{ description: 'Works', qty: 1, unit_price: 500, vat_code: 'standard', kind: 'labour' }],
+      cancellation_rights_apply: true,
+      cancellation_notice_text: 'You have 14 days to cancel this contract.',
+    });
+
+    expect(res.status).toBe(200);
+    expect(Quote.create.mock.calls[0][0].cancellation_rights_apply).toBe(true);
+    expect(Quote.create.mock.calls[0][0].cancellation_notice_text).toBe('You have 14 days to cancel this contract.');
   });
 
   test('commercial customers do not get cancellation rights', async () => {
@@ -252,6 +269,17 @@ describe('GET /api/quotes', () => {
       }),
     ]));
   });
+
+  test('Draft tab still lists unsent quotes when an issued date range is present', async () => {
+    const { Op } = require('sequelize');
+    const res = await request(app).get('/api/quotes?status=draft&sent_from=2026-10-24&sent_to=2026-11-23');
+    expect(res.status).toBe(200);
+    const where = Quote.findAll.mock.calls[0][0].where;
+    expect(where[Op.and]).toEqual(expect.arrayContaining([
+      { status: 'draft' },
+    ]));
+    expect(JSON.stringify(where)).not.toMatch(/sent','accepted'/);
+  });
 });
 
 describe('GET /api/quotes/meta/options (requirement 6.1)', () => {
@@ -272,6 +300,52 @@ describe('GET /api/quotes/meta/options (requirement 6.1)', () => {
       expect.objectContaining({ code: 'standard', rate: 20 }),
       expect.objectContaining({ code: 'reduced', rate: 5 }),
     ]));
+    expect(res.body.cancellation_notice_default).toMatch(/Consumer Contracts/);
+    expect(res.body.cancellation_notice_default).toMatch(/14 days/);
+  });
+});
+
+describe('PUT /api/quotes/:id cancellation notice', () => {
+  beforeEach(() => jest.clearAllMocks());
+
+  test('saves the toggle and edited notice without changing send or status', async () => {
+    const quoteRow = {
+      id: 12,
+      customer_id: 9,
+      status: 'draft',
+      title: 'Felt',
+      items: [{ description: 'Felt', qty: 1, unit_price: 1000, vat_code: 'standard', kind: 'labour' }],
+      vat_treatment: 'standard',
+      cis_applies: false,
+      cis_rate: 20,
+      retention_percent: 0,
+      payment_schedule: [],
+      provisional_sums: [],
+      provisional_sums_in_total: false,
+      optional_extras: [],
+      cancellation_rights_apply: false,
+      cancellation_notice_text: null,
+      site_id: null,
+      phone_id: null,
+      email_id: null,
+      update: jest.fn(async function patch(fields) { Object.assign(this, fields); }),
+    };
+    Quote.findByPk.mockResolvedValue(quoteRow);
+    Customer.findByPk.mockResolvedValue({ id: 9, customer_type: 'domestic' });
+
+    const res = await request(app).put('/api/quotes/12').send({
+      title: 'Felt',
+      items: quoteRow.items,
+      cancellation_rights_apply: true,
+      cancellation_notice_text: 'Custom right to cancel wording.',
+    });
+
+    expect(res.status).toBe(200);
+    expect(quoteRow.update).toHaveBeenCalledWith(expect.objectContaining({
+      cancellation_rights_apply: true,
+      cancellation_notice_text: 'Custom right to cancel wording.',
+    }));
+    expect(quoteRow.status).toBe('draft');
   });
 });
 

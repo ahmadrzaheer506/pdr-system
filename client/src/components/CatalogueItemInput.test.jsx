@@ -54,10 +54,10 @@ describe('CatalogueItemInput', () => {
     await user.click(input);
     await user.type(input, 'Custom flashing');
     expect(input).toHaveValue('Custom flashing');
-    expect(screen.getByText(/no catalogue match/i)).toBeInTheDocument();
-    expect(screen.getByText(/custom flashing/i)).toBeInTheDocument();
+    expect(screen.getByText(/nothing in the catalogue matches/i)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /create catalogue item .custom flashing./i })).toBeInTheDocument();
+    expect(screen.getByText(/save this name to the catalogue/i)).toBeInTheDocument();
     expect(screen.queryByRole('option')).not.toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /create catalogue item/i })).toBeInTheDocument();
   });
 
   it('opens the catalogue form from an unmatched name and applies the saved row', async () => {

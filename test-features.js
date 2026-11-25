@@ -154,7 +154,7 @@ async function req(method, path, body, who = 'owner') {
   r = await req('GET', `/api/quotes/${quoteId}`, null, 'owner');
   check('Quote stores VAT breakdown', !!r.data.quote.vat_breakdown);
   check('Quote stores labour/materials split', r.data.quote.labour_total === 1000 && r.data.quote.materials_total === 500);
-  check('Domestic customer gets cancellation rights', r.data.quote.cancellation_rights_apply === true);
+  check('Cancellation page is off until office turns it on', r.data.quote.cancellation_rights_apply === false);
 
   // ---------------------------------------------------------
   console.log('\n6. Reverse charge + CIS quote');
