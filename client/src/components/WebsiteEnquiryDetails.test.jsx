@@ -31,5 +31,6 @@ describe('WebsiteEnquiryDetails', () => {
     expect(screen.getByText('This is developer testing,')).toBeInTheDocument();
     expect(screen.getByText('ENQ-261020-83U7')).toBeInTheDocument();
     expect(screen.getByText('Fascias, Soffits & Guttering')).toBeInTheDocument();
+    expect(heard.closest('dl').className).toMatch(/grid-cols-1/);
   });
 });

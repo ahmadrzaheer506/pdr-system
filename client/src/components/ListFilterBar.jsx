@@ -44,8 +44,8 @@ export default function ListFilterBar({
             </button>
           ))}
         </ScrollTabBar>
-        <div className="flex flex-wrap items-center gap-2">
-          <div className="relative min-w-[12.5rem] flex-1 basis-[12.5rem] sm:max-w-xs">
+        <div className="flex min-w-0 flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center">
+          <div className="relative w-full min-w-0 sm:min-w-[12.5rem] sm:max-w-xs sm:flex-1">
             <Search size={15} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
             <input
               className="input !pl-9 w-full"
@@ -57,24 +57,24 @@ export default function ListFilterBar({
           </div>
           {select ? (
             <SelectMenu
-              className="w-full min-w-[10rem] sm:w-44"
+              className="w-full min-w-0 sm:w-44"
               label={select.label}
               value={select.value}
               onChange={select.onChange}
               options={select.options}
             />
           ) : null}
-          <div className="flex min-w-0 flex-wrap items-center gap-2">
+          <div className="grid w-full min-w-0 grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-center gap-2 sm:w-auto">
             <DatePicker
-              className="w-[10.5rem]"
+              className="min-w-0 w-full sm:w-[10.5rem]"
               label={fromLabel}
               value={from}
               onChange={onFromChange}
               placeholder="From"
             />
-            <span className="text-xs text-slate-400">to</span>
+            <span className="shrink-0 text-xs text-slate-400">to</span>
             <DatePicker
-              className="w-[10.5rem]"
+              className="min-w-0 w-full sm:w-[10.5rem]"
               label={toLabel}
               value={to}
               onChange={onToChange}

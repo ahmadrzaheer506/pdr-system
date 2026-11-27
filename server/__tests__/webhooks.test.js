@@ -39,6 +39,8 @@ const ORIG_META = process.env.META_APP_SECRET;
 const ORIG_EMAIL = process.env.EMAIL_INBOUND_SECRET;
 const ORIG_VERIFY = process.env.META_VERIFY_TOKEN;
 const ORIG_WEBSITE = process.env.WEBSITE_ENQUIRY_SECRET;
+const ORIG_MAILGUN_FROM = process.env.MAILGUN_FROM;
+const ORIG_MAILGUN_BCC = process.env.MAILGUN_BCC;
 
 function sign(raw, secret) {
   return 'sha256=' + crypto.createHmac('sha256', secret).update(raw).digest('hex');
@@ -51,6 +53,8 @@ describe('inbound webhooks (requirement 3.2)', () => {
     delete process.env.EMAIL_INBOUND_SECRET;
     delete process.env.META_VERIFY_TOKEN;
     delete process.env.WEBSITE_ENQUIRY_SECRET;
+    delete process.env.MAILGUN_FROM;
+    delete process.env.MAILGUN_BCC;
     ingestInbound.mockResolvedValue({ customerId: 1, leadId: 2, messageId: 3, matched: false });
     meta.fetchLeadgen.mockResolvedValue(null);
     meta.fetchProfileName.mockResolvedValue(null);
@@ -65,6 +69,10 @@ describe('inbound webhooks (requirement 3.2)', () => {
     else process.env.META_VERIFY_TOKEN = ORIG_VERIFY;
     if (ORIG_WEBSITE === undefined) delete process.env.WEBSITE_ENQUIRY_SECRET;
     else process.env.WEBSITE_ENQUIRY_SECRET = ORIG_WEBSITE;
+    if (ORIG_MAILGUN_FROM === undefined) delete process.env.MAILGUN_FROM;
+    else process.env.MAILGUN_FROM = ORIG_MAILGUN_FROM;
+    if (ORIG_MAILGUN_BCC === undefined) delete process.env.MAILGUN_BCC;
+    else process.env.MAILGUN_BCC = ORIG_MAILGUN_BCC;
   });
 
   test('WhatsApp text message becomes an inbox ingest', async () => {
@@ -171,6 +179,20 @@ describe('inbound webhooks (requirement 3.2)', () => {
       subject: 'Roof quote',
       body: 'Please call',
     });
+  });
+
+  test('skips inbound ingest for a BCC copy of our own outbound mail', async () => {
+    process.env.MAILGUN_FROM = 'Paul Douglas Roofing <office@pauldouglasroofing.co.uk>';
+    const res = await request(app)
+      .post('/email?secret=change-me')
+      .type('form')
+      .send({
+        from: 'Paul Douglas Roofing <office@pauldouglasroofing.co.uk>',
+        subject: 'Message from Paul Douglas Roofing',
+        'stripped-text': 'Thanks for your enquiry',
+      });
+    expect(res.status).toBe(200);
+    expect(ingestInbound).not.toHaveBeenCalled();
   });
 
   test('inbound email without the secret is rejected', async () => {

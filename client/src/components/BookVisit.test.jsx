@@ -62,6 +62,15 @@ describe('BookVisit contact pickers (requirement 2.2)', () => {
     expect(onSaved).toHaveBeenCalled();
   });
 
+  it('lists the director in Assigned to as well as office and field staff', async () => {
+    const user = userEvent.setup();
+    render(<BookVisit open onClose={() => {}} customer={customer} onSaved={() => {}} />);
+    await user.click(screen.getByLabelText(/^assigned to$/i));
+    expect(screen.getByRole('option', { name: /paul douglas/i })).toBeInTheDocument();
+    expect(screen.getByRole('option', { name: /lisa grant/i })).toBeInTheDocument();
+    expect(screen.getByRole('option', { name: /jamie fisher/i })).toBeInTheDocument();
+  });
+
   it('shows the API error when booking fails', async () => {
     const user = userEvent.setup();
     api.post.mockRejectedValueOnce(new Error('Selected site does not belong to this customer'));

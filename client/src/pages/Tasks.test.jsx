@@ -191,7 +191,7 @@ describe('Tasks views (requirement 12.3)', () => {
     }));
   });
 
-  it('creates a task on a lead assigned to office and field staff', async () => {
+  it('creates a task on a lead assigned to director, office, and field staff', async () => {
     const user = userEvent.setup();
     api.post.mockResolvedValue({ id: 101 });
     renderTasks('/tasks');
@@ -208,12 +208,12 @@ describe('Tasks views (requirement 12.3)', () => {
     await user.click(screen.getByRole('option', { name: /l-0003 - dave whitfield/i }));
 
     await user.click(screen.getByLabelText(/^assigned to$/i));
-    expect(await screen.findByRole('option', { name: /lisa grant/i })).toBeInTheDocument();
+    expect(await screen.findByRole('option', { name: /paul douglas/i })).toBeInTheDocument();
+    expect(screen.getByRole('option', { name: /director/i })).toBeInTheDocument();
+    expect(screen.getByRole('option', { name: /lisa grant/i })).toBeInTheDocument();
     expect(screen.getByRole('option', { name: /office/i })).toBeInTheDocument();
     expect(screen.getByRole('option', { name: /jamie fisher/i })).toBeInTheDocument();
     expect(screen.getByRole('option', { name: /field staff/i })).toBeInTheDocument();
-    expect(screen.queryByRole('option', { name: /paul douglas/i })).not.toBeInTheDocument();
-    expect(screen.queryByText(/^owner$/i)).not.toBeInTheDocument();
 
     await user.click(screen.getByRole('option', { name: /lisa grant/i }));
     await user.click(screen.getByRole('option', { name: /jamie fisher/i }));

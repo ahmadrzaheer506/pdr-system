@@ -170,17 +170,21 @@ describe('PUT / DELETE /api/tasks/:id', () => {
     );
   });
 
-  test('refuses a director as an assignee', async () => {
+  test('allows a director as an assignee', async () => {
     Customer.findByPk.mockResolvedValue({ id: 9 });
-    User.findAll.mockResolvedValue([]);
+    User.findAll.mockResolvedValue([{ id: 1 }]);
+    Task.create.mockResolvedValue({ id: 11 });
+    TaskAssignee.destroy.mockResolvedValue(1);
+    TaskAssignee.bulkCreate.mockResolvedValue([]);
     const res = await request(app).post('/api/tasks').send({
       title: 'Site photos',
       lead_id: 9,
       assignee_ids: [1],
     });
-    expect(res.status).toBe(400);
-    expect(res.body.error).toMatch(/office or field staff/i);
-    expect(Task.create).not.toHaveBeenCalled();
+    expect(res.status).toBe(200);
+    expect(Task.create).toHaveBeenCalledWith(expect.objectContaining({
+      assignee_id: 1,
+    }), expect.anything());
   });
 
   test('creates a manual task on an enquiry', async () => {

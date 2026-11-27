@@ -24,6 +24,31 @@ function fromAddress() {
   return host ? `Paul Douglas Roofing <mail@${host}>` : '';
 }
 
+/** Bare address from `Name <a@b>` or a raw mailbox. */
+function extractEmail(value) {
+  const raw = String(value || '').trim();
+  if (!raw) return '';
+  const angle = raw.match(/<([^>]+)>/);
+  const addr = (angle ? angle[1] : raw.split(/\s+/)[0] || '').trim().toLowerCase();
+  return addr.includes('@') ? addr : '';
+}
+
+/**
+ * Blind-copy target is only the company email in Settings (quotes/invoices).
+ * Empty company email means no BCC.
+ */
+function officeCopyAddress(company) {
+  return extractEmail(company && company.email);
+}
+
+/** True when inbound parse is our own BCC/From echo, not a customer. */
+function isOfficeOutboundEcho(fromValue) {
+  const addr = extractEmail(fromValue);
+  if (!addr) return false;
+  const from = extractEmail(fromAddress());
+  return !!from && addr === from;
+}
+
 function apiBase() {
   const explicit = String(process.env.MAILGUN_API_URL || '').trim().replace(/\/$/, '');
   if (explicit) return explicit;
@@ -90,6 +115,11 @@ async function send(to, subject, payload, attachments = []) {
   const form = new FormData();
   form.append('from', fromAddress());
   form.append('to', to);
+  const copyTo = officeCopyAddress(company);
+  const toAddr = extractEmail(to);
+  if (copyTo && copyTo !== toAddr) {
+    form.append('bcc', copyTo);
+  }
   form.append('subject', subject);
   form.append('text', text);
   form.append('html', html);
@@ -136,4 +166,13 @@ function status() {
 /** Kept so existing tests can reset adapter state between cases. */
 function resetTransporter() {}
 
-module.exports = { isConfigured, send, status, resetTransporter, apiBase };
+module.exports = {
+  isConfigured,
+  send,
+  status,
+  resetTransporter,
+  apiBase,
+  extractEmail,
+  officeCopyAddress,
+  isOfficeOutboundEcho,
+};

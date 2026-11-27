@@ -5,7 +5,7 @@ import { leadDisplayName, leadSourceLabel } from '../lib/leads.js';
 import { enquiryWorkspaceStage, filesForLead, filterByLeadScope, filterTasksForLead, workspaceScopeForOpen } from '../lib/leadWorkspace.js';
 import {
   ArrowLeft, MapPin, Send, Calendar, FileText, Briefcase, Receipt,
-  Check, CheckCircle2, X, ChevronDown, Building2, Copy, Download, IdCard, Pencil, Trash2, Loader2, Users, CheckSquare,
+  Check, CheckCircle2, X, ChevronDown, Building2, Copy, Download, IdCard, Pencil, Trash2, Archive, Loader2, Users, CheckSquare,
 } from 'lucide-react';
 import { api, money, fmtDate, fmtDateTime } from '../lib/api';
 import { PageLoading, LoadError, StageBadge, StatusBadge, PriorityBadge, Modal, useToast, Toast, HoverTooltip } from '../components/ui.jsx';
@@ -230,7 +230,24 @@ export default function CustomerDetail() {
           <div className="card p-4">
             <h3 className="font-semibold text-slate-800 mb-4">Activity timeline</h3>
             <CustomerTimeline items={(timeline || []).filter((item) => item.type !== 'note')} />
-            <Composer customerId={id} leadId={activeLead?.id} onSent={() => { load(); show('Message sent'); }} onError={(e) => show(e, 'error')} />
+            <Composer
+              customerId={id}
+              leadId={activeLead?.id}
+              onSent={(result) => {
+                load();
+                if (!result || result.status === 'failed') return;
+                if (result.status === 'simulated') {
+                  show('Saved in the CRM only — this was not sent on WhatsApp or email.', 'error');
+                  return;
+                }
+                if (result.warning) {
+                  show(result.warning, 'error');
+                  return;
+                }
+                show(result.channel === 'email' ? 'Email sent' : 'WhatsApp sent');
+              }}
+              onError={(e) => show(e, 'error')}
+            />
           </div>
         </div>
 
@@ -506,15 +523,17 @@ function Composer({ customerId, leadId, onSent, onError }) {
     if (!body.trim()) return;
     setSending(true);
     try {
-      await api.post(`/customers/${customerId}/messages`, {
+      const result = await api.post(`/customers/${customerId}/messages`, {
         channel,
         body,
         ...(leadId ? { lead_id: leadId } : {}),
       });
       setBody('');
-      onSent();
-    } catch (err) { onError(err.message); }
-    finally { setSending(false); }
+      onSent({ ...result, channel });
+    } catch (err) {
+      onError(err.message);
+      onSent({ status: 'failed', channel, error: err.message });
+    } finally { setSending(false); }
   };
 
   return (
@@ -560,12 +579,13 @@ function sentViaLabel(via) {
 }
 
 function quoteLockedForEdit(status) {
-  return status === 'accepted' || status === 'declined';
+  return status === 'accepted' || status === 'declined' || status === 'superseded';
 }
 
 function quoteEditLockedHint(status) {
   if (status === 'accepted') return 'Accepted quote cannot be edited.';
   if (status === 'declined') return 'Declined quote cannot be edited.';
+  if (status === 'superseded') return 'This quote was replaced by a later version.';
   return '';
 }
 
@@ -687,6 +707,8 @@ function QuotesCard({ quotes, customer, lead, onEdit, onChanged, show }) {
   const [cloning, setCloning] = useState(false);
   const [deleteQuote, setDeleteQuote] = useState(null);
   const [deleting, setDeleting] = useState(false);
+  const [archiveQuote, setArchiveQuote] = useState(null);
+  const [archiving, setArchiving] = useState(false);
 
   const quoteBusy = (id) => busy?.quoteId === id;
   const actionBusy = (id, action) => busy?.quoteId === id && busy.action === action;
@@ -744,7 +766,7 @@ function QuotesCard({ quotes, customer, lead, onEdit, onChanged, show }) {
     setCloning(true);
     try {
       const created = await api.post(`/quotes/${cloneQuote.id}/clone`, { title });
-      show(`Quote ${created.ref} cloned`);
+      show(`Quote ${created.ref} cloned${['sent', 'expired', 'declined'].includes(cloneQuote.status) ? ` — ${cloneQuote.ref} archived` : ''}`);
       setCloneQuote(null);
       onChanged();
       if (created.quote) onEdit(created.quote);
@@ -761,6 +783,17 @@ function QuotesCard({ quotes, customer, lead, onEdit, onChanged, show }) {
       onChanged();
     } catch (err) { show(err.message, 'error'); }
     finally { setDeleting(false); }
+  };
+  const archive = async () => {
+    if (!archiveQuote) return;
+    setArchiving(true);
+    try {
+      await api.post(`/quotes/${archiveQuote.id}/archive`);
+      show(`Quote ${archiveQuote.ref} archived`);
+      setArchiveQuote(null);
+      onChanged();
+    } catch (err) { show(err.message, 'error'); }
+    finally { setArchiving(false); }
   };
   const downloadPdf = async (q) => {
     try {
@@ -831,6 +864,11 @@ function QuotesCard({ quotes, customer, lead, onEdit, onChanged, show }) {
               <button type="button" onClick={() => openClone(q)} className="btn-ghost !py-1 !px-2 text-xs inline-flex items-center gap-1">
                 <Copy size={12} /> Clone
               </button>
+              {['draft', 'sent', 'expired', 'declined'].includes(q.status) && (
+                <button type="button" onClick={() => setArchiveQuote(q)} className="btn-ghost !py-1 !px-2 text-xs inline-flex items-center gap-1">
+                  <Archive size={12} /> Archive
+                </button>
+              )}
               <button type="button" onClick={() => setDeleteQuote(q)} className="btn-ghost !py-1 !px-2 text-xs inline-flex items-center gap-1 !text-rose-600 hover:!text-rose-700">
                 <Trash2 size={12} /> Delete
               </button>
@@ -861,7 +899,7 @@ function QuotesCard({ quotes, customer, lead, onEdit, onChanged, show }) {
         open={!!cloneQuote}
         onClose={() => !cloning && setCloneQuote(null)}
         title="Clone quote"
-        subtitle={cloneQuote ? `Copies ${cloneQuote.ref} as a new draft.` : null}
+        subtitle={cloneQuote ? `Copies ${cloneQuote.ref} as a new draft${['sent', 'expired', 'declined'].includes(cloneQuote.status) ? `. ${cloneQuote.ref} will be archived.` : '.'}` : null}
       >
         {cloneQuote && (
           <form onSubmit={clone} className="space-y-3">
@@ -899,6 +937,22 @@ function QuotesCard({ quotes, customer, lead, onEdit, onChanged, show }) {
           <button type="button" className="btn-secondary" disabled={deleting} onClick={() => setDeleteQuote(null)}>Cancel</button>
           <button type="button" className="btn-danger" disabled={deleting} onClick={remove}>
             {deleting ? 'Deleting…' : 'Delete quote'}
+          </button>
+        </div>
+      </Modal>
+
+      <Modal
+        open={!!archiveQuote}
+        onClose={() => !archiving && setArchiveQuote(null)}
+        title="Archive quote"
+      >
+        <p className="text-sm text-slate-600">
+          Archive {archiveQuote?.ref}{archiveQuote?.title ? ` - ${archiveQuote.title}` : ''}? It stays on this customer for history, but will not be sent or accepted. Clone it first if you still need a live version.
+        </p>
+        <div className="mt-5 flex justify-end gap-2">
+          <button type="button" className="btn-secondary" disabled={archiving} onClick={() => setArchiveQuote(null)}>Cancel</button>
+          <button type="button" className="btn-primary" disabled={archiving} onClick={archive}>
+            {archiving ? 'Archiving…' : 'Archive quote'}
           </button>
         </div>
       </Modal>

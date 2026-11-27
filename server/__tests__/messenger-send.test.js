@@ -72,6 +72,45 @@ describe('sendToCustomer WhatsApp', () => {
     expect(result.warning).toBe(whatsapp.MEDIA_FETCH_ERROR);
   });
 
+  test('records a failed conversation reply when WhatsApp is outside the 24h window', async () => {
+    whatsapp.canMetaFetchMedia.mockReturnValue(false);
+    whatsapp.sendText.mockRejectedValue(
+      Object.assign(new Error('24 hours'), { graphCode: 131047 }),
+    );
+
+    await expect(sendToCustomer(9, 'whatsapp', 'Thanks for your enquiry')).rejects.toMatchObject({
+      graphCode: 131047,
+      status: 'failed',
+      messageId: 55,
+    });
+    expect(whatsapp.sendTemplate).not.toHaveBeenCalled();
+    expect(Message.create).toHaveBeenCalledWith(expect.objectContaining({
+      channel: 'whatsapp',
+      body: 'Thanks for your enquiry',
+      status: 'failed',
+      meta: expect.objectContaining({ error: '24 hours' }),
+    }));
+  });
+
+  test('sends the quote template even when Meta blocks the PDF outside 24 hours', async () => {
+    whatsapp.canMetaFetchMedia.mockReturnValue(true);
+    whatsapp.sendDocument.mockRejectedValue(
+      Object.assign(new Error('24 hours'), { graphCode: 131047 }),
+    );
+
+    const result = await sendToCustomer(9, 'whatsapp', 'Quote body', {
+      docUrl: 'https://app.example/public-files/x/q.pdf',
+      docName: 'Q.pdf',
+      template: 'quote_sent',
+      templateParams: ['Jim'],
+    });
+
+    expect(whatsapp.sendTemplate).toHaveBeenCalledWith('923069158103', 'quote_sent', ['Jim']);
+    expect(whatsapp.sendText).not.toHaveBeenCalled();
+    expect(result.status).toBe('sent');
+    expect(result.warning).toMatch(/24 hours/);
+  });
+
   test('does not send free text after a 24-hour re-engagement error', async () => {
     whatsapp.canMetaFetchMedia.mockReturnValue(false);
     whatsapp.sendTemplate.mockRejectedValue(

@@ -62,7 +62,8 @@ describe('CustomerTimeline (requirement 2.3)', () => {
     expect(screen.getByText(/Quote Q-2026-0001/)).toBeInTheDocument();
     expect(screen.getByText(/Job "Re-roof"/)).toBeInTheDocument();
     expect(screen.getByText(/Invoice INV-2026-0001/)).toBeInTheDocument();
-    expect(screen.getAllByText('Message').length).toBeGreaterThanOrEqual(1);
+    expect(screen.getAllByText('WhatsApp').length).toBeGreaterThanOrEqual(1);
+    expect(screen.getByText(/Received/)).toBeInTheDocument();
     expect(screen.getAllByText('Call').length).toBeGreaterThanOrEqual(1);
     expect(screen.getAllByText('Note').length).toBeGreaterThanOrEqual(1);
     expect(screen.getAllByText('Quote').length).toBeGreaterThanOrEqual(1);
@@ -80,6 +81,26 @@ describe('CustomerTimeline (requirement 2.3)', () => {
     }]} />);
     expect(screen.getByText(/thank you for the opportunity to quote/i)).toBeInTheDocument();
     expect(screen.getByText(/hi sahil/i)).toBeInTheDocument();
+    expect(screen.getByText('Email')).toBeInTheDocument();
+    expect(screen.getByText(/Sent/)).toBeInTheDocument();
+  });
+
+  it('shows a failed WhatsApp reply with the error', () => {
+    render(<CustomerTimeline items={[{
+      id: 'message-wa-fail',
+      type: 'message',
+      at: '2026-10-21T00:47:00Z',
+      summary: 'Thanks for your enquiry',
+      meta: {
+        channel: 'whatsapp',
+        direction: 'out',
+        status: 'failed',
+        error: 'WhatsApp blocked this send because the customer has not messaged your business number',
+      },
+    }]} />);
+    expect(screen.getByText('WhatsApp')).toBeInTheDocument();
+    expect(screen.getByText(/Failed/)).toBeInTheDocument();
+    expect(screen.getByText(/has not messaged your business number/i)).toBeInTheDocument();
   });
 
   it('shows empty state when there are no items', () => {
@@ -95,8 +116,8 @@ describe('CustomerTimeline (requirement 2.3)', () => {
 
     rerender(<CustomerTimeline items={ITEMS} />);
     const feed = screen.getByRole('region', { name: /activity timeline/i });
-    expect(feed.className).toMatch(/overflow-y-auto/);
-    expect(feed.className).toMatch(/max-h-\[32rem\]/);
+    expect(feed.className).toMatch(/sm:overflow-y-auto/);
+    expect(feed.className).toMatch(/sm:max-h-\[32rem\]/);
   });
 
   it('labels property type and roof type on a website enquiry', () => {

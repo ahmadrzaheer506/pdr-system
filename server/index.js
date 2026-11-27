@@ -33,6 +33,8 @@ function fileToken(filename) {
 app.get('/public-files/:token/:filename', (req, res) => {
   const { token, filename } = req.params;
   if (!/^[\w.\-]+$/.test(filename) || token !== fileToken(filename)) return res.sendStatus(403);
+  res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate');
+  res.setHeader('Pragma', 'no-cache');
   res.sendFile(path.join(DATA_DIR, 'files', filename), (err) => {
     if (err && !res.headersSent) res.sendStatus(404);
   });

@@ -3,6 +3,7 @@ import { Camera, FileText, StickyNote, Trash2, Download } from 'lucide-react';
 import { api, fmtDateTime } from '../lib/api';
 import { PHOTO_STAGES, PHOTO_STAGE_LABELS, filesForStage, documentFiles } from '../lib/jobFiles';
 import PhotoUploadButton from './PhotoUploadButton.jsx';
+import ImageLightbox from './ImageLightbox.jsx';
 
 const IMAGE_ACCEPT = 'image/jpeg,image/png,image/webp,.jpg,.jpeg,.png,.webp';
 const PDF_ACCEPT = 'application/pdf,.pdf';
@@ -32,6 +33,7 @@ export default function JobFiles({
 }) {
   const [note, setNote] = useState(notes || '');
   const [saving, setSaving] = useState(false);
+  const [viewer, setViewer] = useState(null);
   const docRef = useRef(null);
 
   useEffect(() => {
@@ -64,6 +66,13 @@ export default function JobFiles({
   const saveNotes = () => run(() => api.put(`${apiBase}/${jobId}`, { notes: note }));
 
   const docs = documentFiles(files);
+  const imageSlides = PHOTO_STAGES.flatMap((stage) => filesForStage(files, stage))
+    .filter((f) => (f.mime || '').startsWith('image/'))
+    .map((f) => ({
+      id: f.id,
+      src: fileUrl(apiBase, jobId, f.id),
+      alt: f.original_name,
+    }));
 
   return (
     <div className="space-y-4">
@@ -90,7 +99,22 @@ export default function JobFiles({
                 <ul className="space-y-2">
                   {group.map((f) => (
                     <li key={f.id} className="space-y-1">
-                      <img src={fileUrl(apiBase, jobId, f.id)} alt={f.original_name} className="w-full h-20 object-cover rounded-md bg-slate-50" />
+                      <button
+                        type="button"
+                        className="block w-full overflow-hidden rounded-md bg-slate-50"
+                        onClick={() => {
+                          const i = imageSlides.findIndex((s) => s.id === f.id);
+                          if (i >= 0) setViewer(i);
+                        }}
+                        aria-label={`Open ${f.original_name}`}
+                      >
+                        <img
+                          src={fileUrl(apiBase, jobId, f.id)}
+                          alt=""
+                          draggable={false}
+                          className="h-20 w-full object-cover pointer-events-none"
+                        />
+                      </button>
                       <div className="text-[11px] text-slate-600 truncate">{f.original_name}</div>
                       <div className="flex flex-wrap gap-1">
                         {PHOTO_STAGES.map((s) => (
@@ -186,6 +210,12 @@ export default function JobFiles({
           {saving ? 'Saving…' : 'Save notes'}
         </button>
       </div>
+      <ImageLightbox
+        open={viewer != null}
+        items={imageSlides}
+        index={viewer || 0}
+        onClose={() => setViewer(null)}
+      />
     </div>
   );
 }

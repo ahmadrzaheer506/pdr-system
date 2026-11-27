@@ -185,11 +185,28 @@ describe('QuoteBuilder', () => {
     expect(item).toHaveValue('Supply & fit 3-layer torch-on felt system');
     expect(screen.getByDisplayValue('m²')).toBeInTheDocument();
     const price = screen.getByLabelText(/unit price 1/i);
-    expect(price).toHaveValue(42);
+    expect(price).toHaveAttribute('type', 'text');
+    expect(price).toHaveValue('42');
     await user.clear(price);
     await user.type(price, '50');
-    expect(price).toHaveValue(50);
+    expect(price).toHaveValue('50');
     expect(screen.getByText('50.00')).toBeInTheDocument();
+  });
+
+  it('lets office type a unit price over a leading zero', async () => {
+    const user = userEvent.setup();
+    render(
+      <QuoteBuilder open onClose={() => {}} customerId={1} customer={CUSTOMER} onSaved={() => {}} />
+    );
+    await screen.findByLabelText(/^item 1$/i);
+    const price = screen.getByLabelText(/unit price 1/i);
+    expect(price).toHaveValue('0');
+    await user.type(price, '34');
+    expect(price).toHaveValue('34');
+    await user.clear(price);
+    expect(price).toHaveValue('');
+    await user.type(price, '12.5');
+    expect(price).toHaveValue('12.5');
   });
 
   it('lets office type a payment percent over a leading zero without spinner arrows', async () => {
@@ -505,7 +522,7 @@ describe('QuoteBuilder', () => {
     });
     expect(screen.getByLabelText(/^item 1$/i)).toHaveValue('Roof moss removal (soft wash)');
     expect(item2).toHaveValue('ddddd');
-    expect(screen.getByLabelText(/unit price 2/i)).toHaveValue(85);
+    expect(screen.getByLabelText(/unit price 2/i)).toHaveValue('85');
     expect(screen.getByText(/2 lines/i)).toBeInTheDocument();
   });
 

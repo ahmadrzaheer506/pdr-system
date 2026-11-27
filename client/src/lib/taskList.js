@@ -66,6 +66,7 @@ export function isOverdueTask(task) {
 }
 
 export function assigneeRoleLabel(role) {
+  if (role === ROLES.ADMIN) return 'Director';
   if (role === ROLES.OFFICE) return 'Office';
   if (role === ROLES.STAFF) return 'Field staff';
   return '';

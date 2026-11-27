@@ -128,6 +128,25 @@ describe('Customers list', () => {
     });
   });
 
+  it('uses stacked cards on a narrow screen instead of a wide table', async () => {
+    const previous = window.matchMedia;
+    window.matchMedia = (query) => ({
+      matches: query !== '(min-width: 1024px)',
+      media: query,
+      addEventListener: () => {},
+      removeEventListener: () => {},
+    });
+    try {
+      render(<MemoryRouter><Customers /></MemoryRouter>);
+      expect(await screen.findByRole('link', { name: 'Dave Whitfield' })).toBeInTheDocument();
+      expect(screen.queryByRole('columnheader', { name: 'Customer' })).not.toBeInTheDocument();
+      expect(screen.getByText('Site Roofing Ltd')).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: 'Delete Dave Whitfield' })).toBeInTheDocument();
+    } finally {
+      window.matchMedia = previous;
+    }
+  });
+
   it('opens the new customer modal', async () => {
     const user = userEvent.setup();
     render(<MemoryRouter><Customers /></MemoryRouter>);

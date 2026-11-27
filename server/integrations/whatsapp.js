@@ -90,7 +90,7 @@ function friendlyGraphError(httpStatus, err) {
     return MEDIA_FETCH_ERROR;
   }
   if (code === 131047) {
-    return 'WhatsApp blocked this send because the customer has not messaged your business number in the last 24 hours. On that phone, open WhatsApp, send any message to the test number +1 555 640 3520, wait a moment, then send the quote again. To skip that step, approve a template in Meta (e.g. quote_sent) and set WHATSAPP_TEMPLATE_QUOTE to its exact name.';
+    return 'WhatsApp blocked this send because the customer has not messaged your business number in the last 24 hours. A website form enquiry is not a WhatsApp chat, so a free-text reply from the app cannot be delivered until they message you on WhatsApp, or you send an approved template (quotes use quote_sent). Email replies use Mailgun from the Email tab, not WhatsApp.';
   }
   if (code === 132001 || code === 132000) {
     return 'That WhatsApp template is not approved or the name does not match .env (WHATSAPP_TEMPLATE_QUOTE). Approve quote_sent in WhatsApp Manager, or use a template name this app already has.';

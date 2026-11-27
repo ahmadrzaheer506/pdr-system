@@ -11,7 +11,7 @@ import DatePicker from './DatePicker.jsx';
 import { leadDisplayName } from '../lib/leads.js';
 
 function isAssignableUser(u) {
-  return u && u.active !== false && (u.role === ROLES.OFFICE || u.role === ROLES.STAFF);
+  return u && u.active !== false && (u.role === ROLES.ADMIN || u.role === ROLES.OFFICE || u.role === ROLES.STAFF);
 }
 
 function canAttachLead(task) {
@@ -150,7 +150,7 @@ export default function TaskFormModal({ open, task, onClose, onSaved, onError, l
       return;
     }
     if (!form.assignee_ids.length) {
-      onError('Assign at least one office or field staff user');
+      onError('Assign at least one person');
       return;
     }
     setSaving(true);
@@ -227,7 +227,7 @@ export default function TaskFormModal({ open, task, onClose, onSaved, onError, l
       title={editing ? 'Edit task' : 'Add a task'}
       subtitle={leadLocked
         ? (editing ? 'Update the people and timing for this enquiry.' : 'This task stays on this enquiry.')
-        : (editing ? 'Update the lead, people, and timing.' : 'Link this to a lead and assign office or field staff.')}
+        : (editing ? 'Update the lead, people, and timing.' : 'Link this to a lead and assign who should do it.')}
       size="2xl"
       footer={(
         <>
@@ -306,7 +306,7 @@ export default function TaskFormModal({ open, task, onClose, onSaved, onError, l
               values={form.assignee_ids}
               onChange={(assignee_ids) => setForm({ ...form, assignee_ids })}
               options={peopleOptions}
-              placeholder="Office and field staff"
+              placeholder="All users"
               required
             />
           </div>

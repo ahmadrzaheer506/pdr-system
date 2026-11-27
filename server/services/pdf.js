@@ -572,10 +572,25 @@ function buildInvoice(doc, invoice, customer, company, uk = {}) {
 
 // ---------- entry points ----------
 
+function pdfFilename(kind, record) {
+  const safeRef = String(record.ref || 'doc').replace(/[^\w.\-]+/g, '-');
+  return `${kind}-${safeRef}-${Date.now()}.pdf`;
+}
+
+function removeStoredPdf(filename) {
+  if (!filename || !/^[\w.\-]+$/.test(filename)) return;
+  const filePath = path.join(DATA_DIR, 'files', filename);
+  try {
+    fs.unlinkSync(filePath);
+  } catch {
+    // Previous send copy may already have been cleaned up.
+  }
+}
+
 async function generate(kind, record, customer) {
   const company = (await getSetting('company')) || {};
   const uk = (await getSetting('uk')) || {};
-  const filename = `${kind}-${record.ref}.pdf`;
+  const filename = pdfFilename(kind, record);
   const filePath = path.join(DATA_DIR, 'files', filename);
 
   const doc = new PDFDocument({ size: 'A4', margin: M, bufferPages: true });
@@ -612,4 +627,4 @@ async function generate(kind, record, customer) {
 const quotePdf = (quote, customer) => generate('quote', quote, customer);
 const invoicePdf = (invoice, customer) => generate('invoice', invoice, customer);
 
-module.exports = { quotePdf, invoicePdf, calcFromRecord };
+module.exports = { quotePdf, invoicePdf, calcFromRecord, pdfFilename, removeStoredPdf };

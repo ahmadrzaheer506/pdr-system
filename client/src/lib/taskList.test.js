@@ -42,6 +42,6 @@ describe('taskList helpers (requirement 12.3)', () => {
   it('labels office and field-staff assignees', () => {
     expect(assigneeRoleLabel('OFFICE')).toBe('Office');
     expect(assigneeRoleLabel('STAFF')).toBe('Field staff');
-    expect(assigneeRoleLabel('ADMIN')).toBe('');
+    expect(assigneeRoleLabel('ADMIN')).toBe('Director');
   });
 });

@@ -72,7 +72,10 @@ jest.mock('../services/taskEngine', () => ({
   ensureTask: jest.fn(),
   resolveQuoteFollowupTask: jest.fn(),
 }));
-jest.mock('../services/pdf', () => ({ quotePdf: jest.fn(async () => 'quote-Q-2026-0001.pdf') }));
+jest.mock('../services/pdf', () => ({
+  quotePdf: jest.fn(async () => 'quote-Q-2026-0001.pdf'),
+  removeStoredPdf: jest.fn(),
+}));
 jest.mock('../integrations/quickbooks', () => ({
   pushEstimate: jest.fn(async () => ({ simulated: true, qboId: 'SIM-Q' })),
 }));
@@ -280,6 +283,16 @@ describe('GET /api/quotes', () => {
     ]));
     expect(JSON.stringify(where)).not.toMatch(/sent','accepted'/);
   });
+
+  test('All tab hides archived quotes', async () => {
+    const { Op } = require('sequelize');
+    const res = await request(app).get('/api/quotes?status=ALL');
+    expect(res.status).toBe(200);
+    const where = Quote.findAll.mock.calls[0][0].where;
+    expect(where[Op.and]).toEqual(expect.arrayContaining([
+      { status: { [Op.ne]: 'superseded' } },
+    ]));
+  });
 });
 
 describe('GET /api/quotes/meta/options (requirement 6.1)', () => {
@@ -430,6 +443,45 @@ describe('quote revisions and extras on accept (requirement 6.5)', () => {
     expect(payload.status).toBe('draft');
     expect(payload.revised_from_id).toBe(10);
     expect(payload.title).toBe('Rear slope v2');
+  });
+
+  test('POST /:id/clone archives a sent original that has no job', async () => {
+    const original = {
+      id: 10,
+      customer_id: 9,
+      ref: 'Q-2026-0010',
+      title: 'Felt overlay',
+      items: [],
+      total: 294,
+      status: 'sent',
+      optional_extras: [],
+      provisional_sums: [],
+      payment_schedule: [],
+      vat_breakdown: [],
+      update: jest.fn(async function patch(fields) { Object.assign(this, fields); }),
+    };
+    Quote.findByPk.mockResolvedValue(original);
+    Quote.create.mockResolvedValue({ id: 12, ref: 'Q-2026-0031', total: 694, title: 'Felt overlay v2' });
+    Job.findOne.mockResolvedValue(null);
+
+    const res = await request(app).post('/api/quotes/10/clone').send({ title: 'Felt overlay v2' });
+    expect(res.status).toBe(200);
+    expect(original.update).toHaveBeenCalledWith({ status: 'superseded' });
+  });
+
+  test('POST /:id/archive marks a sent quote superseded', async () => {
+    const quote = {
+      id: 8,
+      customer_id: 9,
+      ref: 'Q-2026-0008',
+      status: 'sent',
+      update: jest.fn(async function patch(fields) { Object.assign(this, fields); }),
+    };
+    Quote.findByPk.mockResolvedValue(quote);
+    Job.findOne.mockResolvedValue(null);
+    const res = await request(app).post('/api/quotes/8/archive');
+    expect(res.status).toBe(200);
+    expect(quote.update).toHaveBeenCalledWith({ status: 'superseded' });
   });
 
   test('POST /:id/clone requires a title', async () => {
@@ -760,6 +812,39 @@ describe('POST /api/quotes/:id/send (requirement 6.7)', () => {
     expect(quoteRow.update).not.toHaveBeenCalledWith(expect.objectContaining({ status: 'sent' }));
     const quickbooks = require('../integrations/quickbooks');
     expect(quickbooks.pushEstimate).not.toHaveBeenCalled();
+  });
+
+  test('attaches a regenerated PDF URL so WhatsApp cannot reuse a cached file', async () => {
+    const { quotePdf } = require('../services/pdf');
+    quotePdf.mockResolvedValueOnce('quote-Q-2026-0030-rev2.pdf');
+    const quoteRow = {
+      id: 30,
+      customer_id: 9,
+      ref: 'Q-2026-0030',
+      title: 'Barge boards',
+      total: 694.8,
+      status: 'sent',
+      pdf_file: 'quote-Q-2026-0030.pdf',
+      valid_until: '2026-12-25',
+      toJSON() { return { ...this }; },
+      update: jest.fn(async function patch(fields) { Object.assign(this, fields); }),
+    };
+    Quote.findByPk.mockResolvedValue(quoteRow);
+    contacts.loadCustomerWithContacts.mockResolvedValue({ id: 9, name: 'Ethan' });
+
+    const res = await request(app).post('/api/quotes/30/send').send({ channels: ['whatsapp'] });
+    expect(res.status).toBe(200);
+    expect(sendToCustomer).toHaveBeenCalledWith(
+      9,
+      'whatsapp',
+      undefined,
+      expect.objectContaining({
+        docName: 'Q-2026-0030.pdf',
+        docUrl: expect.stringMatching(/quote-Q-2026-0030-rev2\.pdf$/),
+      }),
+    );
+    const { removeStoredPdf } = require('../services/pdf');
+    expect(removeStoredPdf).toHaveBeenCalledWith('quote-Q-2026-0030.pdf');
   });
 
   test('allows resend on an already sent quote', async () => {

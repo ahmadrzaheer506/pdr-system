@@ -33,6 +33,7 @@ export function StatusBadge({ status, className = '' }) {
     accepted: 'bg-emerald-50 text-emerald-700',
     declined: 'bg-rose-50 text-rose-700',
     expired: 'bg-slate-100 text-slate-500',
+    superseded: 'bg-slate-100 text-slate-500',
     part_paid: 'bg-amber-50 text-amber-700',
     paid: 'bg-green-50 text-green-700',
     overdue: 'bg-red-50 text-red-700',
@@ -57,9 +58,11 @@ export function StatusBadge({ status, className = '' }) {
     WON: 'bg-emerald-50 text-emerald-700',
     LOST: 'bg-rose-50 text-rose-700',
   };
-  const label = String(status || '')
-    .replace(/_/g, ' ')
-    .replace(/\S+/g, (word) => `${word.charAt(0).toUpperCase()}${word.slice(1).toLowerCase()}`);
+  const label = status === 'superseded'
+    ? 'Archived'
+    : String(status || '')
+      .replace(/_/g, ' ')
+      .replace(/\S+/g, (word) => `${word.charAt(0).toUpperCase()}${word.slice(1).toLowerCase()}`);
   return (
     <span className={`badge ${colors[status] || 'bg-slate-100 text-slate-600'} ${className}`.trim()}>
       {label}

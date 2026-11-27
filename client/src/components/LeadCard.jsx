@@ -80,8 +80,13 @@ export default function LeadCard({
   const Icon = SOURCE_ICON[lead.source] || Edit3;
   const href = lead.customer_id ? leadPath(lead.customer_id, from, lead.id) : null;
   const isNew = lead.status === 'NEW';
-  const showActions = href || onBookVisit || (isNew && onMarkActioned);
+  const canBook = Boolean(onBookVisit && lead.customer_id);
+  const canAction = Boolean(isNew && onMarkActioned);
+  const actionCount = Number(Boolean(href)) + Number(canBook) + Number(canAction);
+  const showActions = actionCount > 0;
   const preview = lead.message || lead.subject || '';
+  const actionGrid = actionCount === 3 ? 'grid-cols-3' : actionCount === 2 ? 'grid-cols-2' : 'grid-cols-1';
+  const actionBtn = 'inline-flex min-h-9 min-w-0 w-full items-center justify-center gap-1 rounded-xl px-1.5 py-1.5 text-center text-[11px] font-semibold leading-tight sm:h-9 sm:w-auto sm:gap-1.5 sm:px-3 sm:text-xs sm:whitespace-nowrap';
 
   return (
     <div className="group relative overflow-hidden rounded-2xl bg-white p-4 pl-5 shadow-[0_1px_2px_rgba(15,23,42,0.04)] ring-1 ring-slate-200/70 transition hover:ring-slate-300 hover:shadow-md sm:p-5 sm:pl-6">
@@ -136,33 +141,33 @@ export default function LeadCard({
         </div>
       </div>
       {showActions ? (
-        <div className="mt-4 flex flex-wrap items-center gap-1.5 border-t border-slate-100 pt-3 sm:justify-end">
+        <div className={`mt-4 grid ${actionGrid} gap-1.5 border-t border-slate-100 pt-3 sm:flex sm:flex-wrap sm:items-center sm:justify-end`}>
           {href ? (
             <Link
               to={href}
-              className="inline-flex h-9 items-center justify-center gap-1.5 whitespace-nowrap rounded-xl bg-navy-900 px-3 text-xs font-semibold text-white hover:bg-slate-800"
+              className={`${actionBtn} bg-navy-900 text-white hover:bg-slate-800`}
             >
               Open
-              <ArrowUpRight size={13} />
+              <ArrowUpRight size={13} className="shrink-0" />
             </Link>
           ) : null}
-          {onBookVisit && lead.customer_id ? (
+          {canBook ? (
             <button
               type="button"
               onClick={() => onBookVisit(lead)}
-              className="inline-flex h-9 items-center justify-center gap-1.5 whitespace-nowrap rounded-xl bg-white px-3 text-xs font-medium text-slate-600 ring-1 ring-slate-200 hover:bg-slate-50 hover:text-slate-900"
+              className={`${actionBtn} bg-white font-medium text-slate-600 ring-1 ring-slate-200 hover:bg-slate-50 hover:text-slate-900`}
             >
-              <Calendar size={13} />
+              <Calendar size={13} className="shrink-0" />
               Book visit
             </button>
           ) : null}
-          {isNew && onMarkActioned ? (
+          {canAction ? (
             <button
               type="button"
               onClick={() => onMarkActioned(lead)}
-              className="inline-flex h-9 items-center justify-center gap-1.5 whitespace-nowrap rounded-xl bg-emerald-50 px-3 text-xs font-semibold text-emerald-800 ring-1 ring-emerald-100 hover:bg-emerald-100"
+              className={`${actionBtn} bg-emerald-50 text-emerald-800 ring-1 ring-emerald-100 hover:bg-emerald-100`}
             >
-              <Check size={14} strokeWidth={2.4} />
+              <Check size={14} strokeWidth={2.4} className="shrink-0" />
               Mark actioned
             </button>
           ) : null}

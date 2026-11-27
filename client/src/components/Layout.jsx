@@ -106,7 +106,7 @@ export default function Layout({ children }) {
       <div className="flex min-h-0 min-w-0 flex-1 flex-col">
         <AppHeader showMenuButton onMenuClick={() => setOpen(true)} profileHref="/profile" />
         <main className="min-h-0 min-w-0 flex-1 overflow-y-auto overflow-x-hidden bg-slate-50">
-          <div className="mx-auto min-w-0 max-w-[1400px] px-4 pt-4 pb-8 md:px-8">{children}</div>
+          <div className="mx-auto w-full min-w-0 max-w-[1400px] overflow-x-hidden px-4 pt-4 pb-8 md:px-8">{children}</div>
         </main>
       </div>
     </div>

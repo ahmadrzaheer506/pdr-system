@@ -34,8 +34,97 @@ const SOURCE_BADGE = {
   manual: 'bg-slate-100 text-slate-600',
 };
 
+const WIDE_LIST_MQ = '(min-width: 1024px)';
+
+function useWideList() {
+  const [wide, setWide] = useState(() => {
+    if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') return true;
+    return window.matchMedia(WIDE_LIST_MQ).matches;
+  });
+
+  useEffect(() => {
+    if (typeof window.matchMedia !== 'function') return undefined;
+    const mq = window.matchMedia(WIDE_LIST_MQ);
+    const onChange = () => setWide(mq.matches);
+    mq.addEventListener?.('change', onChange);
+    return () => mq.removeEventListener?.('change', onChange);
+  }, []);
+
+  return wide;
+}
+
 function siteLine(c) {
   return [c.address, c.postcode].filter(Boolean).join(', ') || '-';
+}
+
+function TypeBadge({ customer }) {
+  const commercial = customer.customer_type === 'commercial';
+  return (
+    <span className={`badge ${commercial ? 'bg-indigo-100 text-indigo-700' : 'bg-slate-100 text-slate-700'}`}>
+      {commercial ? 'Commercial' : 'Domestic'}
+    </span>
+  );
+}
+
+function SourceBadge({ source }) {
+  if (!source) return '-';
+  return (
+    <span className={`badge ${SOURCE_BADGE[source] || 'bg-slate-100 text-slate-600'}`}>
+      {leadSourceLabel(source)}
+    </span>
+  );
+}
+
+function CustomerActions({ customer, onDelete }) {
+  return (
+    <div className="inline-flex items-center justify-end gap-0.5">
+      <Link
+        to={`/customers/${customer.id}`}
+        className="inline-flex h-8 w-8 items-center justify-center rounded-lg text-slate-500 hover:bg-slate-100 hover:text-navy-900"
+        aria-label={`Edit ${customer.name}`}
+      >
+        <Pencil size={15} />
+      </Link>
+      <button
+        type="button"
+        className="inline-flex h-8 w-8 items-center justify-center rounded-lg text-rose-600 hover:bg-rose-50 hover:text-rose-700"
+        aria-label={`Delete ${customer.name}`}
+        onClick={() => onDelete(customer)}
+      >
+        <Trash2 size={15} />
+      </button>
+    </div>
+  );
+}
+
+function CustomerCard({ customer, onDelete }) {
+  return (
+    <article className="card p-3.5">
+      <div className="flex items-start justify-between gap-2">
+        <div className="min-w-0">
+          <Link to={`/customers/${customer.id}`} className="font-medium text-slate-800 hover:text-brand-600">
+            {customer.name}
+          </Link>
+          {customer.customer_type === 'commercial' && customer.company_name ? (
+            <p className="mt-0.5 truncate text-xs text-slate-400">{customer.company_name}</p>
+          ) : null}
+        </div>
+        <div className="flex shrink-0 items-center gap-1">
+          <TypeBadge customer={customer} />
+          <CustomerActions customer={customer} onDelete={onDelete} />
+        </div>
+      </div>
+      <p className="mt-2 text-sm text-slate-600">{customer.phone || '-'}</p>
+      <p className="mt-0.5 truncate text-sm text-slate-600">{customer.email || '-'}</p>
+      <p className="mt-0.5 truncate text-sm text-slate-500">{siteLine(customer)}</p>
+      <div className="mt-2 flex items-center justify-between gap-2">
+        <SourceBadge source={customer.source} />
+        <span className="text-sm font-medium tabular-nums text-slate-800">
+          {Number(customer.quoted_value) > 0 ? money(customer.quoted_value) : ''}
+        </span>
+      </div>
+    </article>
+  );
 }
 
 export default function Customers() {
@@ -49,6 +138,7 @@ export default function Customers() {
   const [deleteTarget, setDeleteTarget] = useState(null);
   const [deleteWarning, setDeleteWarning] = useState('');
   const [deleteBusy, setDeleteBusy] = useState(false);
+  const wideList = useWideList();
   const { toast, show } = useToast();
 
   const openDelete = async (customer) => {
@@ -113,9 +203,9 @@ export default function Customers() {
 
       {!data ? <PageLoading /> : data.length === 0 ? (
         <EmptyState icon={Users} title="No customers found" detail="Try a different search, or add a new customer." />
-      ) : (
-        <div className="card overflow-hidden">
-          <div className="overflow-x-auto">
+      ) : wideList ? (
+        <div className="card min-w-0 max-w-full overflow-hidden">
+          <div className="min-w-0 max-w-full overflow-x-auto overscroll-x-contain">
             <table className="w-full min-w-[920px] table-fixed text-sm">
               <thead className="bg-slate-50 text-slate-500 text-xs uppercase">
                 <tr>
@@ -142,48 +232,32 @@ export default function Customers() {
                       )}
                     </td>
                     <td className="px-4 py-3 align-middle whitespace-nowrap">
-                      <span className={`badge ${c.customer_type === 'commercial' ? 'bg-indigo-100 text-indigo-700' : 'bg-slate-100 text-slate-700'}`}>
-                        {c.customer_type === 'commercial' ? 'Commercial' : 'Domestic'}
-                      </span>
+                      <TypeBadge customer={c} />
                     </td>
                     <td className="px-4 py-3 align-middle text-slate-600 whitespace-nowrap">{c.phone || '-'}</td>
                     <td className="px-4 py-3 align-middle text-slate-600 truncate" title={c.email || ''}>{c.email || '-'}</td>
                     <td className="px-4 py-3 align-middle text-slate-500 truncate" title={siteLine(c)}>{siteLine(c)}</td>
                     <td className="px-4 py-3 align-middle whitespace-nowrap">
-                      {c.source ? (
-                        <span className={`badge ${SOURCE_BADGE[c.source] || 'bg-slate-100 text-slate-600'}`}>
-                          {leadSourceLabel(c.source)}
-                        </span>
-                      ) : '-'}
+                      <SourceBadge source={c.source} />
                     </td>
                     <td className="px-4 py-3 align-middle text-right font-medium text-slate-800 whitespace-nowrap tabular-nums">
                       {Number(c.quoted_value) > 0 ? money(c.quoted_value) : '-'}
                     </td>
                     <td className="px-4 py-3 align-middle text-slate-400 whitespace-nowrap">{fmtTimeAgo(c.updated_at)}</td>
                     <td className="px-4 py-3 align-middle text-right">
-                      <div className="inline-flex items-center justify-end gap-0.5">
-                        <Link
-                          to={`/customers/${c.id}`}
-                          className="inline-flex h-8 w-8 items-center justify-center rounded-lg text-slate-500 hover:bg-slate-100 hover:text-navy-900"
-                          aria-label={`Edit ${c.name}`}
-                        >
-                          <Pencil size={15} />
-                        </Link>
-                        <button
-                          type="button"
-                          className="inline-flex h-8 w-8 items-center justify-center rounded-lg text-rose-600 hover:bg-rose-50 hover:text-rose-700"
-                          aria-label={`Delete ${c.name}`}
-                          onClick={() => openDelete(c)}
-                        >
-                          <Trash2 size={15} />
-                        </button>
-                      </div>
+                      <CustomerActions customer={c} onDelete={openDelete} />
                     </td>
                   </tr>
                 ))}
               </tbody>
             </table>
           </div>
+        </div>
+      ) : (
+        <div className="space-y-2">
+          {data.map((c) => (
+            <CustomerCard key={c.id} customer={c} onDelete={openDelete} />
+          ))}
         </div>
       )}
 

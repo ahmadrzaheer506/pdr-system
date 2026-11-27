@@ -1,11 +1,11 @@
 /**
- * Office / field-staff assignees on a task. Directors (ADMIN) cannot be assigned.
+ * Active users who can be assigned to a task or site visit (director, office, field staff).
  */
 const { Op } = require('sequelize');
 const { User, TaskAssignee } = require('./models');
-const { ROLES } = require('./roles');
+const { ROLE_VALUES } = require('./roles');
 
-const ASSIGNABLE_ROLES = [ROLES.OFFICE, ROLES.STAFF];
+const ASSIGNABLE_ROLES = ROLE_VALUES;
 
 /**
  * @param {unknown} raw
@@ -27,7 +27,7 @@ function parseAssigneeIds(raw) {
  * @returns {Promise<{ ids: number[] }|{ error: string }>}
  */
 async function assertAssignableUsers(ids) {
-  if (!ids.length) return { error: 'Assign at least one office or field staff user' };
+  if (!ids.length) return { error: 'Assign at least one person' };
   const users = await User.findAll({
     where: {
       id: { [Op.in]: ids },
@@ -37,7 +37,7 @@ async function assertAssignableUsers(ids) {
     attributes: ['id'],
   });
   if (users.length !== ids.length) {
-    return { error: 'Assign office or field staff only' };
+    return { error: 'Assign an active user' };
   }
   return { ids };
 }

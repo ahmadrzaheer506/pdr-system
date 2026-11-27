@@ -21,12 +21,13 @@ jest.mock('../branding', () => ({
 
 const fs = require('fs');
 const { logIntegrationEvent } = require('../models');
+const { getSetting } = require('../db');
 const branding = require('../branding');
 const email = require('../integrations/email');
 
 describe('Mailgun email adapter', () => {
   const prev = {};
-  const keys = ['MAILGUN_API_KEY', 'MAILGUN_DOMAIN', 'MAILGUN_FROM', 'MAILGUN_REGION', 'MAILGUN_API_URL'];
+  const keys = ['MAILGUN_API_KEY', 'MAILGUN_DOMAIN', 'MAILGUN_FROM', 'MAILGUN_BCC', 'MAILGUN_REGION', 'MAILGUN_API_URL'];
 
   beforeEach(() => {
     keys.forEach((k) => { prev[k] = process.env[k]; });
@@ -85,6 +86,7 @@ describe('Mailgun email adapter', () => {
     const form = global.fetch.mock.calls[0][1].body;
     expect(form.get('to')).toBe('customer@example.com');
     expect(form.get('from')).toBe('Paul Douglas Roofing <sender@example.com>');
+    expect(form.get('bcc')).toBe('office@pauldouglasroofing.co.uk');
     expect(form.get('subject')).toBe('Quote');
     expect(form.get('text')).toContain('Please find attached');
     expect(form.get('html')).toContain('Please find attached');
@@ -102,6 +104,30 @@ describe('Mailgun email adapter', () => {
     const form = global.fetch.mock.calls[0][1].body;
     expect(form.get('inline')).toBeTruthy();
     expect(form.get('attachment')).toBeTruthy();
+  });
+
+  test('BCCs the company Settings email, not MAILGUN_FROM or MAILGUN_BCC', async () => {
+    configure();
+    process.env.MAILGUN_BCC = 'inbox@pauldouglasroofing.co.uk';
+    getSetting.mockResolvedValueOnce({
+      name: 'Paul Douglas Roofing and Building Ltd',
+      email: 'accounts@pauldouglasroofing.co.uk',
+    });
+    await email.send('customer@example.com', 'Hi', 'Body');
+    expect(global.fetch.mock.calls[0][1].body.get('bcc')).toBe('accounts@pauldouglasroofing.co.uk');
+  });
+
+  test('does not BCC when the customer is already the company email', async () => {
+    configure();
+    await email.send('office@pauldouglasroofing.co.uk', 'Hi', 'Body');
+    expect(global.fetch.mock.calls[0][1].body.get('bcc')).toBeNull();
+  });
+
+  test('does not BCC when company Settings has no email', async () => {
+    configure();
+    getSetting.mockResolvedValueOnce({ name: 'Paul Douglas Roofing and Building Ltd', email: '' });
+    await email.send('customer@example.com', 'Hi', 'Body');
+    expect(global.fetch.mock.calls[0][1].body.get('bcc')).toBeNull();
   });
 
   test('uses the EU API host when MAILGUN_REGION=eu', async () => {

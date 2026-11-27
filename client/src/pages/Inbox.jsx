@@ -172,8 +172,8 @@ export default function Inbox() {
       </div>
 
       <div className="card p-3">
-        <div className="flex items-center gap-2 flex-wrap">
-          <div className="relative min-w-[16rem] flex-1">
+        <div className="flex min-w-0 flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center">
+          <div className="relative w-full min-w-0 sm:min-w-[16rem] sm:flex-1">
             <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
             <input
               className="input !pl-9 w-full"
@@ -184,23 +184,23 @@ export default function Inbox() {
             />
           </div>
           <SelectMenu
-            className="w-40"
+            className="w-full min-w-0 sm:w-40"
             label="Filter by source"
             value={source}
             onChange={setSource}
             options={SOURCE_FILTERS}
           />
-          <div className="flex items-center gap-2">
+          <div className="grid w-full min-w-0 grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-center gap-2 sm:w-auto sm:max-w-none">
             <DatePicker
-              className="w-[10.5rem]"
+              className="min-w-0 w-full sm:w-[10.5rem]"
               label="Created from"
               value={createdFrom}
               onChange={setCreatedFrom}
               placeholder="From"
             />
-            <span className="text-xs text-slate-400">to</span>
+            <span className="shrink-0 text-xs text-slate-400">to</span>
             <DatePicker
-              className="w-[10.5rem]"
+              className="min-w-0 w-full sm:w-[10.5rem]"
               label="Created to"
               value={createdTo}
               onChange={setCreatedTo}

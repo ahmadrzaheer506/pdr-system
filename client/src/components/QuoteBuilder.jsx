@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { Trash2, Plus, Info, ChevronDown, ChevronRight, Download, ListOrdered, Loader2 } from 'lucide-react';
 import { api, money } from '../lib/api';
+import { coerceDecimal, decimalFieldValue, parseDecimalInput } from '../lib/numberInput.js';
 import { Modal } from './ui.jsx';
 import ContactPickers from './ContactPickers.jsx';
 import { primaryOf } from '../lib/contacts';
@@ -125,9 +126,21 @@ export default function QuoteBuilder({ open, onClose, customerId, customer, lead
 
   const updateItem = (i, field, value) => {
     const next = [...form.items];
-    next[i] = { ...next[i], [field]: ['qty', 'unit_price'].includes(field) ? Number(value) : value };
+    let nextValue = value;
+    if (field === 'qty') nextValue = parseDecimalInput(value, { maxDecimals: 4 });
+    else if (field === 'unit_price') nextValue = parseDecimalInput(value, { maxDecimals: 2 });
+    next[i] = { ...next[i], [field]: nextValue };
     set('items', next);
   };
+
+  const payloadForm = () => ({
+    ...form,
+    items: (form.items || []).map((it) => ({
+      ...it,
+      qty: coerceDecimal(it.qty),
+      unit_price: coerceDecimal(it.unit_price),
+    })),
+  });
 
   const setLineDescription = (i, description) => {
     setForm((f) => {
@@ -189,8 +202,9 @@ export default function QuoteBuilder({ open, onClose, customerId, customer, lead
         setError('Quote already decided - clone it with a new title instead');
         return;
       }
-      if (existingQuote) await api.put(`/quotes/${existingQuote.id}`, form);
-      else await api.post('/quotes', { customer_id: customerId, lead_id: leadId || null, ...form });
+      const body = payloadForm();
+      if (existingQuote) await api.put(`/quotes/${existingQuote.id}`, body);
+      else await api.post('/quotes', { customer_id: customerId, lead_id: leadId || null, ...body });
       onSaved();
     } catch (err) { setError(err.message); }
     finally { setSaving(false); }
@@ -318,10 +332,9 @@ export default function QuoteBuilder({ open, onClose, customerId, customer, lead
                           <span className="label">Qty</span>
                           <input
                             className="input !px-2.5"
-                            type="number"
-                            min="0"
-                            step="any"
-                            value={it.qty}
+                            type="text"
+                            inputMode="decimal"
+                            value={decimalFieldValue(it.qty)}
                             onChange={(e) => updateItem(i, 'qty', e.target.value)}
                             aria-label={`Quantity ${i + 1}`}
                           />
@@ -340,10 +353,9 @@ export default function QuoteBuilder({ open, onClose, customerId, customer, lead
                           <span className="label">Unit £</span>
                           <input
                             className="input !px-2.5"
-                            type="number"
-                            min="0"
-                            step="0.01"
-                            value={it.unit_price}
+                            type="text"
+                            inputMode="decimal"
+                            value={decimalFieldValue(it.unit_price)}
                             onChange={(e) => updateItem(i, 'unit_price', e.target.value)}
                             aria-label={`Unit price ${i + 1}`}
                           />

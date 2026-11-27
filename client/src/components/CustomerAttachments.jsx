@@ -3,6 +3,7 @@ import { Paperclip, Trash2, Download, FileText } from 'lucide-react';
 import { api, fmtDateTime } from '../lib/api';
 import { attachmentSourceMeta } from '../lib/noteSources.js';
 import ScrollableLeadList from './ScrollableLeadList.jsx';
+import ImageLightbox from './ImageLightbox.jsx';
 
 const ACCEPT = 'image/jpeg,image/png,image/webp,application/pdf,.jpg,.jpeg,.png,.webp,.pdf';
 
@@ -24,6 +25,7 @@ function fileUrl(customerId, fileId, download) {
 export default function CustomerAttachments({ customerId, leadId, files, onChanged, onError }) {
   const inputRef = useRef(null);
   const [uploading, setUploading] = useState(false);
+  const [viewer, setViewer] = useState(null);
 
   const upload = async (file) => {
     if (!file) return;
@@ -50,6 +52,14 @@ export default function CustomerAttachments({ customerId, leadId, files, onChang
       onError(err.message || 'Could not delete the file');
     }
   };
+
+  const imageSlides = (files || [])
+    .filter((f) => (f.mime || '').startsWith('image/'))
+    .map((f) => ({
+      id: f.id,
+      src: fileUrl(customerId, f.id),
+      alt: f.original_name,
+    }));
 
   return (
     <div className="card p-5">
@@ -84,7 +94,22 @@ export default function CustomerAttachments({ customerId, leadId, files, onChang
             return (
               <div key={f.id} role="listitem" className="border border-slate-100 rounded-lg p-3 flex gap-3 items-start">
                 {isImage ? (
-                  <img src={fileUrl(customerId, f.id)} alt={f.original_name} className="h-14 w-14 object-cover rounded-md bg-slate-50" />
+                  <button
+                    type="button"
+                    className="h-14 w-14 shrink-0 overflow-hidden rounded-md bg-slate-50 ring-1 ring-slate-200/80"
+                    onClick={() => {
+                      const i = imageSlides.findIndex((s) => s.id === f.id);
+                      if (i >= 0) setViewer(i);
+                    }}
+                    aria-label={`Open ${f.original_name}`}
+                  >
+                    <img
+                      src={fileUrl(customerId, f.id)}
+                      alt=""
+                      draggable={false}
+                      className="h-14 w-14 object-cover pointer-events-none"
+                    />
+                  </button>
                 ) : (
                   <div className="h-14 w-14 rounded-md bg-slate-50 text-slate-400 flex items-center justify-center">
                     <FileText size={22} />
@@ -113,6 +138,12 @@ export default function CustomerAttachments({ customerId, leadId, files, onChang
           })}
         </ScrollableLeadList>
       )}
+      <ImageLightbox
+        open={viewer != null}
+        items={imageSlides}
+        index={viewer || 0}
+        onClose={() => setViewer(null)}
+      />
     </div>
   );
 }

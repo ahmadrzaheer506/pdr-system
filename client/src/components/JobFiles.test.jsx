@@ -58,6 +58,10 @@ describe('JobFiles (requirement 7.4)', () => {
       />,
     );
     expect(screen.getByText('porch.jpg')).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: /open porch.jpg/i }));
+    expect(screen.getByRole('dialog', { name: 'porch.jpg' })).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: /close photo/i }));
+    expect(screen.queryByRole('dialog', { name: 'porch.jpg' })).not.toBeInTheDocument();
     await user.click(screen.getByRole('button', { name: /^during$/i }));
     expect(api.put).toHaveBeenCalledWith('/staff/jobs/8/files/4', { stage: 'during' });
     await user.click(screen.getByLabelText(/delete porch.jpg/i));

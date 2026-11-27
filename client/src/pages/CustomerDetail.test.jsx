@@ -921,6 +921,25 @@ describe('CustomerDetail type (requirement 2.1)', () => {
     expect(api.post).toHaveBeenCalledWith('/quotes/5/clone', { title: 'Felt rear' });
   });
 
+  it('archives a sent quote that has been replaced', async () => {
+    const user = userEvent.setup();
+    api.get.mockImplementation((path) => {
+      if (String(path).includes('/settings/users')) {
+        return Promise.resolve({ users: [{ id: 1, name: 'Paul Douglas', role: 'ADMIN', active: true }] });
+      }
+      return Promise.resolve({
+        ...DETAIL,
+        quotes: [{ id: 5, ref: 'Q-2026-0030', title: 'Barge boards', total: 294, status: 'sent', optional_extras: [] }],
+      });
+    });
+    api.post.mockResolvedValue({ ok: true, quote: { id: 5, status: 'superseded' } });
+    renderDetail();
+    await user.click(await screen.findByRole('button', { name: /^archive$/i }));
+    expect(screen.getByRole('heading', { name: /archive quote/i })).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: /^archive quote$/i }));
+    expect(api.post).toHaveBeenCalledWith('/quotes/5/archive');
+  });
+
   it('disables Edit on an accepted quote and explains why on hover', async () => {
     const user = userEvent.setup();
     api.get.mockImplementation((path) => {

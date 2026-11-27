@@ -20,6 +20,17 @@ async function stopFollowupsFor(customerId, reason = 'customer replied') {
   return stopFollowupsAfterInbound(customerId, new Date(), reason);
 }
 
+function isAddressingError(err) {
+  const msg = String(err && err.message ? err.message : '');
+  return /Customer not found|no phone number|no email address|Unknown channel|No Facebook conversation/i.test(msg);
+}
+
+function rethrowSendError(err, extras = {}) {
+  const wrapped = err instanceof Error ? err : new Error(String(err));
+  Object.assign(wrapped, extras);
+  throw wrapped;
+}
+
 /**
  * Templates for business-initiated sends; free text only after a template miss,
  * not after a 24h / token / allow-list failure.
@@ -61,42 +72,72 @@ async function sendToCustomer(customerId, channel, body, { userId = null, docUrl
   let result = { simulated: true };
   let meta_ = {};
 
-  if (channel === 'whatsapp') {
-    if (!destPhone) throw new Error('Customer has no phone number on record');
-    const attachPdf = docUrl && whatsapp.canMetaFetchMedia(docUrl);
-    if (docUrl && !attachPdf) {
-      meta_.pdf_skipped = whatsapp.LOCALHOST_PDF_WARNING;
-    }
-    if (attachPdf) {
-      try {
-        result = await whatsapp.sendDocument(destPhone, docUrl, docName || 'document.pdf', body);
-      } catch (err) {
-        if (err.graphCode !== 131053) throw err;
-        meta_.pdf_skipped = err.message;
+  try {
+    if (channel === 'whatsapp') {
+      if (!destPhone) throw new Error('Customer has no phone number on record');
+      const attachPdf = docUrl && whatsapp.canMetaFetchMedia(docUrl);
+      if (docUrl && !attachPdf) {
+        meta_.pdf_skipped = whatsapp.LOCALHOST_PDF_WARNING;
+      }
+      /**
+       * Website / first-contact quotes: send the approved template first so Meta
+       * will deliver. A PDF document is extra and is blocked outside 24h — do not
+       * let a document error stop the template.
+       */
+      if (template) {
+        result = await sendWhatsAppTextOrTemplate(destPhone, body, template, templateParams, meta_);
+        if (attachPdf) {
+          try {
+            await whatsapp.sendDocument(destPhone, docUrl, docName || 'document.pdf', body);
+          } catch (err) {
+            meta_.pdf_skipped = err.message;
+          }
+        }
+      } else if (attachPdf) {
+        try {
+          result = await whatsapp.sendDocument(destPhone, docUrl, docName || 'document.pdf', body);
+        } catch (err) {
+          if (err.graphCode !== 131053) throw err;
+          meta_.pdf_skipped = err.message;
+          result = await sendWhatsAppTextOrTemplate(destPhone, body, template, templateParams, meta_);
+        }
+      } else {
         result = await sendWhatsAppTextOrTemplate(destPhone, body, template, templateParams, meta_);
       }
+    } else if (channel === 'email') {
+      if (!destEmail) throw new Error('Customer has no email address on record');
+      result = await email.send(destEmail, subject || 'Message from Paul Douglas Roofing', body, attachments);
+      meta_.subject = subject;
+    } else if (channel === 'facebook') {
+      const psid = (() => { try { return JSON.parse(customer.notes || '{}').fb_psid || null; } catch { return null; } })();
+      const lastFb = await Message.findOne({
+        where: { customer_id: customerId, channel: 'facebook', direction: 'in' },
+        order: [['id', 'DESC']],
+      });
+      const lastMeta = lastFb ? (lastFb.meta || {}) : {};
+      const senderPsid = lastMeta.psid || psid;
+      if (!senderPsid) throw new Error('No Facebook conversation reference for this customer yet');
+      result = await meta.sendPageMessage(senderPsid, body);
+      meta_.psid = senderPsid;
+    } else if (channel === 'note' || channel === 'phone' || channel === 'sms') {
+      result = { simulated: false };
     } else {
-      result = await sendWhatsAppTextOrTemplate(destPhone, body, template, templateParams, meta_);
+      throw new Error(`Unknown channel: ${channel}`);
     }
-  } else if (channel === 'email') {
-    if (!destEmail) throw new Error('Customer has no email address on record');
-    result = await email.send(destEmail, subject || 'Message from Paul Douglas Roofing', body, attachments);
-    meta_.subject = subject;
-  } else if (channel === 'facebook') {
-    const psid = (() => { try { return JSON.parse(customer.notes || '{}').fb_psid || null; } catch { return null; } })();
-    const lastFb = await Message.findOne({
-      where: { customer_id: customerId, channel: 'facebook', direction: 'in' },
-      order: [['id', 'DESC']],
+  } catch (err) {
+    if (isAddressingError(err)) throw err;
+    meta_.error = err.message;
+    const created = await Message.create({
+      customer_id: customerId,
+      direction: 'out',
+      channel,
+      body,
+      meta: meta_,
+      status: 'failed',
+      user_id: userId,
     });
-    const lastMeta = lastFb ? (lastFb.meta || {}) : {};
-    const senderPsid = lastMeta.psid || psid;
-    if (!senderPsid) throw new Error('No Facebook conversation reference for this customer yet');
-    result = await meta.sendPageMessage(senderPsid, body);
-    meta_.psid = senderPsid;
-  } else if (channel === 'note' || channel === 'phone' || channel === 'sms') {
-    result = { simulated: false };
-  } else {
-    throw new Error(`Unknown channel: ${channel}`);
+    await Customer.update({ updated_at: new Date() }, { where: { id: customerId } });
+    rethrowSendError(err, { messageId: created.id, status: 'failed' });
   }
 
   if (docUrl) meta_.document = docName;
@@ -115,6 +156,7 @@ async function sendToCustomer(customerId, channel, body, { userId = null, docUrl
     messageId: created.id,
     simulated: !!result.simulated,
     status,
+    channel,
     warning: meta_.pdf_skipped || null,
   };
 }

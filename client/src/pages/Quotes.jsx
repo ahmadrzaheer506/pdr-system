@@ -14,6 +14,7 @@ const FILTERS = [
   { value: 'accepted', label: 'Accepted' },
   { value: 'declined', label: 'Declined' },
   { value: 'expired', label: 'Expired' },
+  { value: 'superseded', label: 'Archived' },
 ];
 
 export default function Quotes() {
@@ -52,6 +53,8 @@ export default function Quotes() {
         <p className="text-slate-500 text-sm mt-0.5">
           {status === 'draft'
             ? 'Saved quotes that have not been emailed or sent on WhatsApp yet.'
+            : status === 'superseded'
+              ? 'Quotes replaced by a later version. They stay on the customer record but are no longer sent or accepted.'
             : issuedFilter
               ? 'Quotes issued in the dashboard window (sent, or recorded in the office). Unsent quotes are in Draft.'
               : 'Every quotation, and how it\'s getting on.'}

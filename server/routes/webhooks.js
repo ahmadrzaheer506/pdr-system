@@ -1,6 +1,7 @@
 const express = require('express');
 const { logIntegrationEvent, Lead } = require('../models');
 const { ingestInbound } = require('../services/messenger');
+const email = require('../integrations/email');
 const meta = require('../integrations/meta');
 const websiteEnquiry = require('../services/websiteEnquiry');
 
@@ -115,8 +116,12 @@ router.post('/email', express.urlencoded({ extended: true, limit: '10mb' }), exp
     const name = from.replace(/<[^>]+>/, '').trim() || emailAddr;
     const subject = b.subject || b.Subject || '(no subject)';
     const text = b['stripped-text'] || b.text || b['body-plain'] || b.TextBody || '';
-    await ingestInbound({ source: 'email', channel: 'email', name, email: emailAddr, subject, body: text });
-    await logEvent('email', 'message.received', { from: emailAddr, subject });
+    if (email.isOfficeOutboundEcho(from) || email.isOfficeOutboundEcho(emailAddr)) {
+      await logEvent('email', 'message.echo_skipped', { from: emailAddr, subject });
+    } else {
+      await ingestInbound({ source: 'email', channel: 'email', name, email: emailAddr, subject, body: text });
+      await logEvent('email', 'message.received', { from: emailAddr, subject });
+    }
   } catch (err) {
     await logEvent('email', 'webhook.error', { error: String(err.message) }, 'error');
   }

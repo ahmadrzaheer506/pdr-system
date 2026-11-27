@@ -2,6 +2,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import { api } from '../lib/api';
 import { Modal } from './ui.jsx';
 import { vatSelectOptions } from '../lib/taxDefaults';
+import { coerceDecimal, decimalFieldValue, parseDecimalInput } from '../lib/numberInput.js';
 import SelectMenu from './SelectMenu.jsx';
 
 const KIND_EDIT = [
@@ -65,7 +66,7 @@ export default function CatalogueItemForm({
         id: draft.id,
         description: draft.description,
         unit: draft.unit,
-        unit_price: draft.unit_price,
+        unit_price: coerceDecimal(draft.unit_price),
         vat_code: draft.vat_code,
         kind: draft.kind,
       };
@@ -119,11 +120,10 @@ export default function CatalogueItemForm({
             <input
               id="cat-price"
               className="input"
-              type="number"
-              min={0}
-              step="0.01"
-              value={draft.unit_price}
-              onChange={(e) => setDraft({ ...draft, unit_price: Number(e.target.value) })}
+              type="text"
+              inputMode="decimal"
+              value={decimalFieldValue(draft.unit_price)}
+              onChange={(e) => setDraft({ ...draft, unit_price: parseDecimalInput(e.target.value) })}
             />
           </div>
           <div>

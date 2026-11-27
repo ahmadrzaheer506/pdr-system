@@ -117,7 +117,7 @@ export default function BookVisit({ open, onClose, customer, customerId, leadId,
     api.get('/settings/users')
       .then((d) => {
         if (cancelled) return;
-        setPeople((d.users || []).filter((u) => u && u.active !== false && (u.role === ROLES.OFFICE || u.role === ROLES.STAFF)));
+        setPeople((d.users || []).filter((u) => u && u.active !== false && (u.role === ROLES.ADMIN || u.role === ROLES.OFFICE || u.role === ROLES.STAFF)));
       })
       .catch((err) => {
         if (!cancelled) {
@@ -132,7 +132,7 @@ export default function BookVisit({ open, onClose, customer, customerId, leadId,
     e.preventDefault();
     if (!record?.id) return;
     if (!assigneeIds.length) {
-      setError('Assign at least one office or field staff user');
+      setError('Assign at least one person');
       return;
     }
     setSaving(true);
@@ -224,7 +224,7 @@ export default function BookVisit({ open, onClose, customer, customerId, leadId,
               label: u.name,
               hint: assigneeRoleLabel(u.role),
             }))}
-            placeholder="Office and field staff"
+            placeholder="All users"
             required
           />
         </div>

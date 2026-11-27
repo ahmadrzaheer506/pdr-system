@@ -1,5 +1,5 @@
 /**
- * Office / field-staff assignees on a site visit (same rules as tasks).
+ * Assignees on a site visit (same rules as tasks: any active user).
  */
 const { AppointmentAssignee, User } = require('./models');
 const {

@@ -51,6 +51,7 @@ describe('LeadCard', () => {
     expect(onBookVisit).toHaveBeenCalledWith(lead);
     await user.click(screen.getByRole('button', { name: /mark actioned/i }));
     expect(onMarkActioned).toHaveBeenCalledWith(lead);
+    expect(screen.getByRole('button', { name: /book visit/i }).parentElement).toHaveClass('grid-cols-3');
   });
 
   it('prefixes every enquiry with its lead ref', () => {

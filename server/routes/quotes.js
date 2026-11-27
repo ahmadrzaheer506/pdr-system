@@ -9,7 +9,7 @@ const { setStage, logActivity, resolveLeadForCustomer } = require('../services/p
 const { sendToCustomer } = require('../services/messenger');
 const { scheduleForQuote, render, cancelPendingForQuote, updateFollowupSchedule, cancelFollowup } = require('../services/followups');
 const { resolveRule, ensureTask, resolveQuoteFollowupTask } = require('../services/taskEngine');
-const { quotePdf } = require('../services/pdf');
+const { quotePdf, removeStoredPdf } = require('../services/pdf');
 const contacts = require('../customerContacts');
 const { parseCreatedRange } = require('../customerSearch');
 const { parseReportRange, quotesIssuedWhere } = require('../reports');
@@ -90,6 +90,7 @@ function publicPdfUrl(filename) {
  * Does not send the quote or change status (requirement 6.6).
  */
 async function generateAndStoreQuotePdf(quote) {
+  if (typeof quote.reload === 'function') await quote.reload();
   const customer = await contacts.loadCustomerWithContacts(quote.customer_id);
   if (!customer) return { error: 'Customer not found', status: 404 };
   let selection = quote;
@@ -98,9 +99,33 @@ async function generateAndStoreQuotePdf(quote) {
     if (lead) selection = contacts.leadContactSelection(lead);
   }
   const forDoc = contacts.applySelectedContacts(customer, selection);
+  const previousPdf = quote.pdf_file;
   const filename = await quotePdf(plain(quote), forDoc);
   await quote.update({ pdf_file: filename });
+  if (previousPdf && previousPdf !== filename) removeStoredPdf(previousPdf);
   return { filename, customer, forDoc };
+}
+
+const REPLACEABLE_STATUSES = ['draft', 'sent', 'expired', 'declined'];
+
+async function archiveReplacedQuote(quote, userId, reason, { allowDraft = false } = {}) {
+  const allowed = allowDraft ? REPLACEABLE_STATUSES : ['sent', 'expired', 'declined'];
+  if (!quote || !allowed.includes(quote.status)) return false;
+  if (typeof quote.update !== 'function') return false;
+  const job = await Job.findOne({ where: { quote_id: quote.id } });
+  if (job) return false;
+  await quote.update({ status: 'superseded' });
+  await cancelPendingForQuote(quote.id, reason);
+  await resolveQuoteFollowupTask(quote.id);
+  await logActivity(
+    quote.customer_id,
+    userId,
+    'quote_archived',
+    `Quote ${quote.ref} archived`,
+    'quote',
+    quote.id
+  );
+  return true;
 }
 
 function parseSentRange(query = {}) {
@@ -136,6 +161,7 @@ router.get('/', asyncHandler(async (req, res) => {
   if (sent.error) return res.status(400).json({ error: sent.error });
   const and = [];
   if (status && status !== 'ALL') and.push({ status });
+  else and.push({ status: { [Op.ne]: 'superseded' } });
   if (dates.range) and.push({ created_at: dates.range });
   // Drafts were never emailed/WhatsApped, so an issued/sent window must not
   // hide them when office opens the Draft tab from the dashboard drill-down.
@@ -286,6 +312,9 @@ router.put('/:id', asyncHandler(async (req, res) => {
   if (['accepted', 'declined'].includes(quote.status)) {
     return res.status(400).json({ error: 'Quote already decided - clone it with a new title instead' });
   }
+  if (quote.status === 'superseded') {
+    return res.status(400).json({ error: 'This quote was replaced by a later version' });
+  }
   const b = req.body || {};
   const newItems = b.items !== undefined ? b.items : (quote.items || []);
   const uk = (await getSetting('uk')) || {};
@@ -358,6 +387,7 @@ async function copyQuoteAsDraft(req, res, { title, activityDetail }) {
     validUntil,
     title,
   }));
+  await archiveReplacedQuote(quote, req.user.id, 'quote replaced by a revised version');
   await logActivity(
     quote.customer_id,
     req.user.id,
@@ -409,6 +439,21 @@ router.delete('/:id', asyncHandler(async (req, res) => {
     quote.id
   );
   res.json({ ok: true });
+}));
+
+router.post('/:id/archive', asyncHandler(async (req, res) => {
+  const quote = await Quote.findByPk(req.params.id);
+  if (!quote) return res.status(404).json({ error: 'Quote not found' });
+  if (quote.status === 'superseded') return res.json({ ok: true, quote: plain(quote) });
+  if (['accepted'].includes(quote.status)) {
+    return res.status(400).json({ error: 'An accepted quote cannot be archived. Clone it if you need a revised version.' });
+  }
+  const archived = await archiveReplacedQuote(quote, req.user.id, 'quote archived', { allowDraft: true });
+  if (!archived) {
+    return res.status(400).json({ error: 'This quote has a job and cannot be archived' });
+  }
+  const fresh = await Quote.findByPk(quote.id);
+  res.json({ ok: true, quote: plain(fresh) });
 }));
 
 router.post('/:id/pdf', asyncHandler(async (req, res) => {
@@ -523,6 +568,9 @@ router.post('/:id/decision', asyncHandler(async (req, res) => {
   const { decision, reason, accepted_extra_indexes, create_job: createJobFlag } = req.body || {};
   const quote = await Quote.findByPk(req.params.id);
   if (!quote) return res.status(404).json({ error: 'Quote not found' });
+  if (quote.status === 'superseded') {
+    return res.status(400).json({ error: 'This quote was replaced by a later version' });
+  }
   if (!['accepted', 'declined'].includes(decision)) return res.status(400).json({ error: 'decision must be accepted or declined' });
   const customer = await contacts.loadCustomerWithContacts(quote.customer_id);
   const wantJob = createJobFlag !== false && createJobFlag !== 'false';
